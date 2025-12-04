@@ -700,35 +700,35 @@ const App = () => {
                                   <div className={`text-sm font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
                               </div>
 
-                              <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0">
+                              {/* CONTROLES */}
+                              <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0 relative">
                                   {isFree ? (
                                       <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                                   ) : (
-                                      <div className={`flex items-center p-1 gap-1 rounded-lg w-full md:w-auto justify-between md:justify-end ${isAdmin ? 'bg-slate-800' : 'bg-white border border-slate-200 shadow-sm'}`}>
-                                          {/* ✅ MENÚ DE OPCIONES RETRÁCTIL EN MÓVIL */}
-                                          <div className="flex md:hidden">
+                                      <>
+                                          {/* Botón de Menú (Solo Visible en Móvil/Tablet) */}
+                                          <div className="flex md:hidden absolute right-0 top-1/2 transform -translate-y-1/2 mr-2 z-20">
                                               <button onClick={() => setOpenMenuId(openMenuId === sale.id ? null : sale.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 active:scale-95 transition-all ${openMenuId === sale.id ? 'bg-slate-100' : 'bg-transparent'}`}><MoreVertical size={16}/></button>
                                           </div>
                                           
-                                          <div className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${openMenuId === sale.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={() => setOpenMenuId(null)}></div>
-                                          
-                                          <div className={`md:flex absolute md:relative top-0 right-10 md:right-0 bg-white md:bg-transparent rounded-xl md:p-0 transition-all duration-200 shadow-xl md:shadow-none p-2 space-x-1 ${openMenuId === sale.id ? 'flex' : 'hidden'}`}>
+                                          {/* Controles en PC (Visibles) / Controles en Móvil (Retráctil) */}
+                                          <div className={`absolute md:relative top-full md:top-0 right-0 md:right-0 bg-white md:bg-transparent rounded-xl md:p-0 transition-all duration-200 shadow-xl md:shadow-none p-2 space-x-1 z-50 ${openMenuId === sale.id || window.innerWidth >= 768 ? 'flex flex-col md:flex-row' : 'hidden md:flex'}`}>
                                               
-                                              <div className="flex gap-1">
+                                              <div className="flex gap-1 md:space-x-1 md:w-auto">
                                                   {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
                                                   {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
                                                   {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
                                               </div>
-                                              <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'}`}>
+                                              <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'} md:space-x-1 md:border-none md:w-auto`}>
                                                   <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
                                                   {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
                                                   <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
                                               </div>
                                               
                                               {/* BOTÓN CERRAR MENÚ (Solo en Móvil) */}
-                                              <button onClick={() => setOpenMenuId(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 md:hidden"><X size={16}/></button>
+                                              {openMenuId === sale.id && (<button onClick={() => setOpenMenuId(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 md:hidden"><X size={16}/></button>)}
                                           </div>
-                                      </div>
+                                      </>
                                   )}
                               </div>
                           </div>
@@ -861,18 +861,26 @@ const App = () => {
           {view === 'form' && (
              <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-slate-100 mb-20 animate-in slide-in-from-bottom-4">
                  <h2 className="text-xl font-black text-slate-800 mb-1">{formData.client === 'LIBRE' ? 'Vender' : 'Editar'}</h2>
-                 <p className="text-xs font-mono text-slate-400 bg-slate-50 p-1 rounded w-fit mb-6">
-                     <button onClick={(e) => {
-                         e.preventDefault();
-                         navigator.clipboard.writeText(`${formData.email}:${formData.pass}`);
-                         e.currentTarget.querySelector('span').textContent = '¡Copiado!'; 
-                         setTimeout(() => {
-                            e.currentTarget.querySelector('span').textContent = `${formData.email} | ${formData.pass}`;
-                         }, 1500);
-                     }} className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
-                         <span>{formData.email} | {formData.pass}</span> <Copy size={12}/>
-                     </button>
-                 </p>
+                 
+                 {/* VISUALIZACIÓN DE CUPOS LIBRES EN FORMULARIO */}
+                 <div className="flex items-center justify-between">
+                     <p className="text-xs font-mono text-slate-400 bg-slate-50 p-1 rounded w-fit mb-6">
+                         <button onClick={(e) => {
+                             e.preventDefault();
+                             navigator.clipboard.writeText(`${formData.email}:${formData.pass}`);
+                             e.currentTarget.querySelector('span').textContent = '¡Copiado!'; 
+                             setTimeout(() => {
+                                e.currentTarget.querySelector('span').textContent = `${formData.email} | ${formData.pass}`;
+                             }, 1500);
+                         }} className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                             <span>{formData.email} | {formData.pass}</span> <Copy size={12}/>
+                         </button>
+                     </p>
+                     <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">
+                        Libres: {maxAvailableSlots}
+                     </span>
+                 </div>
+                 
                  <form onSubmit={handleSaveSale} className="space-y-4">
                     
                     {/* Botones de Cantidad */}
