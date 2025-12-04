@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore';
 
 // ============================================================================
-// ✅ CREDENCIALES DE HM DIGITAL (CONECTADAS)
+// ✅ CREDENCIALES CONECTADAS
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyBw3xZAm7MIBg5_0wofo9ZLOKdaFqfrtKo",
@@ -32,13 +32,11 @@ const firebaseConfig = {
   measurementId: "G-MYN2RPJXF0"
 };
 
-// Inicialización segura
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- ESTADOS "PROBLEMA" (Sin costo, Sin botones de cobro) ---
-// NOTA: "Admin" se maneja aparte para tener botones pero costo 0.
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED'];
 
 const App = () => {
@@ -192,6 +190,7 @@ const App = () => {
       setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
   };
 
+  // Modales
   const triggerDeleteService = (id) => {
       setConfirmModal({ show: true, id: id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá del catálogo.' });
   };
@@ -220,7 +219,6 @@ const App = () => {
   const handleSaveSale = async (e) => {
     e.preventDefault(); if (!user) return;
     
-    // Guardar cliente (Excluye Admin y Problemas)
     if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
         const exists = clientsDirectory.some(c => c.name.toLowerCase() === formData.client.toLowerCase());
         if (!exists) await addDoc(collection(db, userPath, 'clients'), { name: formData.client, phone: formData.phone });
@@ -346,7 +344,6 @@ const App = () => {
     });
   }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo]);
 
-  // CALCULO TOTAL: Excluir LIBRE, Problemas, Admin
   const totalFilteredMoney = filteredSales.reduce((acc, curr) => {
       const isExcluded = curr.client === 'LIBRE' || NON_BILLABLE_STATUSES.includes(curr.client) || curr.client === 'Admin';
       return !isExcluded ? acc + (Number(curr.cost) || 0) : acc;
@@ -419,7 +416,6 @@ const App = () => {
       <div className="hidden md:flex w-72 bg-white/80 backdrop-blur-2xl border-r border-white/50 flex-col shadow-xl z-20 relative">
         <div className="p-8 flex flex-col items-center justify-center border-b border-slate-100/50">
           <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2 group cursor-pointer hover:scale-105 transition-transform">
-             {/* LOGO */}
              <img src="logo1.png" alt="Logo" className="w-full h-full object-contain rounded-xl"/>
           </div>
           <h1 className="font-bold text-lg text-slate-800">HM Digital</h1>
@@ -444,7 +440,8 @@ const App = () => {
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
           {view === 'dashboard' && (
-            <div className="space-y-6 max-w-[1600px] mx-auto">
+            // ⚠️ AQUÍ ESTÁ EL CAMBIO "FULL SCREEN" (Sin max-w)
+            <div className="space-y-6 w-full pb-20">
               <div className="bg-white/70 backdrop-blur-xl p-1.5 rounded-[1.5rem] shadow-sm border border-white sticky top-0 z-30">
                   <div className="flex flex-col gap-2">
                       <div className="relative group">
@@ -502,7 +499,6 @@ const App = () => {
                                   ) : <span className="text-slate-400 text-xs font-bold bg-slate-100 px-3 py-1 rounded-full">{isFree ? 'LIBRE' : 'N/A'}</span>}
                               </div>
                               <div className="text-right w-20 hidden md:block">
-                                  {/* ✅ COSTO 0 PARA ADMIN Y PROBLEMAS */}
                                   <div className={`text-lg font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
                               </div>
                               <div className="flex gap-2">
@@ -510,7 +506,6 @@ const App = () => {
                                       <button onClick={() => { setFormData(sale); setView('form'); }} className="h-10 px-5 bg-black text-white rounded-full font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 flex items-center gap-2">Asignar <ChevronRight size={14}/></button>
                                   ) : (
                                       <div className={`flex items-center p-1 rounded-2xl backdrop-blur-md ${isAdmin ? 'bg-slate-800' : 'bg-slate-100/80'}`}>
-                                          {/* Botones visibles para ADMIN también */}
                                           {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${days <= 0 ? 'text-red-500 hover:bg-white shadow-sm' : 'text-amber-500 hover:bg-white shadow-sm'}`}>{days <= 0 ? <XCircle size={18}/> : <Ban size={18}/>}</button>)}
                                           {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-9 h-9 text-slate-400 hover:text-blue-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Key size={18}/></button>}
                                           {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className="w-9 h-9 text-slate-400 hover:text-blue-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Lock size={18}/></button>}
