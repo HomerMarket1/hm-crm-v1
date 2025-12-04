@@ -36,7 +36,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- ESTADOS "PROBLEMA" (Sin costo, Sin botones de cobro) ---
+// --- ESTADOS "PROBLEMA" ---
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED'];
 
 const App = () => {
@@ -211,7 +211,6 @@ const App = () => {
           }
       } catch (error) {
           console.error("Error en acción:", error);
-          alert("Error: Revisa tu conexión.");
       }
       setConfirmModal({ show: false, id: null, type: null, title: '', msg: '' });
   };
@@ -351,12 +350,12 @@ const App = () => {
   const totalItems = filteredSales.length;
 
   const getStatusIcon = (clientName) => {
-      if (clientName === 'LIBRE') return <CheckCircle size={24}/>;
-      if (clientName === 'Caída') return <AlertTriangle size={24}/>;
-      if (clientName === 'Actualizar') return <RefreshCw size={24}/>;
-      if (clientName === 'Dominio') return <Globe size={24}/>;
-      if (clientName === 'Admin') return <Shield size={24}/>;
-      if (clientName === 'EXPIRED') return <Skull size={24}/>;
+      if (clientName === 'LIBRE') return <CheckCircle size={20}/>;
+      if (clientName === 'Caída') return <AlertTriangle size={20}/>;
+      if (clientName === 'Actualizar') return <RefreshCw size={20}/>;
+      if (clientName === 'Dominio') return <Globe size={20}/>;
+      if (clientName === 'Admin') return <Shield size={20}/>;
+      if (clientName === 'EXPIRED') return <Skull size={20}/>;
       return clientName.charAt(0);
   };
   const getStatusColor = (clientName) => {
@@ -413,9 +412,11 @@ const App = () => {
       <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
       <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
+      {/* SIDEBAR */}
       <div className="hidden md:flex w-72 bg-white/80 backdrop-blur-2xl border-r border-white/50 flex-col shadow-xl z-20 relative">
         <div className="p-8 flex flex-col items-center justify-center border-b border-slate-100/50">
           <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2 group cursor-pointer hover:scale-105 transition-transform">
+             {/* LOGO */}
              <img src="logo1.png" alt="Logo" className="w-full h-full object-contain rounded-xl"/>
           </div>
           <h1 className="font-bold text-lg text-slate-800">HM Digital</h1>
@@ -438,19 +439,19 @@ const App = () => {
           <button onClick={handleLogout} className="md:hidden p-2 text-slate-400"><LogOut size={20}/></button>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
+        <main className="flex-1 overflow-y-auto p-3 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
           {view === 'dashboard' && (
-            // ⚠️ AQUÍ ESTÁ EL CAMBIO "FULL SCREEN" (Sin max-w)
-            <div className="space-y-6 w-full pb-20">
+            // ✅ FULL WIDTH CONTAINER
+            <div className="space-y-4 md:space-y-6 w-full pb-20">
               <div className="bg-white/70 backdrop-blur-xl p-1.5 rounded-[1.5rem] shadow-sm border border-white sticky top-0 z-30">
                   <div className="flex flex-col gap-2">
                       <div className="relative group">
                           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                          <input type="text" placeholder="Buscar..." className="w-full pl-11 pr-4 h-12 bg-slate-100/50 border-none rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={filterClient} onChange={e => setFilterClient(e.target.value)} />
+                          <input type="text" placeholder="Buscar..." className="w-full pl-11 pr-4 h-10 md:h-12 bg-slate-100/50 border-none rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={filterClient} onChange={e => setFilterClient(e.target.value)} />
                       </div>
                       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                          <select className="h-10 px-4 bg-slate-100/50 rounded-xl text-xs font-bold text-slate-600 outline-none border-none focus:bg-white cursor-pointer min-w-[140px]" value={filterService} onChange={e => setFilterService(e.target.value)}><option value="Todos">Servicios: Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
-                          <div className="flex bg-slate-100/50 p-1 rounded-xl h-10 flex-shrink-0">
+                          <select className="h-8 md:h-10 px-4 bg-slate-100/50 rounded-xl text-xs font-bold text-slate-600 outline-none border-none focus:bg-white cursor-pointer min-w-[120px]" value={filterService} onChange={e => setFilterService(e.target.value)}><option value="Todos">Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+                          <div className="flex bg-slate-100/50 p-1 rounded-xl h-8 md:h-10 flex-shrink-0">
                               {['Todos', 'Libres', 'Ocupados', 'Problemas'].map(status => (
                                   <button key={status} onClick={() => setFilterStatus(status)} className={`px-3 md:px-4 rounded-lg text-[10px] md:text-xs font-bold transition-all ${filterStatus === status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{status}</button>
                               ))}
@@ -460,59 +461,84 @@ const App = () => {
               </div>
 
               <div className="flex justify-between items-center px-2">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{totalItems} Resultados</div>
-                  <div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-400 uppercase">Total:</span><span className="text-lg font-black text-slate-800 tracking-tight">${totalFilteredMoney.toLocaleString()}</span></div>
+                  <div className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">{totalItems} Resultados</div>
+                  <div className="flex items-center gap-2"><span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase">Total:</span><span className="text-base md:text-xl font-black text-slate-800 tracking-tight">${totalFilteredMoney.toLocaleString()}</span></div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 gap-2 md:gap-4">
+                 <div className="hidden md:grid grid-cols-12 gap-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider pl-8">
+                    <div className="col-span-3">Cliente</div>
+                    <div className="col-span-4">Servicio & Detalles</div>
+                    <div className="col-span-2 text-center">Vencimiento</div>
+                    <div className="col-span-1 text-center">Costo</div>
+                    <div className="col-span-2 text-right">Controles</div>
+                 </div>
+
                  {filteredSales.map((sale) => {
                       const isFree = sale.client === 'LIBRE';
                       const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
                       const isAdmin = sale.client === 'Admin';
                       const days = getDaysRemaining(sale.endDate);
                       let cardClass = "bg-white/80 backdrop-blur-sm border border-white hover:border-blue-200 hover:shadow-lg hover:-translate-y-0.5";
-                      if (isFree) cardClass = "bg-white/40 border border-dashed border-emerald-300/50 hover:bg-emerald-50/50 hover:border-emerald-300";
+                      if (isFree) cardClass = "bg-emerald-50/40 border border-emerald-100 border-dashed";
                       if (isProblem) cardClass = "bg-red-50/20 border border-red-100 hover:border-red-200";
                       if (isAdmin) cardClass = "bg-slate-900 border border-slate-700 text-white";
 
                       return (
-                        <div key={sale.id} className={`p-5 rounded-3xl transition-all duration-300 shadow-sm group ${cardClass}`}>
-                          <div className="flex flex-col md:flex-row items-center gap-6">
-                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold shadow-lg shadow-black/5 ${getStatusColor(sale.client)}`}>{getStatusIcon(sale.client)}</div>
-                              <div className="flex-1 text-center md:text-left min-w-[200px]">
-                                  <div className={`font-bold text-lg leading-tight ${isAdmin ? 'text-white' : 'text-slate-900'}`}>{isFree ? 'Cupo Disponible' : sale.client}</div>
-                                  <div className={`text-sm font-medium mt-0.5 ${isAdmin ? 'text-slate-400' : 'text-slate-400'}`}>{sale.service}</div>
-                                  {!isFree && !isProblem && <div className="text-xs text-blue-500 font-bold mt-1 flex items-center justify-center md:justify-start gap-1"><Smartphone size={10}/> {sale.phone}</div>}
+                        <div key={sale.id} className={`p-3 md:p-4 rounded-2xl transition-all relative group ${cardClass}`}>
+                          <div className="flex flex-col md:grid md:grid-cols-12 gap-3 md:gap-4 items-center">
+                              
+                              <div className="col-span-12 md:col-span-3 w-full flex items-center gap-3">
+                                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center text-lg md:text-xl font-bold shadow-sm flex-shrink-0 ${getStatusColor(sale.client)}`}>{getStatusIcon(sale.client)}</div>
+                                  <div className="flex-1 overflow-hidden">
+                                      <div className={`font-bold text-sm md:text-base truncate leading-tight ${isAdmin ? 'text-white' : 'text-slate-900'}`}>{isFree ? 'Cupo Disponible' : sale.client}</div>
+                                      <div className={`text-[10px] md:text-xs font-medium mt-0.5 truncate ${isAdmin ? 'text-slate-400' : 'text-slate-500'}`}>{sale.service}</div>
+                                      {!isFree && !isProblem && <div className="text-[10px] text-blue-500 font-bold mt-1 md:hidden flex items-center gap-1"><Smartphone size={10}/> {sale.phone}</div>}
+                                  </div>
+                                  <div className={`text-sm font-bold md:hidden ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
                               </div>
-                              <div className={`hidden md:block flex-1 border-l pl-6 ${isAdmin ? 'border-slate-700' : 'border-slate-100'}`}>
-                                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Credenciales</div>
-                                  <div className={`text-sm font-medium truncate max-w-[200px] ${isAdmin ? 'text-slate-300' : 'text-slate-600'}`} title={sale.email}>{sale.email}</div>
-                                  {!isFree && !isProblem && (<div className="flex items-center gap-2 mt-1"><span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-md border border-blue-100">{sale.profile || 'General'}</span><span className="bg-slate-50 text-slate-500 text-[10px] font-mono px-2 py-0.5 rounded-md border border-slate-200 tracking-wider">{sale.pin || '****'}</span></div>)}
-                              </div>
-                              <div className="text-center w-24">
+
+                              <div className="col-span-12 md:col-span-4 w-full flex flex-col justify-center">
                                   {!isFree && !isProblem ? (
                                       <>
-                                          <div className={`text-2xl font-black ${days <= 3 ? 'text-amber-500' : (isAdmin ? 'text-white' : 'text-slate-800')}`}>{days}</div>
-                                          <div className="text-[10px] font-bold text-slate-400 uppercase">Días Rest.</div>
-                                          <div className="text-[10px] text-slate-300 font-medium">{sale.endDate.split('-').reverse().slice(0,2).join('/')}</div>
+                                          <div className={`text-[10px] md:text-xs font-medium truncate ${isAdmin ? 'text-slate-300' : 'text-slate-600'}`} title={sale.email}>{sale.email}</div>
+                                          <div className="flex items-center gap-2 mt-1">
+                                            <span className="bg-blue-50 text-blue-600 text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100 truncate max-w-[100px]">{sale.profile || 'Gral'}</span>
+                                            <span className="bg-slate-50 text-slate-500 text-[9px] md:text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-200">{sale.pin || '****'}</span>
+                                          </div>
                                       </>
-                                  ) : <span className="text-slate-400 text-xs font-bold bg-slate-100 px-3 py-1 rounded-full">{isFree ? 'LIBRE' : 'N/A'}</span>}
+                                  ) : isFree && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full w-fit hidden md:block">Disponible para venta</span>}
                               </div>
-                              <div className="text-right w-20 hidden md:block">
-                                  <div className={`text-lg font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
+
+                              <div className="col-span-6 md:col-span-2 w-full text-left md:text-center flex items-center md:block gap-2">
+                                  {!isFree && !isProblem ? (
+                                      <>
+                                          <div className={`text-xs md:text-sm font-bold ${days <= 3 ? 'text-amber-500' : (isAdmin ? 'text-white' : 'text-slate-800')}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
+                                          <div className="text-[10px] font-bold text-slate-400 uppercase md:mt-0.5">{days} Días Rest.</div>
+                                      </>
+                                  ) : <span className="text-slate-400 text-[10px] font-bold bg-slate-100 px-2 py-1 rounded-full">{isFree ? 'LIBRE' : 'N/A'}</span>}
                               </div>
-                              <div className="flex gap-2">
+
+                              <div className="hidden md:block col-span-1 text-center">
+                                  <div className={`text-sm font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
+                              </div>
+
+                              <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0">
                                   {isFree ? (
-                                      <button onClick={() => { setFormData(sale); setView('form'); }} className="h-10 px-5 bg-black text-white rounded-full font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 flex items-center gap-2">Asignar <ChevronRight size={14}/></button>
+                                      <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                                   ) : (
-                                      <div className={`flex items-center p-1 rounded-2xl backdrop-blur-md ${isAdmin ? 'bg-slate-800' : 'bg-slate-100/80'}`}>
-                                          {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${days <= 0 ? 'text-red-500 hover:bg-white shadow-sm' : 'text-amber-500 hover:bg-white shadow-sm'}`}>{days <= 0 ? <XCircle size={18}/> : <Ban size={18}/>}</button>)}
-                                          {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-9 h-9 text-slate-400 hover:text-blue-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Key size={18}/></button>}
-                                          {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className="w-9 h-9 text-slate-400 hover:text-blue-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Lock size={18}/></button>}
-                                          {!isProblem && <div className="w-px h-4 bg-slate-300 mx-1"></div>}
-                                          <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-9 h-9 text-slate-600 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Edit2 size={18}/></button>
-                                          {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-9 h-9 text-emerald-600 hover:bg-white hover:shadow-sm rounded-xl transition-all"><CalendarPlus size={18}/></button>}
-                                          <button onClick={() => triggerLiberate(sale.id)} className="w-9 h-9 text-red-400 hover:text-red-600 hover:bg-white hover:shadow-sm rounded-xl transition-all"><RotateCcw size={18}/></button>
+                                      // ✅ BOTONES CORREGIDOS: FONDO BLANCO + TEXTO OSCURO
+                                      <div className={`flex items-center p-1 gap-1 rounded-lg w-full md:w-auto justify-between md:justify-end ${isAdmin ? 'bg-slate-800' : 'bg-white border border-slate-200 shadow-sm'}`}>
+                                          <div className="flex gap-1">
+                                              {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
+                                              {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200'}`}><Key size={14}/></button>}
+                                              {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200'}`}><Lock size={14}/></button>}
+                                          </div>
+                                          <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'}`}>
+                                              <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300'}`}><Edit2 size={14}/></button>
+                                              {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200'}`}><CalendarPlus size={14}/></button>}
+                                              <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200'}`}><RotateCcw size={14}/></button>
+                                          </div>
                                       </div>
                                   )}
                               </div>
@@ -520,73 +546,75 @@ const App = () => {
                         </div>
                       );
                  })}
-                 {filteredSales.length === 0 && (<div className="flex flex-col items-center justify-center py-20 opacity-50"><div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mb-4"><Search size={30} className="text-slate-400"/></div><p className="font-bold text-slate-400">Sin resultados</p></div>)}
+                 {filteredSales.length === 0 && <div className="text-center py-12 text-slate-400">Sin resultados</div>}
               </div>
             </div>
           )}
 
           {view === 'config' && (
-             <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-500">
-                <div className="flex items-center justify-between"><div><h2 className="text-3xl font-black text-slate-800 tracking-tight">Configuración</h2><p className="text-slate-500 font-medium">Gestiona tu catálogo.</p></div><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100"><Settings size={24} className="text-slate-400 animate-spin-slow"/></div></div>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-1">
-                        <div className="bg-white p-6 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 sticky top-8">
-                            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><span className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center"><Plus size={18}/></span>Nuevo Servicio</h3>
-                            <form onSubmit={handleAddServiceToCatalog} className="space-y-4">
-                                <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-1 block">Nombre</label><input required type="text" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20" value={catalogForm.name} onChange={e => setCatalogForm({...catalogForm, name: e.target.value})} /></div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-1 block">Costo</label><input required type="number" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700" value={catalogForm.cost} onChange={e => setCatalogForm({...catalogForm, cost: e.target.value})} /></div>
-                                    <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-1 block">Cupos</label><input required type="number" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700" value={catalogForm.defaultSlots} onChange={e => setCatalogForm({...catalogForm, defaultSlots: e.target.value})} /></div>
-                                </div>
-                                <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 mb-1 block">Tipo</label><div className="flex bg-slate-50 p-1 rounded-2xl">{['Perfil', 'Cuenta'].map(t => (<button key={t} type="button" onClick={() => setCatalogForm({...catalogForm, type: t})} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${catalogForm.type === t ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>{t}</button>))}</div></div>
-                                <button type="submit" className="w-full py-4 bg-black text-white rounded-2xl font-bold text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-black/20 mt-2">Agregar</button>
-                            </form>
+             // ✅ FULL WIDTH CONFIG
+             <div className="space-y-6 w-full pb-20">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2"><Plus size={16} className="text-blue-600"/> Nuevo Servicio</h3>
+                    <form onSubmit={handleAddServiceToCatalog} className="space-y-3">
+                        <input required type="text" className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" placeholder="Nombre (Ej: Netflix)" value={catalogForm.name} onChange={e => setCatalogForm({...catalogForm, name: e.target.value})} />
+                        <div className="flex gap-2">
+                            <input required type="number" className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" placeholder="Costo ($)" value={catalogForm.cost} onChange={e => setCatalogForm({...catalogForm, cost: e.target.value})} />
+                            <input required type="number" className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" placeholder="Cupos" value={catalogForm.defaultSlots} onChange={e => setCatalogForm({...catalogForm, defaultSlots: e.target.value})} />
                         </div>
-                    </div>
-                    <div className="lg:col-span-2">
-                        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50/50 border-b border-slate-100"><tr><th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nombre</th><th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo</th><th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cupos</th><th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Precio</th><th className="px-6 py-5 text-right"></th></tr></thead>
-                                <tbody className="divide-y divide-slate-50">{catalog.map(s => (<tr key={s.id} className="group hover:bg-blue-50/30 transition-colors"><td className="px-6 py-4 font-bold text-slate-700">{s.name}</td><td className="px-6 py-4"><span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-lg uppercase">{s.type}</span></td><td className="px-6 py-4 font-medium text-slate-500">{s.defaultSlots}</td><td className="px-6 py-4 font-mono font-bold text-slate-700">${s.cost}</td><td className="px-6 py-4 text-right"><button onClick={() => triggerDeleteService(s.id)} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"><Trash2 size={16}/></button></td></tr>))}</tbody>
-                            </table>
+                        <div className="flex gap-2">
+                             {['Perfil', 'Cuenta'].map(t => (<button key={t} type="button" onClick={() => setCatalogForm({...catalogForm, type: t})} className={`flex-1 py-2 rounded-lg text-xs font-bold border ${catalogForm.type === t ? 'bg-blue-50 border-blue-200 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t}</button>))}
                         </div>
-                    </div>
+                        <button type="submit" className="w-full py-3 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95">Agregar</button>
+                    </form>
+                </div>
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50/50 border-b border-slate-100"><tr><th className="px-4 py-3 text-[10px] font-bold text-slate-400">Nombre</th><th className="px-4 py-3 text-[10px] font-bold text-slate-400 text-right">Acción</th></tr></thead>
+                        <tbody className="divide-y divide-slate-50">{catalog.map(s => (<tr key={s.id}><td className="px-4 py-3 font-bold text-slate-700 text-xs">{s.name} <span className="text-slate-400 font-normal">(${s.cost})</span></td><td className="px-4 py-3 text-right"><button onClick={() => triggerDeleteService(s.id)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"><Trash2 size={16}/></button></td></tr>))}</tbody>
+                    </table>
                 </div>
              </div>
           )}
 
           {view === 'add_stock' && (
-             <div className="max-w-2xl mx-auto bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-slate-200/50 border border-slate-100">
-                 <div className="flex items-center gap-4 mb-8"><div className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/20"><Box size={24}/></div><div><h2 className="text-2xl font-black text-slate-800 tracking-tight">Agregar Stock</h2><p className="text-slate-500 font-medium">Ingresa cuenta madre.</p></div></div>
-                 <form onSubmit={handleGenerateStock} className="space-y-6">
-                    <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Servicio</label><div className="relative"><select className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 appearance-none outline-none" value={stockForm.service} onChange={handleStockServiceChange}><option value="">Seleccionar...</option>{catalog.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select><ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16}/></div></div>
-                    <div className="grid grid-cols-2 gap-4"><div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Correo</label><input className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" value={stockForm.email} onChange={e=>setStockForm({...stockForm, email:e.target.value})} placeholder="email@tv.com"/></div><div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Contraseña</label><input className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" value={stockForm.pass} onChange={e=>setStockForm({...stockForm, pass:e.target.value})}/></div></div>
-                    <div className="p-4 bg-blue-50 rounded-2xl flex items-center gap-4 border border-blue-100"><input type="number" className="w-16 p-3 bg-white rounded-xl text-center font-black text-lg text-blue-600 outline-none" value={stockForm.slots} onChange={e=>setStockForm({...stockForm, slots:Number(e.target.value)})}/><div className="text-sm font-bold text-blue-800">Cupos a Generar <span className="block text-[10px] font-normal opacity-70">Se crearán como "LIBRE".</span></div></div>
-                    <div className="flex gap-4 pt-4"><button type="button" onClick={()=>setView('dashboard')} className="flex-1 py-4 font-bold text-slate-400 hover:text-slate-600">Cancelar</button><button type="submit" className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-bold hover:scale-[1.02] transition-transform shadow-xl shadow-blue-600/30">Guardar Stock</button></div>
+             // ✅ FULL WIDTH STOCK
+             <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                 <h2 className="text-xl font-black text-slate-800 mb-6">Agregar Stock</h2>
+                 <form onSubmit={handleGenerateStock} className="space-y-4">
+                    <select className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none" value={stockForm.service} onChange={handleStockServiceChange}><option value="">Seleccionar Servicio...</option>{catalog.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select>
+                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none" value={stockForm.email} onChange={e=>setStockForm({...stockForm, email:e.target.value})} placeholder="Correo"/>
+                    <input className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none" value={stockForm.pass} onChange={e=>setStockForm({...stockForm, pass:e.target.value})} placeholder="Contraseña"/>
+                    <div className="flex items-center gap-3"><input type="number" className="w-16 p-3 bg-blue-50 text-blue-600 font-bold rounded-xl text-center outline-none border-blue-100 border" value={stockForm.slots} onChange={e=>setStockForm({...stockForm, slots:Number(e.target.value)})}/><span className="text-xs font-bold text-slate-400">Cupos</span></div>
+                    <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg active:scale-95">Generar</button>
                  </form>
              </div>
           )}
 
           {view === 'form' && (
-             <div className="max-w-2xl mx-auto bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-slate-200/50 border border-slate-100 animate-in zoom-in-95 duration-300">
-                 <div className="flex justify-between items-start mb-8"><div><h2 className="text-2xl font-black text-slate-800 tracking-tight">{formData.client === 'LIBRE' ? 'Vender' : 'Editar'}</h2><p className="text-slate-500 font-medium font-mono text-xs mt-1 bg-slate-100 w-fit px-2 py-1 rounded-lg">{formData.email}</p></div>{formData.client === 'LIBRE' && <span className="bg-emerald-100 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">Stock: {getFreeSlotsForAccount(formData.email, formData.service)}</span>}</div>
-                 <form onSubmit={handleSaveSale} className="space-y-6">
-                    {formData.client === 'LIBRE' && (<div className="p-1 bg-slate-100 rounded-2xl flex">{[1,2,3,4,5].map(num => (<button key={num} type="button" onClick={()=>setFormData({...formData, profilesToBuy: num})} disabled={num > maxAvailableSlots} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${formData.profilesToBuy === num ? 'bg-white text-slate-900 shadow-md transform scale-[1.02]' : 'text-slate-400'} ${num > maxAvailableSlots ? 'opacity-20 cursor-not-allowed' : ''}`}>{num}</button>))}</div>)}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Cliente</label><input list="clients-suggestions" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.client === 'LIBRE' ? '' : formData.client} onChange={handleClientNameChange} autoFocus placeholder="Nombre"/></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Celular</label><input className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="598..."/></div>
+             <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-slate-100 mb-20 animate-in slide-in-from-bottom-4">
+                 <h2 className="text-xl font-black text-slate-800 mb-1">{formData.client === 'LIBRE' ? 'Vender' : 'Editar'}</h2>
+                 <p className="text-xs font-mono text-slate-400 bg-slate-50 p-1 rounded w-fit mb-6">{formData.email}</p>
+                 <form onSubmit={handleSaveSale} className="space-y-4">
+                    {formData.client === 'LIBRE' && (<div className="flex gap-2 overflow-x-auto pb-2">{[1,2,3,4,5].map(num => (<button key={num} type="button" onClick={()=>setFormData({...formData, profilesToBuy: num})} disabled={num > maxAvailableSlots} className={`flex-1 h-10 min-w-[40px] rounded-lg text-xs font-bold border ${formData.profilesToBuy === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-200'} ${num > maxAvailableSlots ? 'opacity-30' : ''}`}>{num}</button>))}</div>)}
+                    <div className="grid grid-cols-2 gap-3">
+                        <input list="clients-suggestions" className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.client === 'LIBRE' ? '' : formData.client} onChange={handleClientNameChange} placeholder="Cliente" autoFocus/>
+                        <input className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="Celular"/>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Vencimiento</label><input type="date" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.endDate} onChange={e=>setFormData({...formData, endDate:e.target.value})}/></div>
-                        <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2 mb-2 block">Costo</label><input type="number" className="w-full p-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none" value={formData.cost} onChange={e=>setFormData({...formData, cost:e.target.value})}/></div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <input type="date" className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.endDate} onChange={e=>setFormData({...formData, endDate:e.target.value})}/>
+                        <input type="number" className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold outline-none" value={formData.cost} onChange={e=>setFormData({...formData, cost:e.target.value})} placeholder="$0"/>
                     </div>
-                    <div className="space-y-3">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-2">Detalles Perfiles</div>
+                    <div className="space-y-3 pt-2">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Perfiles</div>
                         {(formData.profilesToBuy > 1 ? bulkProfiles : [bulkProfiles[0] || {profile: formData.profile, pin: formData.pin}]).map((p, i) => (
-                            <div key={i} className="flex gap-3"><div className="w-8 flex items-center justify-center font-bold text-slate-300 text-xs">{i+1}</div><input className="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:border-blue-500 outline-none transition-colors" placeholder="Nombre Perfil" value={formData.profilesToBuy > 1 ? p.profile : formData.profile} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/><input className="w-24 p-3 bg-white border border-slate-200 rounded-xl text-sm font-mono text-center focus:border-blue-500 outline-none transition-colors" placeholder="PIN" value={formData.profilesToBuy > 1 ? p.pin : formData.pin} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/></div>
+                            <div key={i} className="flex gap-2"><input className="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" placeholder="Nombre Perfil" value={formData.profilesToBuy > 1 ? p.profile : formData.profile} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/><input className="w-20 p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-center outline-none" placeholder="PIN" value={formData.profilesToBuy > 1 ? p.pin : formData.pin} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/></div>
                         ))}
                     </div>
-                    <div className="flex gap-4 pt-4 border-t border-slate-100 mt-4"><button type="button" onClick={()=>setView('dashboard')} className="flex-1 py-4 font-bold text-slate-400 hover:text-slate-600">Cancelar</button><button type="submit" className="flex-[2] py-4 bg-black text-white rounded-2xl font-bold hover:scale-[1.02] transition-transform shadow-xl shadow-black/20">Guardar Venta</button></div>
+                    <div className="flex gap-3 pt-4">
+                        <button type="button" onClick={()=>setView('dashboard')} className="flex-1 py-3 font-bold text-slate-400 text-xs bg-slate-50 rounded-xl">Cancelar</button>
+                        <button type="submit" className="flex-[2] py-3 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95">Guardar</button>
+                    </div>
                  </form>
              </div>
           )}
