@@ -3,7 +3,7 @@ import {
   Search, Plus, Smartphone, MessageCircle, Lock, Key, Trash2, Edit2, Ban, XCircle, Settings, 
   Save, Calendar, Layers, UserPlus, Box, CheckCircle, Users, Filter, DollarSign, RotateCcw, X, 
   ListPlus, User, History, CalendarPlus, Cloud, Loader, ChevronRight, Play, AlertTriangle, 
-  Globe, RefreshCw, Shield, Skull, LogOut, LogIn
+  Globe, RefreshCw, Shield, Skull, LogOut, LogIn, PackageX, LayoutList
 } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
@@ -55,12 +55,13 @@ const App = () => {
 
   // UI & Filtros
   const [view, setView] = useState('dashboard'); 
+  const [stockTab, setStockTab] = useState('add'); // 'add' | 'manage'
   const [filterClient, setFilterClient] = useState('');
   const [filterService, setFilterService] = useState('Todos');
   const [filterStatus, setFilterStatus] = useState('Todos'); 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' }); 
+  const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '', data: null }); 
 
   // Forms
   const [bulkProfiles, setBulkProfiles] = useState([{ profile: '', pin: '' }]);
@@ -85,7 +86,6 @@ const App = () => {
       try {
           await signInWithEmailAndPassword(auth, loginEmail, loginPass);
       } catch (error) {
-          console.error(error);
           setLoginError('Error: Verifica tu correo y contraseña.');
       }
   };
@@ -117,6 +117,27 @@ const App = () => {
 
   // --- 3. LÓGICA DE NEGOCIO ---
   
+  // Agrupar inventario por cuentas (Emails)
+  const accountsInventory = useMemo(() => {
+      const groups = {};
+      sales.forEach(sale => {
+          if (!groups[sale.email]) {
+              groups[sale.email] = {
+                  email: sale.email,
+                  service: sale.service,
+                  pass: sale.pass,
+                  total: 0,
+                  free: 0,
+                  ids: [] // Guardamos los IDs para borrar en lote
+              };
+          }
+          groups[sale.email].total++;
+          if (sale.client === 'LIBRE') groups[sale.email].free++;
+          groups[sale.email].ids.push(sale.id);
+      });
+      return Object.values(groups);
+  }, [sales]);
+
   const getFreeSlotsForAccount = (email, service) => {
     if (!sales) return 0;
     return sales.filter(s => s.email === email && s.service === service && s.client === 'LIBRE').length;
@@ -127,7 +148,6 @@ const App = () => {
       const fromSales = sales
           .filter(s => s.client && s.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(s.client))
           .map(s => ({ name: s.client, phone: s.phone }));
-      
       const combined = [...fromDir, ...fromSales];
       const unique = [];
       const map = new Map();
@@ -181,16 +201,11 @@ const App = () => {
 
   const handleAddServiceToCatalog = async (e) => {
       e.preventDefault(); if (!user || !catalogForm.name) return;
-      await addDoc(collection(db, userPath, 'catalog'), { 
-          name: catalogForm.name, 
-          cost: Number(catalogForm.cost), 
-          type: catalogForm.type, 
-          defaultSlots: Number(catalogForm.defaultSlots) 
-      });
+      await addDoc(collection(db, userPath, 'catalog'), { name: catalogForm.name, cost: Number(catalogForm.cost), type: catalogForm.type, defaultSlots: Number(catalogForm.defaultSlots) });
       setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
   };
 
-  // Modales
+  // MODAL TRIGGERS
   const triggerDeleteService = (id) => {
       setConfirmModal({ show: true, id: id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá del catálogo.' });
   };
@@ -199,8 +214,19 @@ const App = () => {
       setConfirmModal({ show: true, id: id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán y el cupo volverá a estar libre.' });
   };
 
+  // NUEVO: Trigger para borrar cuenta completa
+  const triggerDeleteAccount = (accountData) => {
+      setConfirmModal({ 
+          show: true, 
+          type: 'delete_account', 
+          title: '¿Eliminar Cuenta Completa?', 
+          msg: `Se eliminarán los ${accountData.total} perfiles asociados a ${accountData.email}. Esta acción no se puede deshacer.`,
+          data: accountData.ids 
+      });
+  };
+
   const handleConfirmAction = async () => {
-      if (!user || !confirmModal.id) return;
+      if (!user) return;
       
       try {
           if (confirmModal.type === 'delete_service') {
@@ -209,10 +235,17 @@ const App = () => {
           else if (confirmModal.type === 'liberate') {
               await updateDoc(doc(db, userPath, 'sales', confirmModal.id), { client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '' });
           }
-      } catch (error) {
-          console.error("Error en acción:", error);
-      }
-      setConfirmModal({ show: false, id: null, type: null, title: '', msg: '' });
+          else if (confirmModal.type === 'delete_account') {
+              // Borrado Masivo (Batch)
+              const batch = writeBatch(db);
+              confirmModal.data.forEach(id => {
+                  const docRef = doc(db, userPath, 'sales', id);
+                  batch.delete(docRef);
+              });
+              await batch.commit();
+          }
+      } catch (error) { console.error("Error:", error); }
+      setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
   };
 
   const handleSaveSale = async (e) => {
@@ -261,7 +294,9 @@ const App = () => {
         });
     }
     await batch.commit();
-    setView('dashboard'); setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
+    // No cambiar de vista, quedarse para ver o agregar más
+    setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
+    setStockTab('manage'); // Cambiar a la lista para ver lo creado
   };
 
   const handleQuickRenew = async (id) => {
@@ -274,7 +309,7 @@ const App = () => {
       }
   };
 
-  // --- UTILS & WHATSAPP ---
+  // --- UTILS ---
   const handleClientNameChange = (e) => {
     const nameInput = e.target.value; let newPhone = formData.phone;
     const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
@@ -325,7 +360,6 @@ const App = () => {
     window.open(`https://wa.me/${sale.phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  // --- FILTER & TOTALS ---
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
       const isFree = s.client === 'LIBRE';
@@ -396,13 +430,13 @@ const App = () => {
       {confirmModal.show && (
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
               <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl max-w-sm w-full border border-white/50 text-center transform scale-100">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 mx-auto shadow-inner ${confirmModal.type === 'delete_service' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
-                      {confirmModal.type === 'delete_service' ? <Trash2 size={32}/> : <RotateCcw size={32}/>}
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 mx-auto shadow-inner ${['delete_service', 'delete_account'].includes(confirmModal.type) ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
+                      {['delete_service', 'delete_account'].includes(confirmModal.type) ? <Trash2 size={32}/> : <RotateCcw size={32}/>}
                   </div>
                   <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">{confirmModal.title}</h3>
                   <p className="text-slate-500 mb-8 text-base font-medium leading-relaxed">{confirmModal.msg}</p>
                   <div className="flex flex-col gap-3">
-                      <button onClick={handleConfirmAction} className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${confirmModal.type === 'delete_service' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'}`}>Confirmar Acción</button>
+                      <button onClick={handleConfirmAction} className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${['delete_service', 'delete_account'].includes(confirmModal.type) ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'}`}>Confirmar Acción</button>
                       <button onClick={() => setConfirmModal({show:false, id:null, type:null})} className="w-full py-4 bg-white text-slate-500 rounded-2xl font-bold hover:bg-slate-50 active:scale-95 transition-all border border-slate-200">Cancelar</button>
                   </div>
               </div>
@@ -412,11 +446,9 @@ const App = () => {
       <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
       <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
-      {/* SIDEBAR */}
       <div className="hidden md:flex w-72 bg-white/80 backdrop-blur-2xl border-r border-white/50 flex-col shadow-xl z-20 relative">
         <div className="p-8 flex flex-col items-center justify-center border-b border-slate-100/50">
           <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2 group cursor-pointer hover:scale-105 transition-transform">
-             {/* LOGO */}
              <img src="logo1.png" alt="Logo" className="w-full h-full object-contain rounded-xl"/>
           </div>
           <h1 className="font-bold text-lg text-slate-800">HM Digital</h1>
@@ -441,7 +473,6 @@ const App = () => {
 
         <main className="flex-1 overflow-y-auto p-3 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
           {view === 'dashboard' && (
-            // ✅ FULL WIDTH CONTAINER
             <div className="space-y-4 md:space-y-6 w-full pb-20">
               <div className="bg-white/70 backdrop-blur-xl p-1.5 rounded-[1.5rem] shadow-sm border border-white sticky top-0 z-30">
                   <div className="flex flex-col gap-2">
@@ -527,17 +558,16 @@ const App = () => {
                                   {isFree ? (
                                       <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                                   ) : (
-                                      // ✅ BOTONES CORREGIDOS: FONDO BLANCO + TEXTO OSCURO
                                       <div className={`flex items-center p-1 gap-1 rounded-lg w-full md:w-auto justify-between md:justify-end ${isAdmin ? 'bg-slate-800' : 'bg-white border border-slate-200 shadow-sm'}`}>
                                           <div className="flex gap-1">
                                               {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
-                                              {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200'}`}><Key size={14}/></button>}
-                                              {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200'}`}><Lock size={14}/></button>}
+                                              {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
+                                              {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
                                           </div>
                                           <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'}`}>
-                                              <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300'}`}><Edit2 size={14}/></button>
-                                              {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200'}`}><CalendarPlus size={14}/></button>}
-                                              <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200'}`}><RotateCcw size={14}/></button>
+                                              <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
+                                              {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
+                                              <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
                                           </div>
                                       </div>
                                   )}
@@ -546,13 +576,11 @@ const App = () => {
                         </div>
                       );
                  })}
-                 {filteredSales.length === 0 && <div className="text-center py-12 text-slate-400">Sin resultados</div>}
               </div>
             </div>
           )}
 
           {view === 'config' && (
-             // ✅ FULL WIDTH CONFIG
              <div className="space-y-6 w-full pb-20">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
                     <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2"><Plus size={16} className="text-blue-600"/> Nuevo Servicio</h3>
@@ -578,9 +606,14 @@ const App = () => {
           )}
 
           {view === 'add_stock' && (
-             // ✅ FULL WIDTH STOCK
              <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
-                 <h2 className="text-xl font-black text-slate-800 mb-6">Agregar Stock</h2>
+                {/* PESTAÑAS DE NAVEGACIÓN DENTRO DE STOCK */}
+                <div className="flex gap-2 mb-6 p-1 bg-slate-100 rounded-xl">
+                    <button onClick={() => setStockTab('add')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${stockTab === 'add' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Agregar Stock</button>
+                    <button onClick={() => setStockTab('manage')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${stockTab === 'manage' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Gestionar</button>
+                </div>
+
+                {stockTab === 'add' ? (
                  <form onSubmit={handleGenerateStock} className="space-y-4">
                     <select className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none" value={stockForm.service} onChange={handleStockServiceChange}><option value="">Seleccionar Servicio...</option>{catalog.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select>
                     <input className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none" value={stockForm.email} onChange={e=>setStockForm({...stockForm, email:e.target.value})} placeholder="Correo"/>
@@ -588,6 +621,25 @@ const App = () => {
                     <div className="flex items-center gap-3"><input type="number" className="w-16 p-3 bg-blue-50 text-blue-600 font-bold rounded-xl text-center outline-none border-blue-100 border" value={stockForm.slots} onChange={e=>setStockForm({...stockForm, slots:Number(e.target.value)})}/><span className="text-xs font-bold text-slate-400">Cupos</span></div>
                     <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg active:scale-95">Generar</button>
                  </form>
+                ) : (
+                 // LISTA DE CUENTAS PARA BORRAR
+                 <div className="space-y-3">
+                     {accountsInventory.length === 0 && <p className="text-center text-slate-400 text-xs py-8">No hay cuentas registradas.</p>}
+                     {accountsInventory.map((acc, i) => (
+                         <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                             <div className="overflow-hidden">
+                                 <div className="font-bold text-slate-800 text-sm truncate">{acc.service}</div>
+                                 <div className="text-xs text-slate-500 truncate">{acc.email}</div>
+                                 <div className="flex gap-2 mt-1">
+                                     <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">Libres: {acc.free}</span>
+                                     <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">Total: {acc.total}</span>
+                                 </div>
+                             </div>
+                             <button onClick={() => triggerDeleteAccount(acc)} className="p-2 bg-white border border-red-100 text-red-500 rounded-lg shadow-sm hover:bg-red-50"><PackageX size={18}/></button>
+                         </div>
+                     ))}
+                 </div>
+                )}
              </div>
           )}
 
@@ -623,7 +675,7 @@ const App = () => {
         {/* BOTTOM NAV (SOLO MOVIL) */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 p-2 flex justify-around z-40 pb-safe">
             <button onClick={() => setView('dashboard')} className={`p-3 rounded-2xl ${view === 'dashboard' ? 'bg-[#007AFF] text-white shadow-lg' : 'text-slate-400'}`}><Layers size={24}/></button>
-            <button onClick={() => setView('add_stock')} className={`p-3 rounded-2xl ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-400'}`}><Box size={24}/></button>
+            <button onClick={() => setView('add_stock')} className={`p-3 rounded-2xl ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-400'}`}><LayoutList size={24}/></button>
             <button onClick={() => setView('config')} className={`p-3 rounded-2xl ${view === 'config' ? 'bg-slate-100 text-slate-800' : 'text-slate-400'}`}><Settings size={24}/></button>
         </nav>
 
