@@ -357,8 +357,8 @@ const App = () => {
                   <p className="text-slate-500 mb-8">Inicia sesión para gestionar tu negocio</p>
                   
                   <form onSubmit={handleLogin} className="space-y-4">
-                      <input type="email" placeholder="Correo" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} required/>
-                      <input type="password" placeholder="Contraseña" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20" value={loginPass} onChange={e=>setLoginPass(e.target.value)} required/>
+                      <input type="email" placeholder="Correo" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} required/>
+                      <input type="password" placeholder="Contraseña" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400" value={loginPass} onChange={e=>setLoginPass(e.target.value)} required/>
                       {loginError && <p className="text-red-500 text-sm font-bold">{loginError}</p>}
                       <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform">Entrar</button>
                   </form>
@@ -397,7 +397,7 @@ const App = () => {
         <div className="p-8 flex flex-col items-center justify-center border-b border-slate-200/50">
           <div className="w-28 h-28 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2">
              {/* 💡 TU LOGO AQUÍ */}
-             <img src="https://placehold.co/200x200/ffffff/0ea5e9?text=HM+Logo" alt="Logo" className="w-full h-full object-contain rounded-2xl"/>
+             <img src="/logo1.png" alt="Logo HM" className="w-full h-full object-contain rounded-2xl"/>
           </div>
           <div className="hidden md:block text-center">
               <h1 className="font-bold text-lg tracking-tight text-slate-800">HM Digital</h1>
