@@ -6,12 +6,11 @@ import {
   Globe, RefreshCw, Shield, Skull, LogOut, LogIn
 } from 'lucide-react';
 
-// --- IMPORTANTE: INSTALAR FIREBASE ---
-// En tu proyecto real ejecuta: npm install firebase
+// --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
-  signInWithEmailAndPassword, // Login real
+  signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged 
 } from 'firebase/auth';
@@ -21,7 +20,7 @@ import {
 } from 'firebase/firestore';
 
 // ============================================================================
-// ⚠️ PEGA AQUÍ TUS CLAVES DE FIREBASE (Del Paso 1)
+// ✅ CREDENCIALES DE HM DIGITAL (CONECTADAS)
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyBw3xZAm7MIBg5_0wofo9ZLOKdaFqfrtKo",
@@ -33,12 +32,13 @@ const firebaseConfig = {
   measurementId: "G-MYN2RPJXF0"
 };
 
-// Inicialización segura (evita errores si no hay config)
+// Inicialización segura
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- ESTADOS "PROBLEMA" ---
+// --- ESTADOS "PROBLEMA" (Sin costo, Sin botones de cobro) ---
+// NOTA: "Admin" se maneja aparte para tener botones pero costo 0.
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED'];
 
 const App = () => {
@@ -87,22 +87,21 @@ const App = () => {
       try {
           await signInWithEmailAndPassword(auth, loginEmail, loginPass);
       } catch (error) {
+          console.error(error);
           setLoginError('Error: Verifica tu correo y contraseña.');
       }
   };
 
   const handleLogout = () => signOut(auth);
 
-  // --- 2. CARGA DE DATOS (Solo si hay usuario) ---
+  // --- 2. CARGA DE DATOS ---
   useEffect(() => {
     if (!user) {
         setSales([]); setCatalog([]); setClientsDirectory([]);
         return;
     }
     setLoadingData(true);
-    
-    // Usamos una colección raíz por usuario para seguridad
-    const userPath = `users/${user.uid}`;
+    const userPath = `users/${user.uid}`; 
 
     const salesUnsub = onSnapshot(collection(db, userPath, 'sales'), (s) => {
         setSales(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
@@ -119,6 +118,12 @@ const App = () => {
   }, [user]);
 
   // --- 3. LÓGICA DE NEGOCIO ---
+  
+  const getFreeSlotsForAccount = (email, service) => {
+    if (!sales) return 0;
+    return sales.filter(s => s.email === email && s.service === service && s.client === 'LIBRE').length;
+  };
+
   const allClients = useMemo(() => {
       const fromDir = clientsDirectory.map(c => ({ name: c.name, phone: c.phone }));
       const fromSales = sales
@@ -137,19 +142,19 @@ const App = () => {
   }, [sales, clientsDirectory]);
 
   const getDaysRemaining = (endDateStr) => {
-    if (!endDateStr) return null;
-    const [year, month, day] = endDateStr.split('-').map(Number);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const end = new Date(year, month - 1, day); 
-    return Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    if (!endDateStr || typeof endDateStr !== 'string') return null;
+    try {
+        const [year, month, day] = endDateStr.split('-').map(Number);
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const end = new Date(year, month - 1, day); 
+        return Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    } catch (e) { return null; }
   };
-
-  const getFreeSlotsForAccount = (email, service) => sales.filter(s => s.email === email && s.service === service && s.client === 'LIBRE').length;
 
   const getClientPreviousProfiles = useMemo(() => {
       if (!formData.client || formData.client === 'LIBRE') return [];
       const clientName = formData.client.toLowerCase();
-      const history = sales.filter(s => s.client.toLowerCase() === clientName && s.profile).map(s => ({ profile: s.profile, pin: s.pin }));
+      const history = sales.filter(s => s.client && s.client.toLowerCase() === clientName && s.profile).map(s => ({ profile: s.profile, pin: s.pin }));
       const unique = [];
       const map = new Map();
       for (const item of history) { if(!map.has(item.profile)) { map.set(item.profile, true); unique.push(item); } }
@@ -178,20 +183,44 @@ const App = () => {
 
   const handleAddServiceToCatalog = async (e) => {
       e.preventDefault(); if (!user || !catalogForm.name) return;
-      await addDoc(collection(db, userPath, 'catalog'), { name: catalogForm.name, cost: Number(catalogForm.cost), type: catalogForm.type, defaultSlots: Number(catalogForm.defaultSlots) });
+      await addDoc(collection(db, userPath, 'catalog'), { 
+          name: catalogForm.name, 
+          cost: Number(catalogForm.cost), 
+          type: catalogForm.type, 
+          defaultSlots: Number(catalogForm.defaultSlots) 
+      });
       setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
+  };
+
+  const triggerDeleteService = (id) => {
+      setConfirmModal({ show: true, id: id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá del catálogo.' });
+  };
+
+  const triggerLiberate = (id) => {
+      setConfirmModal({ show: true, id: id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán y el cupo volverá a estar libre.' });
   };
 
   const handleConfirmAction = async () => {
       if (!user || !confirmModal.id) return;
-      if (confirmModal.type === 'delete_service') await deleteDoc(doc(db, userPath, 'catalog', confirmModal.id));
-      else if (confirmModal.type === 'liberate') await updateDoc(doc(db, userPath, 'sales', confirmModal.id), { client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '' });
+      
+      try {
+          if (confirmModal.type === 'delete_service') {
+              await deleteDoc(doc(db, userPath, 'catalog', confirmModal.id));
+          } 
+          else if (confirmModal.type === 'liberate') {
+              await updateDoc(doc(db, userPath, 'sales', confirmModal.id), { client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '' });
+          }
+      } catch (error) {
+          console.error("Error en acción:", error);
+          alert("Error: Revisa tu conexión.");
+      }
       setConfirmModal({ show: false, id: null, type: null, title: '', msg: '' });
   };
 
   const handleSaveSale = async (e) => {
     e.preventDefault(); if (!user) return;
     
+    // Guardar cliente (Excluye Admin y Problemas)
     if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
         const exists = clientsDirectory.some(c => c.name.toLowerCase() === formData.client.toLowerCase());
         if (!exists) await addDoc(collection(db, userPath, 'clients'), { name: formData.client, phone: formData.phone });
@@ -248,7 +277,7 @@ const App = () => {
       }
   };
 
-  // --- UTILS & WHATSAPP (Mismo que antes) ---
+  // --- UTILS & WHATSAPP ---
   const handleClientNameChange = (e) => {
     const nameInput = e.target.value; let newPhone = formData.phone;
     const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
@@ -317,6 +346,7 @@ const App = () => {
     });
   }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo]);
 
+  // CALCULO TOTAL: Excluir LIBRE, Problemas, Admin
   const totalFilteredMoney = filteredSales.reduce((acc, curr) => {
       const isExcluded = curr.client === 'LIBRE' || NON_BILLABLE_STATUSES.includes(curr.client) || curr.client === 'Admin';
       return !isExcluded ? acc + (Number(curr.cost) || 0) : acc;
@@ -324,7 +354,7 @@ const App = () => {
   const totalItems = filteredSales.length;
 
   const getStatusIcon = (clientName) => {
-      if (clientName === 'LIBRE') return <CheckCircle size={28}/>;
+      if (clientName === 'LIBRE') return <CheckCircle size={24}/>;
       if (clientName === 'Caída') return <AlertTriangle size={24}/>;
       if (clientName === 'Actualizar') return <RefreshCw size={24}/>;
       if (clientName === 'Dominio') return <Globe size={24}/>;
@@ -339,119 +369,105 @@ const App = () => {
       if (clientName === 'Dominio') return 'bg-violet-100 text-violet-600';
       if (clientName === 'Admin') return 'bg-slate-800 text-white';
       if (clientName === 'EXPIRED') return 'bg-slate-200 text-slate-500';
-      return 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white';
+      return 'bg-[#007AFF] text-white'; 
   };
 
-  // --- RENDERIZADO CONDICIONAL (LOGIN vs APP) ---
-  if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#f2f2f7]"><Loader className="animate-spin text-blue-500"/></div>;
+  if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
-  // 🔒 PANTALLA DE LOGIN
   if (!user) {
       return (
-          <div className="flex h-screen items-center justify-center bg-slate-900 p-4">
-              <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
-                  <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/40">
-                      <span className="text-white font-black text-2xl">HM</span>
+          <div className="flex h-screen items-center justify-center bg-[#F2F2F7] p-4">
+              <div className="bg-white p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center">
+                  <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/20 bg-white p-2">
+                      <img src="logo1.png" alt="HM" className="w-full h-full object-contain rounded-xl"/>
                   </div>
-                  <h2 className="text-2xl font-black text-slate-800 mb-2">Bienvenido</h2>
-                  <p className="text-slate-500 mb-8">Inicia sesión para gestionar tu negocio</p>
-                  
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">Bienvenido</h2>
+                  <p className="text-slate-500 mb-8 text-sm">Sistema de Gestión HM Digital</p>
                   <form onSubmit={handleLogin} className="space-y-4">
-                      <input type="email" placeholder="Correo" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} required/>
-                      <input type="password" placeholder="Contraseña" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400" value={loginPass} onChange={e=>setLoginPass(e.target.value)} required/>
-                      {loginError && <p className="text-red-500 text-sm font-bold">{loginError}</p>}
-                      <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform">Entrar</button>
+                      <input type="email" placeholder="Correo" className="w-full p-4 bg-[#F2F2F7] rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} required/>
+                      <input type="password" placeholder="Contraseña" className="w-full p-4 bg-[#F2F2F7] rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={loginPass} onChange={e=>setLoginPass(e.target.value)} required/>
+                      {loginError && <p className="text-red-500 text-xs font-bold">{loginError}</p>}
+                      <button type="submit" className="w-full py-4 bg-[#007AFF] text-white rounded-xl font-bold shadow-lg hover:opacity-90 transition-opacity">Entrar</button>
                   </form>
               </div>
           </div>
       );
   }
 
-  // 📱 APLICACIÓN PRINCIPAL
   return (
-    <div className="flex h-screen bg-[#f2f2f7] font-sans text-slate-900 overflow-hidden relative">
+    <div className="flex flex-col md:flex-row h-screen bg-[#F2F2F7] font-sans text-slate-900 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
       
-      {/* MODALES */}
       {confirmModal.show && (
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
               <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl max-w-sm w-full border border-white/50 text-center transform scale-100">
                   <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 mx-auto shadow-inner ${confirmModal.type === 'delete_service' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
                       {confirmModal.type === 'delete_service' ? <Trash2 size={32}/> : <RotateCcw size={32}/>}
                   </div>
-                  <h3 className="text-2xl font-black text-slate-800 mb-2">{confirmModal.title}</h3>
-                  <p className="text-slate-500 mb-8 text-base font-medium">{confirmModal.msg}</p>
+                  <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">{confirmModal.title}</h3>
+                  <p className="text-slate-500 mb-8 text-base font-medium leading-relaxed">{confirmModal.msg}</p>
                   <div className="flex flex-col gap-3">
-                      <button onClick={handleConfirmAction} className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-[1.02] transition-transform ${confirmModal.type === 'delete_service' ? 'bg-red-500' : 'bg-amber-500'}`}>Confirmar</button>
-                      <button onClick={() => setConfirmModal({show:false, id:null, type:null})} className="w-full py-4 bg-white text-slate-500 rounded-2xl font-bold hover:bg-slate-50 transition-colors border border-slate-200">Cancelar</button>
+                      <button onClick={handleConfirmAction} className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${confirmModal.type === 'delete_service' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'}`}>Confirmar Acción</button>
+                      <button onClick={() => setConfirmModal({show:false, id:null, type:null})} className="w-full py-4 bg-white text-slate-500 rounded-2xl font-bold hover:bg-slate-50 active:scale-95 transition-all border border-slate-200">Cancelar</button>
                   </div>
               </div>
           </div>
       )}
 
-      {/* DATALISTS */}
       <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
       <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
-      {/* SIDEBAR */}
-      <div className="w-20 md:w-72 bg-white/70 backdrop-blur-2xl border-r border-white/20 flex flex-col shadow-xl z-20 relative">
-        <div className="p-8 flex flex-col items-center justify-center border-b border-slate-200/50">
-          <div className="w-28 h-28 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2">
-             {/* 💡 TU LOGO AQUÍ */}
-             <img src="/logo1.png" alt="Logo HM" className="w-full h-full object-contain rounded-2xl"/>
+      <div className="hidden md:flex w-72 bg-white/80 backdrop-blur-2xl border-r border-white/50 flex-col shadow-xl z-20 relative">
+        <div className="p-8 flex flex-col items-center justify-center border-b border-slate-100/50">
+          <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2 group cursor-pointer hover:scale-105 transition-transform">
+             {/* LOGO */}
+             <img src="logo1.png" alt="Logo" className="w-full h-full object-contain rounded-xl"/>
           </div>
-          <div className="hidden md:block text-center">
-              <h1 className="font-bold text-lg tracking-tight text-slate-800">HM Digital</h1>
-              <span className="text-xs text-slate-400 font-medium tracking-widest uppercase">Manager Pro</span>
-          </div>
+          <h1 className="font-bold text-lg text-slate-800">HM Digital</h1>
+          <span className="text-xs text-slate-400 font-medium tracking-widest uppercase">Manager Pro</span>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <button onClick={() => setView('dashboard')} className={`w-full flex items-center justify-center md:justify-start gap-3 px-4 py-3 rounded-2xl transition-all ${view === 'dashboard' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-slate-500 hover:bg-white/60'}`}><Layers size={20}/> <span className="hidden md:inline font-semibold">Tablero</span></button>
-          <button onClick={() => setView('add_stock')} className={`w-full flex items-center justify-center md:justify-start gap-3 px-4 py-3 rounded-2xl transition-all ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:bg-white/60'}`}><Box size={20}/> <span className="hidden md:inline font-semibold">Stock</span></button>
-          <button onClick={() => setView('config')} className={`w-full flex items-center justify-center md:justify-start gap-3 px-4 py-3 rounded-2xl transition-all ${view === 'config' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:bg-white/60'}`}><Settings size={20}/> <span className="hidden md:inline font-semibold">Ajustes</span></button>
+          <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold text-sm ${view === 'dashboard' ? 'bg-[#007AFF] text-white shadow-lg shadow-blue-500/30' : 'text-slate-500 hover:bg-white/60'}`}><Layers size={20}/> Tablero</button>
+          <button onClick={() => setView('add_stock')} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold text-sm ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:bg-white/60'}`}><Box size={20}/> Stock</button>
+          <button onClick={() => setView('config')} className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-semibold text-sm ${view === 'config' ? 'bg-white text-slate-900 shadow-md border border-slate-100' : 'text-slate-500 hover:bg-white/60'}`}><Settings size={20}/> Ajustes</button>
         </nav>
-        <div className="p-6 border-t border-slate-200/50">
+        <div className="p-6 border-t border-slate-100/50">
             <button onClick={handleLogout} className="w-full py-3 flex items-center justify-center gap-2 text-red-400 hover:text-red-600 font-bold text-xs uppercase tracking-wider transition-colors"><LogOut size={16}/> Salir</button>
         </div>
       </div>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-[#f2f2f7]">
-        <header className="h-20 flex items-center justify-between px-8 flex-shrink-0 z-10">
-          <div><h2 className="text-3xl font-bold text-slate-900 tracking-tight">{view === 'dashboard' ? 'Ventas' : view === 'add_stock' ? 'Inventario' : view === 'form' ? 'Gestión' : 'Configuración'}</h2></div>
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur text-slate-500 rounded-full text-xs font-bold border border-white/50 shadow-sm"><Calendar size={14}/> {new Date().toLocaleDateString()}</div>
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <header className="h-16 md:h-20 flex items-center justify-between px-4 md:px-8 flex-shrink-0 z-10 bg-white/50 backdrop-blur-md md:bg-transparent">
+          <div><h2 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{view === 'dashboard' ? 'Ventas' : view === 'add_stock' ? 'Inventario' : view === 'form' ? 'Cliente' : 'Ajustes'}</h2></div>
+          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur text-slate-500 rounded-full text-xs font-bold border border-white/50 shadow-sm"><Calendar size={14}/> {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+          <button onClick={handleLogout} className="md:hidden p-2 text-slate-400"><LogOut size={20}/></button>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth no-scrollbar">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
           {view === 'dashboard' && (
-            <div className="space-y-8 max-w-[1600px] mx-auto pb-20">
-              <div className="bg-white/80 backdrop-blur-xl p-1 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-white">
-                  <div className="flex flex-col md:flex-row gap-2 p-3">
-                      <div className="relative group flex-1">
-                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                          <input type="text" placeholder="Buscar..." className="w-full pl-12 pr-4 h-12 bg-slate-100/50 border-none rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={filterClient} onChange={e => setFilterClient(e.target.value)} />
+            <div className="space-y-6 max-w-[1600px] mx-auto">
+              <div className="bg-white/70 backdrop-blur-xl p-1.5 rounded-[1.5rem] shadow-sm border border-white sticky top-0 z-30">
+                  <div className="flex flex-col gap-2">
+                      <div className="relative group">
+                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                          <input type="text" placeholder="Buscar..." className="w-full pl-11 pr-4 h-12 bg-slate-100/50 border-none rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={filterClient} onChange={e => setFilterClient(e.target.value)} />
                       </div>
-                      <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
-                          <select className="h-12 px-6 bg-slate-100/50 rounded-2xl text-sm font-bold text-slate-600 outline-none border-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[180px]" value={filterService} onChange={e => setFilterService(e.target.value)}><option value="Todos">Todos los Servicios</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
-                          <div className="flex bg-slate-100/80 p-1 rounded-2xl h-12">
+                      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                          <select className="h-10 px-4 bg-slate-100/50 rounded-xl text-xs font-bold text-slate-600 outline-none border-none focus:bg-white cursor-pointer min-w-[140px]" value={filterService} onChange={e => setFilterService(e.target.value)}><option value="Todos">Servicios: Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+                          <div className="flex bg-slate-100/50 p-1 rounded-xl h-10 flex-shrink-0">
                               {['Todos', 'Libres', 'Ocupados', 'Problemas'].map(status => (
-                                  <button key={status} onClick={() => setFilterStatus(status)} className={`px-5 rounded-xl text-xs font-bold transition-all ${filterStatus === status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{status}</button>
+                                  <button key={status} onClick={() => setFilterStatus(status)} className={`px-3 md:px-4 rounded-lg text-[10px] md:text-xs font-bold transition-all ${filterStatus === status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{status}</button>
                               ))}
                           </div>
                       </div>
                   </div>
-                  <div className="flex flex-col md:flex-row justify-between items-center px-4 pb-2 mt-1 gap-4">
-                      <div className="flex items-center gap-2 bg-slate-100/50 px-3 py-1.5 rounded-xl">
-                           <span className="text-[10px] font-bold text-slate-400 uppercase">Fecha:</span>
-                           <input type="date" className="bg-transparent text-xs font-bold text-slate-600 outline-none cursor-pointer" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-                           <span className="text-slate-300">-</span>
-                           <input type="date" className="bg-transparent text-xs font-bold text-slate-600 outline-none cursor-pointer" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-                           {(dateFrom || dateTo) && (<button onClick={() => {setDateFrom(''); setDateTo('');}} className="ml-2 text-slate-400 hover:text-red-500"><X size={14}/></button>)}
-                      </div>
-                      <div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Real</span><span className="text-xl font-black text-slate-800 tracking-tight">${totalFilteredMoney.toLocaleString()}</span></div>
-                  </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="flex justify-between items-center px-2">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{totalItems} Resultados</div>
+                  <div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-400 uppercase">Total:</span><span className="text-lg font-black text-slate-800 tracking-tight">${totalFilteredMoney.toLocaleString()}</span></div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:gap-4">
                  {filteredSales.map((sale) => {
                       const isFree = sale.client === 'LIBRE';
                       const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
@@ -467,7 +483,7 @@ const App = () => {
                           <div className="flex flex-col md:flex-row items-center gap-6">
                               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold shadow-lg shadow-black/5 ${getStatusColor(sale.client)}`}>{getStatusIcon(sale.client)}</div>
                               <div className="flex-1 text-center md:text-left min-w-[200px]">
-                                  <div className={`font-bold text-lg leading-tight ${isAdmin ? 'text-white' : 'text-slate-800'}`}>{isFree ? 'Cupo Disponible' : sale.client}</div>
+                                  <div className={`font-bold text-lg leading-tight ${isAdmin ? 'text-white' : 'text-slate-900'}`}>{isFree ? 'Cupo Disponible' : sale.client}</div>
                                   <div className={`text-sm font-medium mt-0.5 ${isAdmin ? 'text-slate-400' : 'text-slate-400'}`}>{sale.service}</div>
                                   {!isFree && !isProblem && <div className="text-xs text-blue-500 font-bold mt-1 flex items-center justify-center md:justify-start gap-1"><Smartphone size={10}/> {sale.phone}</div>}
                               </div>
@@ -486,6 +502,7 @@ const App = () => {
                                   ) : <span className="text-slate-400 text-xs font-bold bg-slate-100 px-3 py-1 rounded-full">{isFree ? 'LIBRE' : 'N/A'}</span>}
                               </div>
                               <div className="text-right w-20 hidden md:block">
+                                  {/* ✅ COSTO 0 PARA ADMIN Y PROBLEMAS */}
                                   <div className={`text-lg font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
                               </div>
                               <div className="flex gap-2">
@@ -493,6 +510,7 @@ const App = () => {
                                       <button onClick={() => { setFormData(sale); setView('form'); }} className="h-10 px-5 bg-black text-white rounded-full font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 flex items-center gap-2">Asignar <ChevronRight size={14}/></button>
                                   ) : (
                                       <div className={`flex items-center p-1 rounded-2xl backdrop-blur-md ${isAdmin ? 'bg-slate-800' : 'bg-slate-100/80'}`}>
+                                          {/* Botones visibles para ADMIN también */}
                                           {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${days <= 0 ? 'text-red-500 hover:bg-white shadow-sm' : 'text-amber-500 hover:bg-white shadow-sm'}`}>{days <= 0 ? <XCircle size={18}/> : <Ban size={18}/>}</button>)}
                                           {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-9 h-9 text-slate-400 hover:text-blue-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Key size={18}/></button>}
                                           {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className="w-9 h-9 text-slate-400 hover:text-blue-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"><Lock size={18}/></button>}
@@ -578,6 +596,14 @@ const App = () => {
              </div>
           )}
         </main>
+
+        {/* BOTTOM NAV (SOLO MOVIL) */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 p-2 flex justify-around z-40 pb-safe">
+            <button onClick={() => setView('dashboard')} className={`p-3 rounded-2xl ${view === 'dashboard' ? 'bg-[#007AFF] text-white shadow-lg' : 'text-slate-400'}`}><Layers size={24}/></button>
+            <button onClick={() => setView('add_stock')} className={`p-3 rounded-2xl ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-400'}`}><Box size={24}/></button>
+            <button onClick={() => setView('config')} className={`p-3 rounded-2xl ${view === 'config' ? 'bg-slate-100 text-slate-800' : 'text-slate-400'}`}><Settings size={24}/></button>
+        </nav>
+
       </div>
     </div>
   );
