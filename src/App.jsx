@@ -244,48 +244,59 @@ const App = () => {
           let count = 0;
           let errors = 0;
 
+          // Asumimos el orden del CSV de ventas (incluyendo Perfil, Pin y Costo)
           const SALES_MAP = { CLIENT: 0, SERVICE: 1, END_DATE: 2, EMAIL: 3, PASS: 4, PROFILE: 5, PIN: 6, COST: 7, PHONE: 8 };
 
           try {
-              rows.forEach((row, i) => {
-                  if (i === 0 || !row[0] || row[0].trim() === 'Nombre') return;
+              // Lógica para Ventas Masivas
+              if (type === 'sales') {
+                  rows.forEach((row, i) => {
+                      // Skip headers
+                      if (i === 0 || !row[0] || row[0].toLowerCase().includes('cliente')) return; 
 
-                  if (type === 'clients') {
-                      if (row[0] && row[1]) {
-                          const ref = doc(collection(db, userPath, 'clients'));
-                          batch.set(ref, { name: row[0].trim(), phone: row[1].trim() });
-                          count++;
-                      } else { errors++; }
-                  } else if (type === 'catalog') {
-                      if (row[0] && row[1]) {
-                          const ref = doc(collection(db, userPath, 'catalog'));
-                          batch.set(ref, { name: row[0].trim(), cost: Number(row[1] || 0), defaultSlots: Number(row[2] || 4), type: row[3] ? row[3].trim() : 'Perfil' });
-                          count++;
-                      } else { errors++; }
-                  } else if (type === 'sales') {
                       if (row[SALES_MAP.SERVICE] && row[SALES_MAP.EMAIL]) {
-                          const ref = doc(collection(db, userPath, 'sales'));
-                          batch.set(ref, { 
-                              client: row[SALES_MAP.CLIENT] ? row[SALES_MAP.CLIENT].trim() : 'N/A', 
-                              service: row[SALES_MAP.SERVICE].trim(),
-                              endDate: row[SALES_MAP.END_DATE] ? row[SALES_MAP.END_DATE].trim() : null, 
-                              email: row[SALES_MAP.EMAIL].trim(),
-                              pass: row[SALES_MAP.PASS] ? row[SALES_MAP.PASS].trim() : 'N/A',
-                              profile: row[SALES_MAP.PROFILE] ? row[SALES_MAP.PROFILE].trim() : '',
-                              pin: row[SALES_MAP.PIN] ? row[SALES_MAP.PIN].trim() : '',
-                              cost: Number(row[SALES_MAP.COST] || 0),
-                              type: row[SALES_MAP.SERVICE].includes('Cuenta') ? 'Cuenta' : 'Perfil',
-                              createdAt: Date.now() + i
-                          });
-                          count++;
+                          const serviceName = row[SALES_MAP.SERVICE].trim();
+                          // ✅ Separación por punto y coma (;)
+                          const profileNames = (row[SALES_MAP.PROFILE] || '').split(';').map(p => p.trim()).filter(p => p !== '');
+                          const pinCodes = (row[SALES_MAP.PIN] || '').split(';').map(p => p.trim());
+                          const quantity = Math.max(profileNames.length, pinCodes.length, 1);
+                          const totalCost = Number(row[SALES_MAP.COST] || 0);
+                          const costPerProfile = totalCost / quantity;
+
+                          for (let j = 0; j < quantity; j++) {
+                              const ref = doc(collection(db, userPath, 'sales'));
+                              batch.set(ref, { 
+                                  client: row[SALES_MAP.CLIENT] ? row[SALES_MAP.CLIENT].trim() : 'N/A', 
+                                  service: serviceName,
+                                  endDate: row[SALES_MAP.END_DATE] ? row[SALES_MAP.END_DATE].trim() : null, 
+                                  email: row[SALES_MAP.EMAIL].trim(),
+                                  pass: row[SALES_MAP.PASS] ? row[SALES_MAP.PASS].trim() : 'N/A',
+                                  profile: profileNames[j] || '',
+                                  pin: pinCodes[j] || '',
+                                  cost: Number(costPerProfile).toFixed(2),
+                                  type: serviceName.includes('Cuenta') ? 'Cuenta' : 'Perfil',
+                                  createdAt: Date.now() + (i * 100) + j // Unique timestamp
+                              });
+                              count++;
+                          }
                       } else { errors++; }
-                  }
-              });
+                  });
+              } else if (type === 'catalog') {
+                     // Lógica para importar catálogo si fuera necesario
+                      rows.forEach((row, i) => {
+                           if (i === 0 || !row[0] || row[0].toLowerCase().includes('nombre')) return;
+                           if (row[0] && row[1]) {
+                                const ref = doc(collection(db, userPath, 'catalog'));
+                                batch.set(ref, { name: row[0].trim(), cost: Number(row[1] || 0), defaultSlots: Number(row[2] || 4), type: row[3] ? row[3].trim() : 'Perfil' });
+                                count++;
+                           } else { errors++; }
+                       });
+              }
 
               await batch.commit();
               setImportStatus(`¡Importación lista! Agregados: ${count}. Errores omitidos: ${errors}.`);
           } catch (error) {
-              setImportStatus(`Error al procesar el archivo. Verifique el formato CSV.`);
+              setImportStatus(`Error al procesar el archivo. Verifique el formato CSV y que las columnas coincidan.`);
           }
       };
       reader.readAsText(file);
@@ -701,7 +712,7 @@ const App = () => {
                               </div>
 
                               {/* CONTROLES */}
-                              <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0 relative">
+                              <div className="col-span-12 md:col-span-2 w-full flex justify-end pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0 relative">
                                   {isFree ? (
                                       <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                                   ) : (
@@ -720,9 +731,9 @@ const App = () => {
                                                   {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
                                               </div>
                                               <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'} md:space-x-1 md:border-none md:w-auto`}>
-                                                  <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
-                                                  {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
-                                                  <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
+                                                  <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); setOpenMenuId(null); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
+                                                  {!isProblem && <button onClick={() => { handleQuickRenew(sale.id); setOpenMenuId(null); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
+                                                  <button onClick={() => { triggerLiberate(sale.id); setOpenMenuId(null); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
                                               </div>
                                               
                                               {/* BOTÓN CERRAR MENÚ (Solo en Móvil) */}
@@ -861,26 +872,18 @@ const App = () => {
           {view === 'form' && (
              <div className="w-full bg-white p-6 rounded-2xl shadow-xl border border-slate-100 mb-20 animate-in slide-in-from-bottom-4">
                  <h2 className="text-xl font-black text-slate-800 mb-1">{formData.client === 'LIBRE' ? 'Vender' : 'Editar'}</h2>
-                 
-                 {/* VISUALIZACIÓN DE CUPOS LIBRES EN FORMULARIO */}
-                 <div className="flex items-center justify-between">
-                     <p className="text-xs font-mono text-slate-400 bg-slate-50 p-1 rounded w-fit mb-6">
-                         <button onClick={(e) => {
-                             e.preventDefault();
-                             navigator.clipboard.writeText(`${formData.email}:${formData.pass}`);
-                             e.currentTarget.querySelector('span').textContent = '¡Copiado!'; 
-                             setTimeout(() => {
-                                e.currentTarget.querySelector('span').textContent = `${formData.email} | ${formData.pass}`;
-                             }, 1500);
-                         }} className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
-                             <span>{formData.email} | {formData.pass}</span> <Copy size={12}/>
-                         </button>
-                     </p>
-                     <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">
-                        Libres: {maxAvailableSlots}
-                     </span>
-                 </div>
-                 
+                 <p className="text-xs font-mono text-slate-400 bg-slate-50 p-1 rounded w-fit mb-6">
+                     <button onClick={(e) => {
+                         e.preventDefault();
+                         navigator.clipboard.writeText(`${formData.email}:${formData.pass}`);
+                         e.currentTarget.querySelector('span').textContent = '¡Copiado!'; 
+                         setTimeout(() => {
+                            e.currentTarget.querySelector('span').textContent = `${formData.email} | ${formData.pass}`;
+                         }, 1500);
+                     }} className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                         <span>{formData.email} | {formData.pass}</span> <Copy size={12}/>
+                     </button>
+                 </p>
                  <form onSubmit={handleSaveSale} className="space-y-4">
                     
                     {/* Botones de Cantidad */}
