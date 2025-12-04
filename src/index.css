@@ -2,24 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/* * Definición de la fuente base
+ */
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
+/* * Estilos globales del cuerpo de la página
+ * EVITAMOS LIMITAR EL ANCHO EXTERNAMENTE
+ */
 body {
   margin: 0;
   padding: 0;
   width: 100vw;
   min-height: 100vh;
   background-color: #F2F2F7;
-  overflow: hidden; /* Evita doble scroll */
+  /* IMPORTANTE: Permitimos el scroll en el body si es necesario, 
+     pero el componente principal de React manejará el scroll interno. */
+  overflow-x: hidden; 
+  overflow-y: hidden;
 }
 
+/* * Contenedor principal de React (#root)
+ * Ocupa todo el espacio disponible y quita límites de ancho
+ */
 #root {
   width: 100%;
-  height: 100%;
-  /* 👇 ESTO ES LO QUE ARREGLA EL ANCHO 👇 */
+  height: 100vh; 
   max-width: none !important; 
   margin: 0;
   padding: 0;
+}
+
+/* * Utility para evitar barras de scroll laterales
+ */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
 }

@@ -3,7 +3,7 @@ import {
   Search, Plus, Smartphone, MessageCircle, Lock, Key, Trash2, Edit2, Ban, XCircle, Settings, 
   Save, Calendar, Layers, UserPlus, Box, CheckCircle, Users, Filter, DollarSign, RotateCcw, X, 
   ListPlus, User, History, CalendarPlus, Cloud, Loader, ChevronRight, PackageX, LogOut, Image,
-  LayoutList, Upload, FileText, AlertTriangle, Copy, Package
+  LayoutList, Upload, FileText, AlertTriangle, Copy, Package, MoreVertical, Menu
 } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
@@ -69,6 +69,9 @@ const App = () => {
   const [stockForm, setStockForm] = useState({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
   const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
   const [packageForm, setPackageForm] = useState({ name: 'Netflix', cost: 480, slots: 2 }); 
+
+  // --- UI State for Menu ---
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   // --- 1. AUTENTICACIÓN ---
   useEffect(() => {
@@ -165,19 +168,13 @@ const App = () => {
   }, [sales, formData.email, formData.id]);
 
   useEffect(() => {
-    if (formData.client !== 'LIBRE' && formData.id) {
-        // Modo Edición: mantener la cantidad de 1
-        setFormData(prev => ({ ...prev, profilesToBuy: 1 }));
-    } else {
-        // Modo Venta Libre: usar cantidad seleccionada
-        const count = parseInt(formData.profilesToBuy || 1);
-        setBulkProfiles(prev => {
-            const newArr = [...prev];
-            if (newArr.length < count) while(newArr.length < count) newArr.push({ profile: '', pin: '' });
-            else if (newArr.length > count) return newArr.slice(0, count);
-            return newArr;
-        });
-    }
+    const count = parseInt(formData.profilesToBuy || 1);
+    setBulkProfiles(prev => {
+        const newArr = [...prev];
+        if (newArr.length < count) while(newArr.length < count) newArr.push({ profile: '', pin: '' });
+        else if (newArr.length > count) return newArr.slice(0, count);
+        return newArr;
+    });
   }, [formData.profilesToBuy, formData.client, formData.id]);
 
   // Inventario agrupado por cuentas
@@ -311,12 +308,15 @@ const App = () => {
           if (confirmModal.type === 'delete_service') await deleteDoc(doc(db, userPath, 'catalog', confirmModal.id));
           else if (confirmModal.type === 'liberate') {
               const currentSale = sales.find(s => s.id === confirmModal.id);
-              let newServiceName = 'Netflix 1 Perfil'; // Valor base de servicio individual
+              let newServiceName = 'Netflix 1 Perfil'; 
 
-              // Buscamos si existe el servicio base individual en el catálogo para ser más exactos.
-              const individualService = catalog.find(c => c.name.toLowerCase().includes('1 perfil') && c.type !== 'Paquete');
-              if (individualService) {
-                newServiceName = individualService.name;
+              if (currentSale.service && currentSale.service.toLowerCase().includes('paquete')) {
+                  const baseName = currentSale.service.replace(/ Paquete \d+ Perfiles/i, '').trim();
+                  const individualService = catalog.find(c => c.name.toLowerCase().includes(`${baseName.toLowerCase()} 1 perfil`));
+                  
+                  newServiceName = individualService ? individualService.name : 'LIBRE 1 Perfil'; 
+              } else {
+                  newServiceName = 'LIBRE 1 Perfil';
               }
               
               await updateDoc(doc(db, userPath, 'sales', confirmModal.id), { 
@@ -345,7 +345,6 @@ const App = () => {
     
     const quantity = parseInt(formData.profilesToBuy || 1);
     
-    // LÓGICA DE COSTO PRORRATEADO
     const costPerProfile = (quantity > 1)
         ? Number(formData.cost / quantity).toFixed(2)
         : Number(formData.cost).toFixed(2);
@@ -367,7 +366,7 @@ const App = () => {
         const docRef = doc(db, userPath, 'sales', row.id);
         batch.update(docRef, {
             client: formData.client, phone: formData.phone, endDate: formData.endDate, 
-            cost: costPerProfile, // 👈 Se guarda el costo calculado
+            cost: costPerProfile, 
             service: formData.service,
             profile: specificProfileData ? specificProfileData.profile : '', pin: specificProfileData ? specificProfileData.pin : '', type: formData.type
         });
@@ -481,7 +480,7 @@ const App = () => {
       const isFree = s.client === 'LIBRE';
       const isProblem = NON_BILLABLE_STATUSES.includes(s.client);
       
-      // ✅ BÚSQUEDA UNIFICADA: Por Nombre O Correo
+      // BÚSQUEDA UNIFICADA: Por Nombre O Correo
       const matchSearch = filterClient === '' || 
                           s.client.toLowerCase().includes(filterClient.toLowerCase()) ||
                           s.email.toLowerCase().includes(filterClient.toLowerCase()); 
@@ -492,7 +491,7 @@ const App = () => {
       if (filterStatus === 'Ocupados') matchStatus = !isFree && !isProblem;
       if (filterStatus === 'Problemas') matchStatus = isProblem;
       
-      // ✅ FILTRO DE FECHAS AVANZADO (DESDE... HASTA...)
+      // FILTRO DE FECHAS AVANZADO (DESDE... HASTA...)
       let matchDate = true;
       if (s.endDate) {
           const endDate = new Date(s.endDate);
@@ -504,7 +503,7 @@ const App = () => {
               matchDate = endDate >= dateF && endDate <= dateT;
           } else if (dateFrom) {
               const dateF = new Date(dateFrom); dateF.setHours(0, 0, 0, 0);
-              matchDate = endDate.getTime() === dateF.getTime(); // Match estricto si solo hay 'Desde'
+              matchDate = endDate.getTime() === dateF.getTime(); 
           }
       } else if (dateFrom || dateTo) {
           matchDate = false;
@@ -628,7 +627,7 @@ const App = () => {
                   </div>
               </div>
 
-              {/* ✅ FILTRO AVANZADO DE FECHAS */}
+              {/* FILTRO AVANZADO DE FECHAS */}
               <div className="flex items-center gap-2 bg-white/70 backdrop-blur-xl p-2 rounded-xl border border-white/50">
                    <Calendar size={16} className="text-slate-400 flex-shrink-0"/>
                    <span className="text-xs font-bold text-slate-500 uppercase flex-shrink-0">Vence:</span>
@@ -706,15 +705,28 @@ const App = () => {
                                       <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                                   ) : (
                                       <div className={`flex items-center p-1 gap-1 rounded-lg w-full md:w-auto justify-between md:justify-end ${isAdmin ? 'bg-slate-800' : 'bg-white border border-slate-200 shadow-sm'}`}>
-                                          <div className="flex gap-1">
-                                              {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
-                                              {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
-                                              {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
+                                          {/* ✅ MENÚ DE OPCIONES RETRÁCTIL EN MÓVIL */}
+                                          <div className="flex md:hidden">
+                                              <button onClick={() => setOpenMenuId(openMenuId === sale.id ? null : sale.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 active:scale-95 transition-all ${openMenuId === sale.id ? 'bg-slate-100' : 'bg-transparent'}`}><MoreVertical size={16}/></button>
                                           </div>
-                                          <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'}`}>
-                                              <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
-                                              {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
-                                              <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
+                                          
+                                          <div className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${openMenuId === sale.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={() => setOpenMenuId(null)}></div>
+                                          
+                                          <div className={`md:flex absolute md:relative top-0 right-10 md:right-0 bg-white md:bg-transparent rounded-xl md:p-0 transition-all duration-200 shadow-xl md:shadow-none p-2 space-x-1 ${openMenuId === sale.id ? 'flex' : 'hidden'}`}>
+                                              
+                                              <div className="flex gap-1">
+                                                  {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
+                                                  {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
+                                                  {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
+                                              </div>
+                                              <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'}`}>
+                                                  <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
+                                                  {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
+                                                  <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
+                                              </div>
+                                              
+                                              {/* BOTÓN CERRAR MENÚ (Solo en Móvil) */}
+                                              <button onClick={() => setOpenMenuId(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 md:hidden"><X size={16}/></button>
                                           </div>
                                       </div>
                                   )}
@@ -864,13 +876,13 @@ const App = () => {
                  <form onSubmit={handleSaveSale} className="space-y-4">
                     
                     {/* Botones de Cantidad */}
-                    {formData.client === 'LIBRE' && (
+                    {(formData.client === 'LIBRE' || formData.id) && (
                         <div className="p-1 bg-slate-100 rounded-2xl flex">
-                            {[1,2,3,4,5].map(num => (<button key={num} type="button" onClick={()=>setFormData({...formData, profilesToBuy: num})} disabled={num > maxAvailableSlots} className={`flex-1 h-10 min-w-[40px] rounded-lg text-xs font-bold border ${formData.profilesToBuy === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-200'} ${num > maxAvailableSlots ? 'opacity-30' : ''}`}>{num}</button>))}
+                            {[1,2,3,4,5].map(num => (<button key={num} type="button" onClick={()=>setFormData({...formData, profilesToBuy: num})} disabled={num > maxAvailableSlots && formData.client === 'LIBRE'} className={`flex-1 h-10 min-w-[40px] rounded-lg text-xs font-bold border ${formData.profilesToBuy === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-200'} ${num > maxAvailableSlots && formData.client === 'LIBRE' ? 'opacity-30' : ''}`}>{num}</button>))}
                         </div>
                     )}
                     
-                    {/* SELECTOR DE PAQUETE (NUEVO) */}
+                    {/* SELECTOR DE PAQUETE (Visible en Venta Libre y Edición) */}
                     {packageCatalog.length > 0 && (
                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1 flex items-center gap-1"><Package size={12}/> {formData.client === 'LIBRE' ? 'Venta Rápida Paquete' : 'Cambiar Tipo de Servicio'}</label>
@@ -879,23 +891,20 @@ const App = () => {
                                      const selectedName = e.target.value;
                                      const selected = catalog.find(s => s.name === selectedName);
                                      
-                                     // Si el valor seleccionado es vacío o no se encuentra el paquete, asumimos venta individual
-                                     if (!selected) {
-                                         // Intentar regresar a la opción individual base
+                                     if (selected) {
+                                         setFormData(prev => ({ 
+                                             ...prev, 
+                                             service: selected.name,
+                                             cost: selected.cost,
+                                             profilesToBuy: selected.defaultSlots 
+                                         }));
+                                     } else {
                                          const baseService = catalog.find(s => s.name.toLowerCase().includes('1 perfil') && s.type !== 'Paquete');
                                          setFormData(prev => ({ 
                                             ...prev, 
                                             service: baseService ? baseService.name : 'Netflix 1 Perfil',
                                             profilesToBuy: 1,
                                             cost: baseService ? baseService.cost : prev.cost
-                                         }));
-                                     } else {
-                                         // Es un paquete o un servicio individual existente
-                                         setFormData(prev => ({ 
-                                             ...prev, 
-                                             service: selected.name,
-                                             cost: selected.cost,
-                                             profilesToBuy: selected.defaultSlots 
                                          }));
                                      }
                                  }} 
@@ -909,7 +918,7 @@ const App = () => {
                                         : `${formData.service} (Individual)`
                                     }
                                  </option>
-                                 <option value="">--- Venta Individual (Slots Manuales) ---</option>
+                                 <option value="">--- Opciones de Conversión ---</option>
 
                                  {packageCatalog.map(pkg => (
                                      <option key={pkg.id} value={pkg.name}>
