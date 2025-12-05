@@ -24,7 +24,7 @@ const Dashboard = ({
     handleQuickRenew,
     triggerLiberate, 
     setFormData, setView,
-    openMenuId, setOpenMenuId,
+    openMenuId, setOpenMenuId, // Mantener, pero solo lo usará el botón de detalles
     setBulkProfiles,
     NON_BILLABLE_STATUSES,
     loadingData 
@@ -43,8 +43,7 @@ const Dashboard = ({
         if (isAdmin) cardClass = "bg-slate-900 border border-slate-700 text-white";
 
         return (
-            // Nota: Se elimina la key del div externo ya que la usará el map
-            <div className={`p-3 rounded-2xl transition-all relative group ${cardClass}`}>
+            <div key={sale.id} className={`p-3 rounded-2xl transition-all relative group ${cardClass}`}>
                 <div className="flex flex-col md:grid md:grid-cols-12 gap-3 md:gap-4 items-center">
                     
                     {/* CLIENTE (col-span-2) */}
@@ -81,44 +80,40 @@ const Dashboard = ({
                         ) : <span className="text-slate-400 text-[10px] font-bold bg-slate-100 px-2 py-1 rounded-full">{isFree ? 'LIBRE' : 'N/A'}</span>}
                     </div>
 
-                    {/* COSTO (col-span-2) - AHORA TIENE MÁS ESPACIO */}
+                    {/* COSTO (col-span-2) */}
                     <div className="hidden md:block col-span-2 text-center">
                         <div className={`text-sm font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
                     </div>
 
-                    {/* CONTROLES (col-span-2) */}
+                    {/* CONTROLES (col-span-2) - SIMPLIFICADO PARA MOVIL */}
                     <div className="col-span-12 md:col-span-2 w-full flex justify-end pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0 relative">
                         {isFree ? (
                             <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                         ) : (
-                            <>
-                                <div className="flex md:hidden absolute right-0 top-1/2 transform -translate-y-1/2 mr-2 z-20">
-                                    <button onClick={() => setOpenMenuId(openMenuId === sale.id ? null : sale.id)} className={`w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 active:scale-95 transition-all ${openMenuId === sale.id ? 'bg-slate-100' : 'bg-transparent'}`}><MoreVertical size={16}/></button>
-                                </div>
+                            // ✅ Botones visibles en una fila única para móvil/PC
+                            <div className="flex gap-1 md:space-x-1 md:w-auto w-full justify-end">
                                 
-                                {/* Menú en PC (visible) / Móvil (retráctil) */}
-                                <div className={`absolute md:relative top-full md:top-0 right-0 md:right-0 bg-white md:bg-transparent rounded-xl md:p-0 transition-all duration-200 shadow-xl md:shadow-none p-2 space-x-1 z-50 ${openMenuId === sale.id || window.innerWidth >= 768 ? 'flex flex-col md:flex-row gap-1' : 'hidden md:flex'}`}>
-                                    
-                                    <div className="flex gap-1 md:space-x-1 md:w-auto">
-                                        {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
-                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
-                                        {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
-                                    </div>
-                                    <div className={`flex gap-1 pl-1 ${isAdmin ? 'border-l border-slate-600' : 'border-l border-slate-100'} md:space-x-1 md:border-none md:w-auto`}>
-                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); setOpenMenuId(null); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
-                                        {!isProblem && <button onClick={() => { handleQuickRenew(sale.id); setOpenMenuId(null); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
-                                        <button onClick={() => { triggerLiberate(sale.id); setOpenMenuId(null); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
-                                    </div>
-                                    
-                                    {openMenuId === sale.id && (<button onClick={() => setOpenMenuId(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 md:hidden"><X size={16}/></button>)}
-                                </div>
-                            </>
+                                {/* Botones de Acción Inmediata (Siempre visibles) */}
+                                {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-8 h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
+                                
+                                {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
+                                
+                                {/* Botón Editar */}
+                                <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
+                                
+                                {/* Botón Renovar */}
+                                {!isProblem && <button onClick={() => { handleQuickRenew(sale.id); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
+                                
+                                {/* Botón Liberar */}
+                                <button onClick={() => { triggerLiberate(sale.id); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
+                            </div>
                         )}
                     </div>
                 </div>
             </div>
         );
     };
+
 
     // -------------------------------------------------------------
     // BLOQUE PRINCIPAL DEL DASHBOARD
@@ -188,14 +183,14 @@ const Dashboard = ({
                 <div className="flex items-center gap-2"><span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase">Total:</span><span className="text-base md:text-xl font-black text-slate-800 tracking-tight">${totalFilteredMoney.toLocaleString()}</span></div>
             </div>
 
-            {/* ENCABEZADO DE COLUMNAS (CORREGIDO PARA PC) */}
+            {/* ENCABEZADO DE COLUMNAS (PC) */}
             <div className="grid grid-cols-1 gap-2 md:gap-4">
                 <div className="hidden md:grid grid-cols-12 gap-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider pl-8">
-                    <div className="col-span-2">Cliente</div>          {/* Antes: col-span-3 */}
-                    <div className="col-span-5">Servicio & Detalles</div> {/* Antes: col-span-4 */}
-                    <div className="col-span-1 text-center">Vencimiento</div> {/* Compactado */}
-                    <div className="col-span-2 text-center">Costo</div>        {/* Expandido */}
-                    <div className="col-span-2 text-right">Controles</div>    {/* Mantenido */}
+                    <div className="col-span-2">Cliente</div>          
+                    <div className="col-span-5">Servicio & Detalles</div> 
+                    <div className="col-span-1 text-center">Vencimiento</div> 
+                    <div className="col-span-2 text-center">Costo</div>        
+                    <div className="col-span-2 text-right">Controles</div>    
                 </div>
 
                 {/* LISTA DE VENTAS */}
