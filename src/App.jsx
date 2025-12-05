@@ -1,4 +1,4 @@
-// src/App.jsx (CÓDIGO FINAL TRAS EL REFACTOR CON HOOK)
+// src/App.jsx (CÓDIGO FINAL Y ESTABLE CON USEREDUCER)
 
 import React, { useState, useMemo, useReducer } from 'react';
 // Iconos de Lucide: Solo los necesarios para el layout, header y Modal
@@ -20,7 +20,7 @@ import { writeBatch, collection, doc, addDoc, updateDoc, deleteDoc } from 'fireb
 // Importaciones de Archivos Modulares
 import { useDataSync } from './hooks/useDataSync'; 
 import { auth, db } from './firebase/config'; 
-import { sendWhatsApp } from './utils/helpers'; // Eliminamos getDaysRemaining, que ahora está en el Hook
+import { sendWhatsApp } from './utils/helpers'; 
 
 // Importar Vistas y Componentes
 import LoginScreen from './components/LoginScreen';
@@ -340,7 +340,7 @@ const App = () => {
         }
     };
     
-    // --- 8. MANEJO DE ESTADO DE FORMULARIO ---
+    // --- 6. MANEJO DE ESTADO DE FORMULARIO ---
     const handleClientNameChange = (e) => {
         const nameInput = e.target.value; let newPhone = formData.phone;
         const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
@@ -364,6 +364,34 @@ const App = () => {
     };
     const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1 }); setBulkProfiles([{ profile: '', pin: '' }]); };
 
+    // --- 7. ACCIONES CRUD DEL DIRECTORIO DE CLIENTES ---
+
+    const triggerDeleteClient = async (clientId) => {
+        if (!user) return;
+        if (!window.confirm("¿Seguro que desea eliminar este cliente? Esto NO elimina las ventas asociadas, solo el registro en el directorio.")) return;
+        try {
+            await deleteDoc(doc(db, `users/${user.uid}/clients`, clientId));
+            setNotification({ show: true, message: "Cliente eliminado correctamente del directorio.", type: "success" });
+        } catch (error) {
+            console.error("Error al eliminar cliente:", error);
+            setNotification({ show: true, message: "Error al eliminar el cliente.", type: "error" });
+        }
+    };
+
+    const triggerEditClient = async (clientId, newName, newPhone) => {
+        if (!user) return;
+        try {
+            const clientRef = doc(db, `users/${user.uid}/clients`, clientId);
+            await updateDoc(clientRef, {
+                name: newName, 
+                phone: newPhone
+            });
+            setNotification({ show: true, message: "Cliente editado correctamente.", type: "success" });
+        } catch (error) {
+            console.error("Error al editar cliente:", error);
+            setNotification({ show: true, message: "Error al editar el cliente.", type: "error" });
+        }
+    };
 
     // --- 9. RENDERIZADO PRINCIPAL (EL ROUTER) ---
     
@@ -372,7 +400,7 @@ const App = () => {
     if (!user) {
         return (
             <>
-                <Toast notification={notification} setNotification={setNotification} /> {/* Renderizar Toast incluso en login */}
+                <Toast notification={notification} setNotification={setNotification} /> 
                 <LoginScreen 
                     loginEmail={loginEmail} setLoginEmail={setLoginEmail} 
                     loginPass={loginPass} setLoginPass={setLoginPass} 
@@ -384,7 +412,7 @@ const App = () => {
 
     return (
         <>
-            <Toast notification={notification} setNotification={setNotification} /> {/* <-- RENDERIZADO DEL TOAST */}
+            <Toast notification={notification} setNotification={setNotification} /> 
 
             <div className="flex flex-col md:flex-row h-full bg-[#F2F2F7] font-sans text-slate-900 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
                 
@@ -426,24 +454,20 @@ const App = () => {
                             sales={sales}
                             filteredSales={filteredSales}
                             catalog={catalog}
-                            // Pasa los valores de filtro individuales (vienen del uiState)
                             filterClient={filterClient} 
                             filterService={filterService} 
                             filterStatus={filterStatus} 
                             dateFrom={dateFrom} 
                             dateTo={dateTo} 
-                            // Pasa el setter unificado
                             setFilter={setFilter}
                             
-                            // Pasa los datos computados desde el Hook
                             totalItems={totalItems} 
                             totalFilteredMoney={totalFilteredMoney}
                             getStatusIcon={getStatusIcon} 
                             getStatusColor={getStatusColor}
-                            getDaysRemaining={getDaysRemaining} // Viene del Hook
-                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} // Viene del Hook
+                            getDaysRemaining={getDaysRemaining}
+                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} 
 
-                            // Pasa acciones y funciones de formulario
                             sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, catalog, sales, actionType)}
                             handleQuickRenew={handleQuickRenew}
                             triggerLiberate={triggerLiberate}
@@ -462,6 +486,17 @@ const App = () => {
                             handleImportCSV={handleImportCSV}
                             importStatus={importStatus}
                             triggerDeleteService={triggerDeleteService}
+                            
+                            // ✅ PROPS PARA DIRECTORIO DE CLIENTES
+                            clientsDirectory={clientsDirectory} 
+                            allClients={allClients} 
+                            triggerDeleteClient={triggerDeleteClient}
+                            triggerEditClient={triggerEditClient}
+                            setNotification={setNotification} 
+
+                            // ✅ CRÍTICO: Pasar el estado de formulario necesario
+                            formData={formData} 
+                            setFormData={setFormData}
                         />}
 
                         {view === 'add_stock' && <StockManager
