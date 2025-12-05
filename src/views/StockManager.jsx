@@ -1,4 +1,4 @@
-// src/views/StockManager.jsx (Diseño Minimalista - Papelera Unificada)
+// src/views/StockManager.jsx
 
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -15,7 +15,8 @@ const BUTTON_SEGMENT_CLASS = (isActive) =>
 
 const StockManager = ({
     accountsInventory,
-    stockTab, setStockTab,
+    stockTab, // Valor actual (viene de uiState.stockTab)
+    setStockTab, // Función para cambiar el estado (viene del dispatch)
     stockForm, setStockForm,
     catalog,
     handleStockServiceChange,
@@ -27,6 +28,7 @@ const StockManager = ({
             
             {/* 1. PESTAÑAS DE NAVEGACIÓN (Control Segmentado) */}
             <div className="flex gap-2 p-1 bg-slate-100/50 rounded-xl border border-slate-200/50 shadow-inner">
+                {/* Se usa setStockTab(valor) directamente */}
                 <button onClick={() => setStockTab('add')} className={BUTTON_SEGMENT_CLASS(stockTab === 'add')}>➕ Agregar Stock</button>
                 <button onClick={() => setStockTab('manage')} className={BUTTON_SEGMENT_CLASS(stockTab === 'manage')}>📋 Gestionar Cuentas</button>
             </div>
@@ -77,7 +79,7 @@ const StockManager = ({
                                     <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">Total: {acc.total}</span>
                                 </div>
                             </div>
-                            {/* ✅ BOTÓN DE PAPELERA UNIFICADO (Light button, Red icon) */}
+                            {/* BOTÓN DE PAPELERA UNIFICADO (Light button, Red icon) */}
                             <button 
                                 onClick={() => triggerDeleteAccount(acc)} 
                                 className="p-2 w-10 h-10 bg-red-50 text-red-500 border border-red-100 rounded-lg shadow-sm hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center"

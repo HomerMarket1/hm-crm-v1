@@ -1,4 +1,4 @@
-// src/views/Config.jsx (Diseño Minimalista)
+// src/views/Config.jsx (Revisión Final)
 
 import React from 'react';
 import { Plus, PackageX, Trash2, FileText, Upload, AlertTriangle } from 'lucide-react';
@@ -81,7 +81,8 @@ const Config = ({
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className="font-mono font-bold text-slate-700 text-sm">${s.cost}</span>
-                                <button onClick={() => triggerDeleteService(s.id)} className="p-2 text-red-500 rounded-lg hover:bg-red-100/50"><Trash2 size={16}/></button>
+                                {/* Botón de Papelera Unificado (pequeño) */}
+                                <button onClick={() => triggerDeleteService(s.id)} className="p-2 w-8 h-8 flex items-center justify-center text-red-500 rounded-lg hover:bg-red-100/50"><Trash2 size={16}/></button>
                             </div>
                         </div>
                     ))}
@@ -106,6 +107,7 @@ const Config = ({
                                 <td className="px-6 py-3 text-slate-500 text-xs font-bold">{s.defaultSlots}</td>
                                 <td className="px-6 py-3 font-mono font-bold text-slate-700">${s.cost}</td>
                                 <td className="px-6 py-3 text-right">
+                                    {/* Botón de Papelera Unificado (pequeño) */}
                                     <button onClick={() => triggerDeleteService(s.id)} type="button" className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-100/50 rounded-lg transition-colors"><Trash2 size={16}/></button>
                                 </td>
                             </tr>
@@ -126,10 +128,11 @@ const Config = ({
                             <Upload size={16}/> Importar VENTAS
                         </label>
                         <p className="text-xs text-emerald-700 mb-3 font-medium">Formato: [Cliente], [Servicio], [FechaVencimiento], [Email], [Pass], [Perfil], [Pin], [Costo], [Celular]</p>
+                        {/* Botón de carga de archivo estilizado */}
                         <input type="file" accept=".csv" onChange={(e) => handleImportCSV(e, 'sales')} className="text-xs w-full file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 cursor-pointer"/>
                     </div>
                     
-                    {/* Mensajes de Estado (Ahora se combina con el Toast, pero se mantiene para importStatus) */}
+                    {/* Mensajes de Estado (Mantenido para compatibilidad con la función handleImportCSV original) */}
                     {importStatus && (<div className="p-3 bg-yellow-50 text-yellow-800 rounded-xl text-sm font-medium flex items-center gap-2"><AlertTriangle size={16}/> {importStatus}</div>)}
                 </div>
             </div>
