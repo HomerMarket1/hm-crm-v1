@@ -1,7 +1,5 @@
-// src/views/StockManager.jsx
-
-import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import React, { useState } from 'react'; // Importar useState
+import { Plus, Trash2, Search } from 'lucide-react'; // Importar Search icon
 
 // Clase unificada para Inputs y Selects
 const INPUT_CLASS = "w-full p-3 bg-slate-100/70 border border-slate-200/50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:bg-white";
@@ -23,6 +21,16 @@ const StockManager = ({
     handleGenerateStock,
     triggerDeleteAccount
 }) => {
+    // 1. ESTADO PARA LA BARRA DE BÚSQUEDA
+    const [searchInventory, setSearchInventory] = useState('');
+
+    // 2. LÓGICA DE FILTRADO DINÁMICO
+    const filteredAccounts = accountsInventory.filter(acc => 
+        // Filtra por email o por el nombre del servicio
+        acc.email.toLowerCase().includes(searchInventory.toLowerCase()) ||
+        acc.service.toLowerCase().includes(searchInventory.toLowerCase())
+    );
+
     return (
         <div className="space-y-6 w-full pb-20">
             
@@ -66,10 +74,28 @@ const StockManager = ({
                 // GESTOR DE CUENTAS (Borrado Masivo - Tarjetas limpias)
                 <div className="space-y-3">
                     <div className="flex justify-between items-center px-2">
-                        <h3 className="text-sm font-bold text-slate-500 uppercase">Cuentas Registradas ({accountsInventory.length})</h3>
+                        <h3 className="text-sm font-bold text-slate-500 uppercase">Cuentas Registradas ({filteredAccounts.length} de {accountsInventory.length})</h3>
                     </div>
-                    {accountsInventory.length === 0 && <p className="text-center text-slate-400 text-xs py-8 bg-white rounded-xl border border-slate-100/50">No hay cuentas madre registradas.</p>}
-                    {accountsInventory.map((acc, i) => (
+
+                    {/* BARRA DE BÚSQUEDA INTEGRADA */}
+                    <div className="relative mb-4">
+                        <input
+                            type="text"
+                            placeholder="Buscar por correo o servicio..."
+                            value={searchInventory}
+                            onChange={(e) => setSearchInventory(e.target.value)}
+                            className="w-full p-3 pl-10 bg-white border border-slate-200/50 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-sm"
+                        />
+                        <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                    </div>
+                    {/* FIN BARRA DE BÚSQUEDA */}
+
+
+                    {filteredAccounts.length === 0 && <p className="text-center text-slate-400 text-xs py-8 bg-white rounded-xl border border-slate-100/50">
+                        {searchInventory.length > 0 ? `No se encontraron cuentas para "${searchInventory}".` : 'No hay cuentas madre registradas.'}
+                    </p>}
+                    
+                    {filteredAccounts.map((acc, i) => (
                         <div key={i} className="flex items-center justify-between p-4 bg-white/90 backdrop-blur-md rounded-2xl border border-white/50 shadow-md transition-shadow hover:shadow-lg">
                             <div className="overflow-hidden">
                                 <div className="font-bold text-slate-800 text-sm truncate">{acc.service}</div>
