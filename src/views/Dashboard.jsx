@@ -24,13 +24,28 @@ const Dashboard = ({
     handleQuickRenew,
     triggerLiberate, 
     setFormData, setView,
-    openMenuId, setOpenMenuId, // Mantener, pero solo lo usará el botón de detalles
+    openMenuId, setOpenMenuId,
     setBulkProfiles,
     NON_BILLABLE_STATUSES,
     loadingData 
 }) => {
 
-    // 1. FUNCIÓN INTERNA DE RENDERIZADO DE LA TARJETA (SaleCard)
+    // 1. LÓGICA DE ORDENAMIENTO (A-Z por Cliente)
+    const sortedSales = filteredSales.slice().sort((a, b) => {
+        const clientA = a.client ? a.client.toUpperCase() : '';
+        const clientB = b.client ? b.client.toUpperCase() : '';
+
+        if (clientA < clientB) {
+            return -1;
+        }
+        if (clientA > clientB) {
+            return 1;
+        }
+        return 0; 
+    });
+
+
+    // 2. FUNCIÓN INTERNA DE RENDERIZADO DE LA TARJETA (SaleCard)
     const SaleCard = ({ sale }) => {
         
         const isFree = sale.client === 'LIBRE';
@@ -85,18 +100,22 @@ const Dashboard = ({
                         <div className={`text-sm font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
                     </div>
 
-                    {/* CONTROLES (col-span-2) - SIMPLIFICADO PARA MOVIL */}
+                    {/* CONTROLES (col-span-2) - CORREGIDO PARA MOVIL */}
                     <div className="col-span-12 md:col-span-2 w-full flex justify-end pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0 relative">
                         {isFree ? (
                             <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
                         ) : (
-                            // ✅ Botones visibles en una fila única para móvil/PC
+                            // Botones visibles en una fila única para móvil/PC
                             <div className="flex gap-1 md:space-x-1 md:w-auto w-full justify-end">
                                 
-                                {/* Botones de Acción Inmediata (Siempre visibles) */}
+                                {/* 1. Botón de Alerta/Vencimiento (Ban/XCircle) */}
                                 {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-8 h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
                                 
+                                {/* 2. Botón de Detalles de Cuenta (KEY) */}
                                 {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
+                                
+                                {/* 3. Botón de Perfil/PIN (LOCK) - RESTAURADO */}
+                                {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
                                 
                                 {/* Botón Editar */}
                                 <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
@@ -115,9 +134,7 @@ const Dashboard = ({
     };
 
 
-    // -------------------------------------------------------------
-    // BLOQUE PRINCIPAL DEL DASHBOARD
-    // -------------------------------------------------------------
+    // 3. BLOQUE PRINCIPAL DEL DASHBOARD
     
     // ✅ LOADER FROSTED GLASS
     if (loadingData) {
@@ -193,10 +210,10 @@ const Dashboard = ({
                     <div className="col-span-2 text-right">Controles</div>    
                 </div>
 
-                {/* LISTA DE VENTAS */}
+                {/* LISTA DE VENTAS (Mapeado y Ordenado) */}
                 <div className="space-y-2">
-                    {filteredSales.length > 0 ? (
-                        filteredSales.map(sale => (
+                    {sortedSales.length > 0 ? (
+                        sortedSales.map(sale => ( // Usamos sortedSales para el orden alfabético
                             <SaleCard key={sale.id} sale={sale} />
                         ))
                     ) : (
