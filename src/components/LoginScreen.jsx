@@ -7,12 +7,12 @@ const LoginScreen = ({ loginEmail, setLoginEmail, loginPass, setLoginPass, login
         // ✅ CORTAR Y PEGAR ESTE BLOQUE
         <div className="flex h-screen items-center justify-center bg-[#F2F2F7] p-4">
             <div className="bg-white p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center">
-                <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/20 bg-white p-2">
+                <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/20">
                     {/* Asegúrate de que la ruta al logo sea correcta */}
                     <img src="/logo1.png" alt="HM" className="w-full h-full object-contain rounded-xl"/>
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 mb-2">Bienvenido</h2>
-                <p className="text-slate-500 mb-8 text-sm">Sistema de Gestión HM Digital</p>
+                <p className="text-slate-500 mb-8 text-sm">Sistema de Homer-Market</p>
                 
                 {/* El formulario utiliza la prop `handleLogin` pasada desde App.jsx */}
                 <form onSubmit={handleLogin} className="space-y-4">

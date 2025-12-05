@@ -9,7 +9,7 @@ const Sidebar = ({ view, setView, handleLogout }) => {
         // ✅ CORTAR Y PEGAR ESTE BLOQUE
         <div className="hidden md:flex w-72 bg-white/80 backdrop-blur-2xl border-r border-white/50 flex-col shadow-xl z-20 relative">
             <div className="p-8 flex flex-col items-center justify-center border-b border-slate-100/50">
-                <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 bg-white overflow-hidden p-2 group cursor-pointer hover:scale-105 transition-transform">
+                <div className="w-24 h-24 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-4 overflow-hidden group cursor-pointer hover:scale-105 transition-transform">
                     <img src="/logo1.png" alt="Logo" className="w-full h-full object-contain rounded-xl"/>
                 </div>
                 <h1 className="font-bold text-lg text-slate-800">HM Digital</h1>
