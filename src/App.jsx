@@ -1,4 +1,4 @@
-// src/App.jsx (CÓDIGO FINAL Y ESTABLE CON USEREDUCER)
+// src/App.jsx (CÓDIGO FINAL Y ESTABLE CON USEREDUCER Y CORRECCIÓN DE ICONOS)
 
 import React, { useState, useMemo, useReducer } from 'react';
 // Iconos de Lucide: Solo los necesarios para el layout, header y Modal
@@ -36,7 +36,7 @@ import Toast from './components/Toast';
 // ============================================================================
 
 const App = () => {
-    // --- 1. DATOS DEL HOOK ---
+    // --- 1. DATOS DEL HOOK DE FIREBASE ---
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData } = useDataSync();
     const userPath = user ? `users/${user.uid}` : '';
     
@@ -65,7 +65,7 @@ const App = () => {
     
     const [openMenuId, setOpenMenuId] = useState(null);
 
-    // ✅ 4. CONECTAR LOS DATOS Y FILTROS CON EL NUEVO HOOK
+    // ✅ 4. CONECTAR LOS DATOS Y FILTROS CON EL NUEVO HOOK (useSalesData)
     const {
         filteredSales, totalFilteredMoney, totalItems, NON_BILLABLE_STATUSES,
         allClients, getClientPreviousProfiles, maxAvailableSlots, 
@@ -370,7 +370,7 @@ const App = () => {
         if (!user) return;
         if (!window.confirm("¿Seguro que desea eliminar este cliente? Esto NO elimina las ventas asociadas, solo el registro en el directorio.")) return;
         try {
-            await deleteDoc(doc(db, `users/${user.uid}/clients`, clientId));
+            await deleteDoc(doc(db, userPath, 'clients', clientId));
             setNotification({ show: true, message: "Cliente eliminado correctamente del directorio.", type: "success" });
         } catch (error) {
             console.error("Error al eliminar cliente:", error);
@@ -380,20 +380,49 @@ const App = () => {
 
     const triggerEditClient = async (clientId, newName, newPhone) => {
         if (!user) return;
+        
+        // Usamos una transacción por lotes para actualizar el registro maestro y todas las ventas
         try {
-            const clientRef = doc(db, `users/${user.uid}/clients`, clientId);
-            await updateDoc(clientRef, {
-                name: newName, 
-                phone: newPhone
+            const batch = writeBatch(db);
+            let targetClientId = clientId;
+
+            // 1. Si NO existe el clientId (es un cliente "Solo en Ventas"), lo creamos primero.
+            if (!clientId) {
+                const newDocRef = doc(collection(db, userPath, 'clients'));
+                batch.set(newDocRef, { name: newName, phone: newPhone });
+                targetClientId = newDocRef.id; // Usar el ID del nuevo documento
+            } else {
+                // Si ya existe, actualizamos el registro maestro
+                const clientRef = doc(db, userPath, 'clients', clientId);
+                batch.update(clientRef, { name: newName, phone: newPhone });
+            }
+
+            // 2. Encontrar el nombre anterior del cliente (CRÍTICO para la búsqueda)
+            const currentClient = clientsDirectory.find(c => c.id === targetClientId) || allClients.find(a => a.name === newName); 
+            const oldName = currentClient ? currentClient.name : newName; 
+
+            // 3. Encontrar todas las ventas (sales) asociadas a este cliente y actualizar los datos
+            const salesToUpdate = sales.filter(s => s.client === oldName);
+
+            salesToUpdate.forEach(sale => {
+                const saleRef = doc(db, userPath, 'sales', sale.id);
+                batch.update(saleRef, {
+                    client: newName, // Actualiza el nombre en cada venta
+                    phone: newPhone  // Actualiza el teléfono en cada venta
+                });
             });
-            setNotification({ show: true, message: "Cliente editado correctamente.", type: "success" });
+
+            // 4. Ejecutar todas las actualizaciones de forma atómica
+            await batch.commit();
+
+            setNotification({ show: true, message: `Cliente "${newName}" y ${salesToUpdate.length} servicios actualizados.`, type: "success" });
         } catch (error) {
-            console.error("Error al editar cliente:", error);
-            setNotification({ show: true, message: "Error al editar el cliente.", type: "error" });
+            console.error("Error al editar cliente y ventas asociadas:", error);
+            setNotification({ show: true, message: "Error crítico al actualizar el cliente.", type: "error" });
         }
     };
 
-    // --- 9. RENDERIZADO PRINCIPAL (EL ROUTER) ---
+    // --- 8. RENDERIZADO PRINCIPAL (EL ROUTER) ---
     
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
@@ -454,13 +483,16 @@ const App = () => {
                             sales={sales}
                             filteredSales={filteredSales}
                             catalog={catalog}
+                            // Pasa los valores de filtro individuales (vienen del uiState)
                             filterClient={filterClient} 
                             filterService={filterService} 
                             filterStatus={filterStatus} 
                             dateFrom={dateFrom} 
                             dateTo={dateTo} 
+                            // Pasa el setter unificado
                             setFilter={setFilter}
                             
+                            // Pasa los datos computados desde el Hook
                             totalItems={totalItems} 
                             totalFilteredMoney={totalFilteredMoney}
                             getStatusIcon={getStatusIcon} 
@@ -468,6 +500,7 @@ const App = () => {
                             getDaysRemaining={getDaysRemaining}
                             NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} 
 
+                            // Pasa acciones y funciones de formulario
                             sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, catalog, sales, actionType)}
                             handleQuickRenew={handleQuickRenew}
                             triggerLiberate={triggerLiberate}

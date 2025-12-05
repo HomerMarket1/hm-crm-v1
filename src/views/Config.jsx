@@ -1,7 +1,7 @@
-// src/views/Config.jsx (CÓDIGO FINAL Y ESTABLE)
+// src/views/Config.jsx (CÓDIGO FINAL CON GESTIÓN DE CLIENTES)
 
 import React, { useState } from 'react';
-import { Plus, PackageX, Trash2, FileText, Upload, AlertTriangle, Edit2 } from 'lucide-react';
+import { Plus, PackageX, Trash2, FileText, Upload, AlertTriangle, Edit2, Search } from 'lucide-react';
 
 // Clase unificada para Inputs y Selects
 const INPUT_CLASS = "w-full p-3 bg-slate-100/70 border border-slate-200/50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:bg-white";
@@ -26,30 +26,35 @@ const Config = ({
     triggerDeleteService,
     // PROPS DE DATOS Y ACCIÓN CRÍTICAS
     clientsDirectory, 
-    allClients, 
+    allClients, // Clientes únicos (viene del Hook)
     triggerDeleteClient, 
     triggerEditClient,   
-    setNotification, // <-- CRÍTICO: El setter de Toast
+    setNotification, // Necesario para Toast
     formData, setFormData 
 }) => {
     // ESTADO LOCAL para la navegación entre secciones
     const [configTab, setConfigTab] = useState('catalog'); 
     // ESTADO LOCAL para la edición en línea de clientes
     const [editingClient, setEditingClient] = useState(null); 
+    // ✅ ESTADO PARA EL BUSCADOR DE CLIENTES
+    const [searchTerm, setSearchTerm] = useState(''); 
+    
+    // --- LÓGICA DE FILTRADO EN EL DIRECTORIO ---
+    const filteredClients = allClients.filter(client => 
+        client.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (client.phone && client.phone.includes(searchTerm))
+    );
 
     // --- HANDLERS PARA CLIENTES ---
     
     // Inicia el formulario de edición en línea
     const handleStartEdit = (client) => {
+        // Al intentar editar, pasamos el ID si existe, o null si solo está en Ventas.
         const directoryEntry = clientsDirectory.find(d => d.name === client.name);
         
-        if (!directoryEntry) {
-             setNotification({ show: true, message: "Aviso: Este cliente debe estar en el directorio para ser editado. Agréguelo desde la Venta.", type: "warning" });
-             return;
-        }
-
+        // Si no hay entrada en el directorio, permitimos la creación implícita
         setEditingClient({ 
-            id: directoryEntry.id, 
+            id: directoryEntry?.id || null, // Usar el ID si existe, sino null para crear.
             name: client.name, 
             phone: client.phone 
         });
@@ -58,13 +63,9 @@ const Config = ({
     // Guarda los cambios y llama a la función de App.jsx
     const handleSaveEdit = (e) => {
         e.preventDefault();
-        if (editingClient && editingClient.id) {
-            triggerEditClient(editingClient.id, editingClient.name, editingClient.phone);
-            setEditingClient(null); 
-        } else {
-             setEditingClient(null);
-             setNotification({ show: true, message: "Error: No se pudo guardar. ID de cliente no encontrado.", type: "error" });
-        }
+        // triggerEditClient ahora manejará la creación si el ID es null
+        triggerEditClient(editingClient.id, editingClient.name, editingClient.phone);
+        setEditingClient(null); 
     };
 
     return (
@@ -202,7 +203,20 @@ const Config = ({
             {/* --- SECCIÓN 2: DIRECTORIO DE CLIENTES (NUEVO) --- */}
             {configTab === 'clients' && (
                 <div className="space-y-4">
-                    <h2 className="text-xl font-black text-slate-800 mb-4">Directorio de Clientes</h2>
+                    {/* ✅ ENCABEZADO CON BUSCADOR MINIMALISTA */}
+                    <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center justify-between">
+                        Directorio de Clientes
+                        <div className="relative w-1/3 min-w-[200px]">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input 
+                                type="text" 
+                                placeholder="Buscar (Nombre/Tel)"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2 bg-slate-100/70 border border-slate-200/50 rounded-xl text-sm outline-none focus:bg-white focus:ring-1 focus:ring-blue-500/20 transition-all"
+                            />
+                        </div>
+                    </h2>
                     
                     {/* Lista de Clientes */}
                     <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 overflow-hidden">
@@ -210,7 +224,7 @@ const Config = ({
                             <p className="p-6 text-center text-slate-400 text-xs">No hay clientes únicos registrados en las ventas.</p>
                         ) : (
                             <div className="divide-y divide-slate-100">
-                                {allClients.map((client, index) => {
+                                {filteredClients.map((client, index) => {
                                     // Buscar si este cliente existe en la colección de directorio (solo clientes que podemos editar tienen ID)
                                     const directoryEntry = clientsDirectory.find(d => d.name === client.name);
                                     const canEditDelete = !!directoryEntry; 
