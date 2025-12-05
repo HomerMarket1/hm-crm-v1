@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx
+// src/views/Dashboard.jsx (CÓDIGO FINAL Y FUNCIONAL CON USEREDUCER)
 
 import React from 'react';
 import { 
@@ -12,22 +12,19 @@ const Dashboard = ({
     sales, 
     filteredSales,
     catalog, 
-    filterClient, setFilterClient,
-    filterService, setFilterService,
-    filterStatus, setFilterStatus,
-    dateFrom, setDateFrom,
-    dateTo, setDateTo,
-    totalItems, totalFilteredMoney,
-    getStatusIcon, getStatusColor,
-    getDaysRemaining,
-    sendWhatsApp, 
-    handleQuickRenew,
-    triggerLiberate, 
-    setFormData, setView,
-    openMenuId, setOpenMenuId,
-    setBulkProfiles,
-    NON_BILLABLE_STATUSES,
-    loadingData 
+    filterClient, // Valor actual del filtro de cliente
+    filterService, // Valor actual del filtro de servicio
+    filterStatus, // Valor actual del filtro de estado
+    dateFrom, // Valor actual de la fecha "Desde"
+    dateTo, // Valor actual de la fecha "Hasta"
+    
+    // ✅ FUNCIÓN DE ACTUALIZACIÓN (VIENE DEL DISPATCH)
+    setFilter, 
+    
+    totalItems, totalFilteredMoney, getStatusIcon, getStatusColor,
+    getDaysRemaining, sendWhatsApp, handleQuickRenew, triggerLiberate, 
+    setFormData, setView, openMenuId, setOpenMenuId, setBulkProfiles,
+    NON_BILLABLE_STATUSES, loadingData 
 }) => {
 
     // 1. LÓGICA DE ORDENAMIENTO (A-Z por Cliente)
@@ -157,19 +154,28 @@ const Dashboard = ({
                     {/* BUSCADOR DE PILL (iOS Search Bar Style) */}
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input type="text" placeholder="Buscar Cliente o Correo..." className="w-full pl-11 pr-4 h-10 md:h-12 bg-slate-100/70 border border-slate-200/50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" value={filterClient} onChange={e => setFilterClient(e.target.value)} />
+                        <input type="text" placeholder="Buscar Cliente o Correo..." className="w-full pl-11 pr-4 h-10 md:h-12 bg-slate-100/70 border border-slate-200/50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" 
+                            value={filterClient} 
+                            onChange={e => setFilter('filterClient', e.target.value)} // ✅ USO DE SET FILTER
+                        />
                     </div>
                     
                     <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                         {/* SELECTOR DE SERVICIO */}
-                        <select className="h-8 md:h-10 px-4 bg-slate-100/70 rounded-xl text-xs font-bold text-slate-600 outline-none border border-slate-200/50 focus:bg-white cursor-pointer min-w-[120px]" value={filterService} onChange={e => setFilterService(e.target.value)}><option value="Todos">Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select>
+                        <select className="h-8 md:h-10 px-4 bg-slate-100/70 rounded-xl text-xs font-bold text-slate-600 outline-none border border-slate-200/50 focus:bg-white cursor-pointer min-w-[120px]" 
+                            value={filterService} 
+                            onChange={e => setFilter('filterService', e.target.value)} // ✅ USO DE SET FILTER
+                        >
+                            <option value="Todos">Todos</option>
+                            {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        </select>
                         
                         {/* CONTROL SEGMENTADO (iOS Style Status Filter) */}
                         <div className="flex bg-slate-100/50 p-1 rounded-xl border border-slate-200/50 backdrop-blur-sm shadow-inner text-sm font-semibold">
                             {['Todos', 'Libres', 'Ocupados', 'Problemas'].map((status) => (
                                 <button
                                     key={status}
-                                    onClick={() => setFilterStatus(status)}
+                                    onClick={() => setFilter('filterStatus', status)} // ✅ USO DE SET FILTER
                                     className={`px-4 py-2 rounded-lg transition-all active:scale-[0.98] ${
                                         filterStatus === status
                                             ? 'bg-white text-slate-800 shadow-sm border border-white/50'
@@ -188,10 +194,16 @@ const Dashboard = ({
             <div className="flex items-center gap-2 bg-white/70 backdrop-blur-xl p-2 rounded-xl border border-white/50">
                 <Calendar size={16} className="text-slate-400 flex-shrink-0"/>
                 <span className="text-xs font-bold text-slate-500 uppercase flex-shrink-0">Vence:</span>
-                <input type="date" className="bg-slate-100/50 p-1 rounded-lg text-xs font-medium text-slate-700 outline-none w-1/2 cursor-pointer" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                <input type="date" className="bg-slate-100/50 p-1 rounded-lg text-xs font-medium text-slate-700 outline-none w-1/2 cursor-pointer" 
+                    value={dateFrom} 
+                    onChange={e => setFilter('dateFrom', e.target.value)} // ✅ USO DE SET FILTER
+                />
                 <span className="text-slate-400 text-xs">-</span>
-                <input type="date" className="bg-slate-100/50 p-1 rounded-lg text-xs font-medium text-slate-700 outline-none w-1/2 cursor-pointer" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-                {(dateFrom || dateTo) && (<button onClick={() => {setDateFrom(''); setDateTo('');}} className="p-1 text-red-400 hover:text-red-600 rounded-lg"><X size={14}/></button>)}
+                <input type="date" className="bg-slate-100/50 p-1 rounded-lg text-xs font-medium text-slate-700 outline-none w-1/2 cursor-pointer" 
+                    value={dateTo} 
+                    onChange={e => setFilter('dateTo', e.target.value)} // ✅ USO DE SET FILTER
+                />
+                {(dateFrom || dateTo) && (<button onClick={() => {setFilter('dateFrom', ''); setFilter('dateTo', '');}} className="p-1 text-red-400 hover:text-red-600 rounded-lg"><X size={14}/></button>)}
             </div>
 
             {/* CONTADORES */}

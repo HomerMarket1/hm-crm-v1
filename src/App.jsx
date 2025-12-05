@@ -1,11 +1,17 @@
-// src/App.jsx (CÓDIGO FINAL Y MODULARIZADO)
+// src/App.jsx (CÓDIGO FINAL TRAS EL REFACTOR CON HOOK)
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useReducer } from 'react';
 // Iconos de Lucide: Solo los necesarios para el layout, header y Modal
 import { 
     Trash2, RotateCcw, Calendar, LogOut, Loader, CheckCircle, AlertTriangle, 
     RefreshCw, Globe, Shield, Skull, Layers, Box, Settings, X 
 } from 'lucide-react'; 
+
+// --- Importaciones de lógica de Reducer ---
+import { initialUiState, uiReducer, uiActionTypes } from './reducers/uiReducer'; 
+
+// --- Importación del NUEVO HOOK que contiene toda la lógica de filtrado y useMemo ---
+import { useSalesData } from './hooks/useSalesData';
 
 // --- 1. Importaciones de módulos y lógica central ---
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'; 
@@ -14,7 +20,7 @@ import { writeBatch, collection, doc, addDoc, updateDoc, deleteDoc } from 'fireb
 // Importaciones de Archivos Modulares
 import { useDataSync } from './hooks/useDataSync'; 
 import { auth, db } from './firebase/config'; 
-import { getDaysRemaining, sendWhatsApp } from './utils/helpers'; 
+import { sendWhatsApp } from './utils/helpers'; // Eliminamos getDaysRemaining, que ahora está en el Hook
 
 // Importar Vistas y Componentes
 import LoginScreen from './components/LoginScreen';
@@ -23,34 +29,30 @@ import Dashboard from './views/Dashboard';
 import StockManager from './views/StockManager';
 import Config from './views/Config';
 import SaleForm from './views/SaleForm';
-import Toast from './components/Toast'; // <-- ¡NUEVO!
+import Toast from './components/Toast'; 
 
 // ============================================================================
 // LÓGICA DE ESTADO Y ACCIONES CENTRALES
 // ============================================================================
-const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED'];
 
 const App = () => {
     // --- 1. DATOS DEL HOOK ---
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData } = useDataSync();
     const userPath = user ? `users/${user.uid}` : '';
-
-    // --- 2. ESTADOS DE UI Y FORMULARIO ---
+    
+    // ✅ 2. GESTIÓN DE ESTADO DE UI CON USEREDUCER
+    const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
+    
+    // Desestructuración de estados de UI del reducer para usarlos en el Hook de Datos
+    const { view, stockTab, filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
+    
+    // --- 3. ESTADOS DE FORMULARIO Y MODALES (Se mantienen como useState) ---
     const [loginEmail, setLoginEmail] = useState('');
     const [loginPass, setLoginPass] = useState('');
     const [loginError, setLoginError] = useState(''); 
 
-    const [view, setView] = useState('dashboard');
-    const [stockTab, setStockTab] = useState('add');
-    const [filterClient, setFilterClient] = useState('');
-    const [filterService, setFilterService] = useState('Todos');
-    const [filterStatus, setFilterStatus] = useState('Todos');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
-    const [importStatus, setImportStatus] = useState(''); // Estado antiguo
-
-    // ✅ ESTADO DE NOTIFICACIÓN (TOAST)
+    const [importStatus, setImportStatus] = useState(''); 
     const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); 
 
     const [bulkProfiles, setBulkProfiles] = useState([{ profile: '', pin: '' }]);
@@ -63,8 +65,24 @@ const App = () => {
     
     const [openMenuId, setOpenMenuId] = useState(null);
 
-    // --- 3. FUNCIONES DE AUTENTICACIÓN Y NEGOCIO ---
+    // ✅ 4. CONECTAR LOS DATOS Y FILTROS CON EL NUEVO HOOK
+    const {
+        filteredSales, totalFilteredMoney, totalItems, NON_BILLABLE_STATUSES,
+        allClients, getClientPreviousProfiles, maxAvailableSlots, 
+        accountsInventory, packageCatalog,
+        getStatusIcon, getStatusColor, getDaysRemaining
+    } = useSalesData(sales, catalog, clientsDirectory, uiState, formData);
+
+
+    // --- 5. FUNCIONES DE AUTENTICACIÓN Y ACCIÓN (Wrappers para Reducer) ---
     
+    // Funcción principal para cambiar estados de filtro (usada por Dashboard)
+    const setFilter = (key, value) => dispatch({ type: uiActionTypes.SET_FILTER, payload: { key, value } });
+
+    // Funcciones wrapper para el Reducer
+    const setView = (newView) => dispatch({ type: uiActionTypes.SET_VIEW, payload: newView });
+    const setStockTab = (newTab) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: newTab });
+
     const handleLogin = async (e) => {
         e.preventDefault();
         setLoginError('');
@@ -80,64 +98,7 @@ const App = () => {
 
     const handleLogout = () => signOut(auth);
 
-    // --- 4. MEMOIZACIÓN (OPTIMIZACIÓN DE DATOS) ---
-    
-    const allClients = useMemo(() => {
-        const fromDir = clientsDirectory.map(c => ({ name: c.name, phone: c.phone }));
-        const fromSales = sales
-            .filter(s => s.client && s.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(s.client))
-            .map(s => ({ name: s.client, phone: s.phone }));
-        
-        const combined = [...fromDir, ...fromSales];
-        const unique = [];
-        const map = new Map();
-        for (const item of combined) {
-            if (!item.name) continue;
-            const key = item.name.toLowerCase().trim();
-            if(!map.has(key)) { map.set(key, true); unique.push(item); }
-        }
-        return unique.sort((a, b) => a.name.localeCompare(b.name));
-    }, [sales, clientsDirectory]);
-
-    const getClientPreviousProfiles = useMemo(() => {
-        if (!formData.client || formData.client === 'LIBRE') return [];
-        const clientName = formData.client.toLowerCase();
-        const history = sales.filter(s => s.client && s.client.toLowerCase() === clientName && s.profile).map(s => ({ profile: s.profile, pin: s.pin }));
-        const unique = [];
-        const map = new Map();
-        for (const item of history) { if(!map.has(item.profile)) { map.set(item.profile, true); unique.push(item); } }
-        return unique;
-    }, [sales, formData.client]);
-
-    const maxAvailableSlots = useMemo(() => {
-        if (formData.client !== 'LIBRE' && formData.id) return 1;
-        return sales.filter(s => s.email === formData.email && s.client === 'LIBRE').length;
-    }, [sales, formData.email, formData.id]);
-    
-    const accountsInventory = useMemo(() => {
-        const groups = {};
-        sales.forEach(sale => {
-            if (!sale.email) return;
-            if (!groups[sale.email]) {
-                groups[sale.email] = {
-                    email: sale.email,
-                    service: sale.service,
-                    pass: sale.pass,
-                    total: 0,
-                    free: 0,
-                    ids: []
-                };
-            }
-            groups[sale.email].total++;
-            if (sale.client === 'LIBRE') groups[sale.email].free++;
-            groups[sale.email].ids.push(sale.id);
-        });
-        return Object.values(groups);
-    }, [sales]);
-
-    const packageCatalog = useMemo(() => {
-        return catalog.filter(s => s.type === 'Paquete' || s.name.toLowerCase().includes('paquete'));
-    }, [catalog]);
+    // --- 6. MEMOIZACIÓN (Solo queda la sincronización de profilesToBuy) ---
 
     React.useEffect(() => { // Sincroniza la cantidad de perfiles en el formulario
         const count = parseInt(formData.profilesToBuy || 1);
@@ -149,7 +110,8 @@ const App = () => {
         });
     }, [formData.profilesToBuy, formData.client, formData.id]);
 
-    // --- 5. ACCIONES DE FIREBASE (CRUD) ---
+
+    // --- 7. ACCIONES DE FIREBASE (CRUD) ---
     
     const handleAddServiceToCatalog = async (e) => {
         e.preventDefault(); if (!user || !catalogForm.name) return;
@@ -378,7 +340,7 @@ const App = () => {
         }
     };
     
-    // --- 6. MANEJO DE ESTADO DE FORMULARIO ---
+    // --- 8. MANEJO DE ESTADO DE FORMULARIO ---
     const handleClientNameChange = (e) => {
         const nameInput = e.target.value; let newPhone = formData.phone;
         const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
@@ -402,69 +364,8 @@ const App = () => {
     };
     const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1 }); setBulkProfiles([{ profile: '', pin: '' }]); };
 
-    // --- 7. LÓGICA DE FILTRADO Y PANTALLA ---
-    const filteredSales = useMemo(() => {
-        return sales.filter(s => {
-            const isFree = s.client === 'LIBRE';
-            const isProblem = NON_BILLABLE_STATUSES.includes(s.client);
-            
-            const matchSearch = filterClient === '' || 
-                                s.client.toLowerCase().includes(filterClient.toLowerCase()) ||
-                                s.email.toLowerCase().includes(filterClient.toLowerCase()); 
-            
-            const matchService = filterService === 'Todos' || s.service === filterService;
-            let matchStatus = true;
-            if (filterStatus === 'Libres') matchStatus = isFree;
-            if (filterStatus === 'Ocupados') matchStatus = !isFree && !isProblem;
-            if (filterStatus === 'Problemas') matchStatus = isProblem;
-            
-            let matchDate = true;
-            if (s.endDate) {
-                const endDate = new Date(s.endDate);
-                endDate.setHours(0, 0, 0, 0);
 
-                if (dateFrom && dateTo) {
-                    const dateF = new Date(dateFrom); dateF.setHours(0, 0, 0, 0);
-                    const dateT = new Date(dateTo); dateT.setHours(0, 0, 0, 0);
-                    matchDate = endDate >= dateF && endDate <= dateT;
-                } else if (dateFrom) {
-                    const dateF = new Date(dateFrom); dateF.setHours(0, 0, 0, 0);
-                    matchDate = endDate.getTime() === dateF.getTime(); 
-                }
-            } else if (dateFrom || dateTo) {
-                matchDate = false;
-            }
-            
-            return matchSearch && matchService && matchStatus && matchDate;
-        });
-    }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo]);
-
-    const totalFilteredMoney = filteredSales.reduce((acc, curr) => {
-        const isExcluded = curr.client === 'LIBRE' || NON_BILLABLE_STATUSES.includes(curr.client) || curr.client === 'Admin';
-        return !isExcluded ? acc + (Number(curr.cost) || 0) : acc;
-    }, 0);
-    const totalItems = filteredSales.length;
-
-    const getStatusIcon = (clientName) => {
-        if (clientName === 'LIBRE') return <CheckCircle size={20}/>;
-        if (clientName === 'Caída') return <AlertTriangle size={20}/>;
-        if (clientName === 'Actualizar') return <RefreshCw size={20}/>;
-        if (clientName === 'Dominio') return <Globe size={20}/>;
-        if (clientName === 'Admin') return <Shield size={20}/>;
-        if (clientName === 'EXPIRED') return <Skull size={20}/>;
-        return clientName.charAt(0);
-    };
-    const getStatusColor = (clientName) => {
-        if (clientName === 'LIBRE') return 'bg-emerald-100 text-emerald-600';
-        if (clientName === 'Caída') return 'bg-red-100 text-red-600';
-        if (clientName === 'Actualizar') return 'bg-blue-100 text-blue-600';
-        if (clientName === 'Dominio') return 'bg-violet-100 text-violet-600';
-        if (clientName === 'Admin') return 'bg-slate-800 text-white';
-        if (clientName === 'EXPIRED') return 'bg-slate-200 text-slate-500';
-        return 'bg-[#007AFF] text-white'; 
-    };
-
-    // --- 8. RENDERIZADO PRINCIPAL (EL ROUTER) ---
+    // --- 9. RENDERIZADO PRINCIPAL (EL ROUTER) ---
     
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
@@ -525,22 +426,31 @@ const App = () => {
                             sales={sales}
                             filteredSales={filteredSales}
                             catalog={catalog}
-                            filterClient={filterClient} setFilterClient={setFilterClient}
-                            filterService={filterService} setFilterService={setFilterService}
-                            filterStatus={filterStatus} setFilterStatus={setFilterStatus}
-                            dateFrom={dateFrom} setDateFrom={setDateFrom}
-                            dateTo={dateTo} setDateTo={setDateTo}
-                            totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
-                            getStatusIcon={getStatusIcon} getStatusColor={getStatusColor}
-                            getDaysRemaining={getDaysRemaining}
+                            // Pasa los valores de filtro individuales (vienen del uiState)
+                            filterClient={filterClient} 
+                            filterService={filterService} 
+                            filterStatus={filterStatus} 
+                            dateFrom={dateFrom} 
+                            dateTo={dateTo} 
+                            // Pasa el setter unificado
+                            setFilter={setFilter}
+                            
+                            // Pasa los datos computados desde el Hook
+                            totalItems={totalItems} 
+                            totalFilteredMoney={totalFilteredMoney}
+                            getStatusIcon={getStatusIcon} 
+                            getStatusColor={getStatusColor}
+                            getDaysRemaining={getDaysRemaining} // Viene del Hook
+                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} // Viene del Hook
+
+                            // Pasa acciones y funciones de formulario
                             sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, catalog, sales, actionType)}
                             handleQuickRenew={handleQuickRenew}
                             triggerLiberate={triggerLiberate}
                             setFormData={setFormData} setView={setView}
                             openMenuId={openMenuId} setOpenMenuId={setOpenMenuId}
                             setBulkProfiles={setBulkProfiles}
-                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES}
-                            loadingData={loadingData} // <-- PASAMOS LA PROP DE CARGA
+                            loadingData={loadingData}
                         />}
 
                         {view === 'config' && <Config 
