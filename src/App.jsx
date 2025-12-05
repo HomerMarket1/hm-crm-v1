@@ -14,7 +14,7 @@ import { writeBatch, collection, doc, addDoc, updateDoc, deleteDoc } from 'fireb
 // Importaciones de Archivos Modulares
 import { useDataSync } from './hooks/useDataSync'; 
 import { auth, db } from './firebase/config'; 
-import { getDaysRemaining } from './utils/helpers'; 
+import { getDaysRemaining, sendWhatsApp } from './utils/helpers'; // Asegúrate de que sendWhatsApp esté importado
 
 // Importar Vistas y Componentes
 import LoginScreen from './components/LoginScreen';
@@ -23,7 +23,7 @@ import Dashboard from './views/Dashboard';
 import StockManager from './views/StockManager';
 import Config from './views/Config';
 import SaleForm from './views/SaleForm';
-
+import Toast from './components/Toast'; // <-- ¡NUEVO!
 
 // ============================================================================
 // LÓGICA DE ESTADO Y ACCIONES CENTRALES
@@ -38,7 +38,7 @@ const App = () => {
     // --- 2. ESTADOS DE UI Y FORMULARIO ---
     const [loginEmail, setLoginEmail] = useState('');
     const [loginPass, setLoginPass] = useState('');
-    const [loginError, setLoginError] = useState('');
+    const [loginError, setLoginError] = useState(''); // Mantener para input validation si es necesario
 
     const [view, setView] = useState('dashboard');
     const [stockTab, setStockTab] = useState('add');
@@ -48,7 +48,10 @@ const App = () => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
-    const [importStatus, setImportStatus] = useState('');
+    const [importStatus, setImportStatus] = useState(''); // Se puede eliminar si solo usamos toast
+
+    // ✅ ESTADO DE NOTIFICACIÓN (TOAST)
+    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); 
 
     const [bulkProfiles, setBulkProfiles] = useState([{ profile: '', pin: '' }]);
     const [formData, setFormData] = useState({
@@ -60,16 +63,19 @@ const App = () => {
     
     const [openMenuId, setOpenMenuId] = useState(null);
 
-    // --- 3. FUNCIONES DE AUTENTICACIÓN Y NEGOCIO (MOVIDAS DE VISTAS/HOOKS) ---
+    // --- 3. FUNCIONES DE AUTENTICACIÓN Y NEGOCIO ---
     
     const handleLogin = async (e) => {
         e.preventDefault();
         setLoginError('');
         try {
             await signInWithEmailAndPassword(auth, loginEmail, loginPass);
+            // Mostrar un Toast de éxito al iniciar sesión
+            setNotification({ show: true, message: '¡Bienvenido! Sesión iniciada con éxito.', type: 'success' });
         } catch (error) {
             console.error(error);
             setLoginError('Error: Verifica tu correo y contraseña.');
+            setNotification({ show: true, message: 'Error de inicio de sesión: Credenciales incorrectas.', type: 'error' });
         }
     };
 
@@ -77,7 +83,6 @@ const App = () => {
 
     // --- 4. MEMOIZACIÓN (OPTIMIZACIÓN DE DATOS) ---
     
-    // Mantenemos los useMemo aquí ya que dependen de los estados de App (sales, formData, etc.)
     const allClients = useMemo(() => {
         const fromDir = clientsDirectory.map(c => ({ name: c.name, phone: c.phone }));
         const fromSales = sales
@@ -146,34 +151,44 @@ const App = () => {
     }, [formData.profilesToBuy, formData.client, formData.id]);
 
     // --- 5. ACCIONES DE FIREBASE (CRUD) ---
-    // Mantenemos aquí las funciones que usan `db`, `userPath` y manipulan el estado (`formData`, `sales`).
     
     const handleAddServiceToCatalog = async (e) => {
         e.preventDefault(); if (!user || !catalogForm.name) return;
-        await addDoc(collection(db, userPath, 'catalog'), { 
-            name: catalogForm.name, cost: Number(catalogForm.cost), type: catalogForm.type, defaultSlots: Number(catalogForm.defaultSlots) 
-        });
-        setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
+        try {
+            await addDoc(collection(db, userPath, 'catalog'), { 
+                name: catalogForm.name, cost: Number(catalogForm.cost), type: catalogForm.type, defaultSlots: Number(catalogForm.defaultSlots) 
+            });
+            setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
+            setNotification({ show: true, message: `Servicio '${catalogForm.name}' agregado al catálogo.`, type: 'success' });
+        } catch (error) {
+            setNotification({ show: true, message: 'Error al agregar servicio al catálogo.', type: 'error' });
+        }
     };
 
     const handleAddPackageToCatalog = async (e) => {
         e.preventDefault();
         if (!user || !packageForm.name || packageForm.slots <= 1) return;
         const packageName = `${packageForm.name} Paquete ${packageForm.slots} Perfiles`;
-        await addDoc(collection(db, userPath, 'catalog'), { 
-            name: packageName, 
-            cost: Number(packageForm.cost), 
-            type: 'Paquete', 
-            defaultSlots: Number(packageForm.slots) 
-        });
-        setPackageForm({ name: 'Netflix', cost: 480, slots: 2 });
+        try {
+            await addDoc(collection(db, userPath, 'catalog'), { 
+                name: packageName, 
+                cost: Number(packageForm.cost), 
+                type: 'Paquete', 
+                defaultSlots: Number(packageForm.slots) 
+            });
+            setPackageForm({ name: 'Netflix', cost: 480, slots: 2 });
+            setNotification({ show: true, message: `Paquete '${packageName}' creado.`, type: 'success' });
+        } catch (error) {
+            setNotification({ show: true, message: 'Error al agregar paquete al catálogo.', type: 'error' });
+        }
     };
 
     const handleImportCSV = (event, type) => {
         const file = event.target.files[0];
         if (!file || !user) return;
-        setImportStatus('Cargando...');
         
+        setNotification({ show: true, message: 'Cargando datos...', type: 'warning' });
+
         const reader = new FileReader();
         reader.onload = async (e) => {
             const text = e.target.result;
@@ -226,9 +241,9 @@ const App = () => {
                 }
 
                 await batch.commit();
-                setImportStatus(`¡Importación lista! Agregados: ${count}. Errores omitidos: ${errors}.`);
+                setNotification({ show: true, message: `¡Importación lista! Agregados: ${count}. Errores omitidos: ${errors}.`, type: 'success' });
             } catch (error) {
-                setImportStatus(`Error al procesar el archivo. Verifique el formato CSV y que las columnas coincidan.`);
+                setNotification({ show: true, message: `Error al procesar el archivo. Verifique el formato CSV.`, type: 'error' });
             }
         };
         reader.readAsText(file);
@@ -247,12 +262,15 @@ const App = () => {
     const handleConfirmAction = async () => {
         if (!user) return;
         try {
-            if (confirmModal.type === 'delete_service') await deleteDoc(doc(db, userPath, 'catalog', confirmModal.id));
+            if (confirmModal.type === 'delete_service') {
+                await deleteDoc(doc(db, userPath, 'catalog', confirmModal.id));
+                setNotification({ show: true, message: 'Servicio eliminado correctamente.', type: 'success' });
+            }
             else if (confirmModal.type === 'liberate') {
                 const currentSale = sales.find(s => s.id === confirmModal.id);
                 let newServiceName = 'Netflix 1 Perfil';
 
-                if (currentModal.service && currentModal.service.toLowerCase().includes('paquete')) {
+                if (currentSale.service && currentSale.service.toLowerCase().includes('paquete')) {
                     const baseName = currentSale.service.replace(/ Paquete \d+ Perfiles/i, '').trim();
                     const individualService = catalog.find(c => c.name.toLowerCase().includes(`${baseName.toLowerCase()} 1 perfil`));
                     
@@ -265,13 +283,18 @@ const App = () => {
                     client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '', 
                     service: newServiceName 
                 });
+                setNotification({ show: true, message: 'Perfil liberado y marcado como disponible.', type: 'success' });
             }
             else if (confirmModal.type === 'delete_account') {
                 const batch = writeBatch(db);
                 confirmModal.data.forEach(id => { const docRef = doc(db, userPath, 'sales', id); batch.delete(docRef); });
                 await batch.commit();
+                setNotification({ show: true, message: 'Cuenta y todos sus perfiles eliminados.', type: 'warning' });
             }
-        } catch (error) { console.error("Error en acción:", error); }
+        } catch (error) { 
+            console.error("Error en acción:", error); 
+            setNotification({ show: true, message: 'Error al ejecutar la acción en la base de datos.', type: 'error' });
+        }
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
@@ -295,11 +318,15 @@ const App = () => {
             const pName = bulkProfiles[0]?.profile !== '' ? bulkProfiles[0].profile : formData.profile;
             const pPin = bulkProfiles[0]?.pin !== '' ? bulkProfiles[0].pin : formData.pin;
             await updateDoc(doc(db, userPath, 'sales', formData.id), { ...formData, profile: pName, pin: pPin, cost: costPerProfile }); 
+            setNotification({ show: true, message: 'Venta actualizada correctamente.', type: 'success' });
             setView('dashboard'); resetForm(); return;
         }
 
         let freeRows = sales.filter(s => s.email === formData.email && s.client === 'LIBRE'); 
-        if (quantity > freeRows.length) { alert(`Error: Solo quedan ${freeRows.length} perfiles libres.`); return; }
+        if (quantity > freeRows.length) { 
+            setNotification({ show: true, message: `Error: Solo quedan ${freeRows.length} perfiles libres.`, type: 'error' });
+            return; 
+        }
 
         const batch = writeBatch(db);
         freeRows.slice(0, quantity).forEach((row, index) => {
@@ -313,31 +340,42 @@ const App = () => {
             });
         });
         await batch.commit();
+        setNotification({ show: true, message: `¡Venta de ${quantity} perfiles guardada con éxito!`, type: 'success' });
         setView('dashboard'); resetForm();
     };
 
     const handleGenerateStock = async (e) => {
         e.preventDefault(); if (!user) return;
-        const batch = writeBatch(db);
-        for (let i = 0; i < stockForm.slots; i++) {
-            const newDocRef = doc(collection(db, userPath, 'sales'));
-            batch.set(newDocRef, {
-                client: 'LIBRE', phone: '', service: stockForm.service, endDate: '', email: stockForm.email,
-                pass: stockForm.pass, profile: '', pin: '', cost: stockForm.cost, type: stockForm.type, createdAt: Date.now() + i
-            });
+        try {
+            const batch = writeBatch(db);
+            for (let i = 0; i < stockForm.slots; i++) {
+                const newDocRef = doc(collection(db, userPath, 'sales'));
+                batch.set(newDocRef, {
+                    client: 'LIBRE', phone: '', service: stockForm.service, endDate: '', email: stockForm.email,
+                    pass: stockForm.pass, profile: '', pin: '', cost: stockForm.cost, type: stockForm.type, createdAt: Date.now() + i
+                });
+            }
+            await batch.commit();
+            setStockTab('manage'); 
+            setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
+            setNotification({ show: true, message: `${stockForm.slots} cupos de stock generados.`, type: 'success' });
+        } catch (error) {
+            setNotification({ show: true, message: 'Error al generar stock.', type: 'error' });
         }
-        await batch.commit();
-        setStockTab('manage'); 
-        setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
     };
 
     const handleQuickRenew = async (id) => {
         const sale = sales.find(s => s.id === id);
         if (sale && sale.endDate) {
-            const [year, month, day] = sale.endDate.split('-').map(Number);
-            const date = new Date(year, month - 1, day); date.setMonth(date.getMonth() + 1);
-            const newEndDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-            await updateDoc(doc(db, userPath, 'sales', id), { endDate: newEndDate });
+            try {
+                const [year, month, day] = sale.endDate.split('-').map(Number);
+                const date = new Date(year, month - 1, day); date.setMonth(date.getMonth() + 1);
+                const newEndDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                await updateDoc(doc(db, userPath, 'sales', id), { endDate: newEndDate });
+                setNotification({ show: true, message: 'Renovación rápida completada (30 días).', type: 'success' });
+            } catch (error) {
+                setNotification({ show: true, message: 'Error al renovar rápidamente.', type: 'error' });
+            }
         }
     };
     
@@ -432,119 +470,127 @@ const App = () => {
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
     if (!user) {
-        return <LoginScreen 
-            loginEmail={loginEmail} setLoginEmail={setLoginEmail} 
-            loginPass={loginPass} setLoginPass={setLoginPass} 
-            loginError={loginError} handleLogin={handleLogin}
-        />;
+        return (
+            <>
+                <Toast notification={notification} setNotification={setNotification} /> {/* Renderizar Toast incluso en login */}
+                <LoginScreen 
+                    loginEmail={loginEmail} setLoginEmail={setLoginEmail} 
+                    loginPass={loginPass} setLoginPass={setLoginPass} 
+                    loginError={loginError} handleLogin={handleLogin}
+                />
+            </>
+        );
     }
 
     return (
-        <div className="flex flex-col md:flex-row h-full bg-[#F2F2F7] font-sans text-slate-900 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
-            
-            {/* Modal de Confirmación */}
-            {confirmModal.show && (
-                <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl max-w-sm w-full border border-white/50 text-center transform scale-100">
+        <>
+            <Toast notification={notification} setNotification={setNotification} /> {/* <-- RENDERIZADO DEL TOAST */}
+
+            <div className="flex flex-col md:flex-row h-full bg-[#F2F2F7] font-sans text-slate-900 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
+                
+                {/* Modal de Confirmación */}
+                {confirmModal.show && (
+                    <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+                        <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl max-w-sm w-full border border-white/50 text-center transform scale-100">
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 mx-auto shadow-inner ${confirmModal.type === 'delete_service' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
                             {confirmModal.type === 'delete_service' ? <Trash2 size={32}/> : <RotateCcw size={32}/>}
                         </div>
-                        <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">{confirmModal.title}</h3>
-                        <p className="text-slate-500 mb-8 text-base font-medium leading-relaxed">{confirmModal.msg}</p>
-                        <div className="flex flex-col gap-3">
-                            <button onClick={handleConfirmAction} className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${confirmModal.type === 'delete_service' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'}`}>Confirmar Acción</button>
-                            <button onClick={() => setConfirmModal({show:false, id:null, type:null})} className="w-full py-4 bg-white text-slate-500 rounded-2xl font-bold hover:bg-slate-50 active:scale-95 transition-all border border-slate-200">Cancelar</button>
+                            <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">{confirmModal.title}</h3>
+                            <p className="text-slate-500 mb-8 text-base font-medium leading-relaxed">{confirmModal.msg}</p>
+                            <div className="flex flex-col gap-3">
+                                <button onClick={handleConfirmAction} className={`w-full py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${confirmModal.type === 'delete_service' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'}`}>Confirmar Acción</button>
+                                <button onClick={() => setConfirmModal({show:false, id:null, type:null})} className="w-full py-4 bg-white text-slate-500 rounded-2xl font-bold hover:bg-slate-50 active:scale-95 transition-all border border-slate-200">Cancelar</button>
+                            </div>
                         </div>
                     </div>
+                )}
+
+                {/* Datalists */}
+                <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
+                <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
+
+                {/* Sidebar (Componente) */}
+                <Sidebar view={view} setView={setView} handleLogout={handleLogout}/>
+
+                <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                    <header className="h-14 md:h-20 flex items-center justify-between px-4 md:px-8 flex-shrink-0 z-10 bg-white/50 backdrop-blur-md md:bg-transparent">
+                        <div><h2 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{view === 'dashboard' ? 'Ventas' : view === 'add_stock' ? 'Inventario' : view === 'form' ? 'Cliente' : 'Ajustes'}</h2></div>
+                        <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur text-slate-500 rounded-full text-xs font-bold border border-white/50 shadow-sm"><Calendar size={14}/> {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+                        <button onClick={handleLogout} className="md:hidden p-2 text-slate-400"><LogOut size={20}/></button>
+                    </header>
+
+                    <main className="flex-1 overflow-y-auto p-3 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
+                        {/* Renderizado de Vistas (El Router) */}
+                        
+                        {view === 'dashboard' && <Dashboard 
+                            sales={sales}
+                            filteredSales={filteredSales}
+                            catalog={catalog}
+                            filterClient={filterClient} setFilterClient={setFilterClient}
+                            filterService={filterService} setFilterService={setFilterService}
+                            filterStatus={filterStatus} setFilterStatus={setFilterStatus}
+                            dateFrom={dateFrom} setDateFrom={setDateFrom}
+                            dateTo={dateTo} setDateTo={setDateTo}
+                            totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
+                            getStatusIcon={getStatusIcon} getStatusColor={getStatusColor}
+                            getDaysRemaining={getDaysRemaining}
+                            sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, catalog, sales, actionType)}
+                            handleQuickRenew={handleQuickRenew}
+                            triggerLiberate={triggerLiberate}
+                            setFormData={setFormData} setView={setView}
+                            openMenuId={openMenuId} setOpenMenuId={setOpenMenuId}
+                            setBulkProfiles={setBulkProfiles}
+                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES}
+                        />}
+
+                        {view === 'config' && <Config 
+                            catalog={catalog}
+                            catalogForm={catalogForm} setCatalogForm={setCatalogForm}
+                            packageForm={packageForm} setPackageForm={setPackageForm}
+                            handleAddServiceToCatalog={handleAddServiceToCatalog}
+                            handleAddPackageToCatalog={handleAddPackageToCatalog}
+                            handleImportCSV={handleImportCSV}
+                            importStatus={importStatus}
+                            triggerDeleteService={triggerDeleteService}
+                        />}
+
+                        {view === 'add_stock' && <StockManager
+                            accountsInventory={accountsInventory}
+                            stockTab={stockTab} setStockTab={setStockTab}
+                            stockForm={stockForm} setStockForm={setStockForm}
+                            catalog={catalog}
+                            handleStockServiceChange={handleStockServiceChange}
+                            handleGenerateStock={handleGenerateStock}
+                            triggerDeleteAccount={triggerDeleteAccount}
+                        />}
+
+                        {view === 'form' && <SaleForm
+                            formData={formData} setFormData={setFormData}
+                            bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
+                            allClients={allClients}
+                            packageCatalog={packageCatalog}
+                            maxAvailableSlots={maxAvailableSlots}
+                            getClientPreviousProfiles={getClientPreviousProfiles}
+                            handleClientNameChange={handleClientNameChange}
+                            handleBulkProfileChange={handleBulkProfileChange}
+                            handleSingleProfileChange={handleSingleProfileChange}
+                            handleSaveSale={handleSaveSale}
+                            setView={setView}
+                            resetForm={resetForm}
+                            catalog={catalog}
+                        />}
+                    </main>
+
+                    {/* BOTTOM NAV (SOLO MOVIL) */}
+                    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 p-2 flex justify-around z-40 pb-safe">
+                        <button onClick={() => setView('dashboard')} className={`p-3 rounded-2xl ${view === 'dashboard' ? 'bg-[#007AFF] text-white shadow-lg' : 'text-slate-400'}`}><Layers size={24}/></button>
+                        <button onClick={() => setView('add_stock')} className={`p-3 rounded-2xl ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-400'}`}><Box size={24}/></button>
+                        <button onClick={() => setView('config')} className={`p-3 rounded-2xl ${view === 'config' ? 'bg-slate-100 text-slate-800' : 'text-slate-400'}`}><Settings size={24}/></button>
+                    </nav>
+
                 </div>
-            )}
-
-            {/* Datalists */}
-            <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
-            <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
-
-            {/* Sidebar (Componente) */}
-            <Sidebar view={view} setView={setView} handleLogout={handleLogout}/>
-
-            <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-                <header className="h-14 md:h-20 flex items-center justify-between px-4 md:px-8 flex-shrink-0 z-10 bg-white/50 backdrop-blur-md md:bg-transparent">
-                    <div><h2 className="text-xl md:text-3xl font-bold text-slate-900 tracking-tight">{view === 'dashboard' ? 'Ventas' : view === 'add_stock' ? 'Inventario' : view === 'form' ? 'Cliente' : 'Ajustes'}</h2></div>
-                    <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur text-slate-500 rounded-full text-xs font-bold border border-white/50 shadow-sm"><Calendar size={14}/> {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-                    <button onClick={handleLogout} className="md:hidden p-2 text-slate-400"><LogOut size={20}/></button>
-                </header>
-
-                <main className="flex-1 overflow-y-auto p-3 md:p-8 pb-24 md:pb-8 scroll-smooth no-scrollbar">
-                    {/* Renderizado de Vistas (El Router) */}
-                    
-                    {view === 'dashboard' && <Dashboard 
-                        sales={sales}
-                        filteredSales={filteredSales}
-                        catalog={catalog}
-                        filterClient={filterClient} setFilterClient={setFilterClient}
-                        filterService={filterService} setFilterService={setFilterService}
-                        filterStatus={filterStatus} setFilterStatus={setFilterStatus}
-                        dateFrom={dateFrom} setDateFrom={setDateFrom}
-                        dateTo={dateTo} setDateTo={setDateTo}
-                        totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
-                        getStatusIcon={getStatusIcon} getStatusColor={getStatusColor}
-                        getDaysRemaining={getDaysRemaining}
-                        // La función sendWhatsApp es un "wrapper" para pasar los datos necesarios
-                        sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, catalog, sales, actionType)}
-                        handleQuickRenew={handleQuickRenew}
-                        triggerLiberate={triggerLiberate}
-                        setFormData={setFormData} setView={setView}
-                        openMenuId={openMenuId} setOpenMenuId={setOpenMenuId}
-                        setBulkProfiles={setBulkProfiles}
-                        NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES}
-                    />}
-
-                    {view === 'config' && <Config 
-                        catalog={catalog}
-                        catalogForm={catalogForm} setCatalogForm={setCatalogForm}
-                        packageForm={packageForm} setPackageForm={setPackageForm}
-                        handleAddServiceToCatalog={handleAddServiceToCatalog}
-                        handleAddPackageToCatalog={handleAddPackageToCatalog}
-                        handleImportCSV={handleImportCSV}
-                        importStatus={importStatus}
-                        triggerDeleteService={triggerDeleteService}
-                    />}
-
-                    {view === 'add_stock' && <StockManager
-                        accountsInventory={accountsInventory}
-                        stockTab={stockTab} setStockTab={setStockTab}
-                        stockForm={stockForm} setStockForm={setStockForm}
-                        catalog={catalog}
-                        handleStockServiceChange={handleStockServiceChange}
-                        handleGenerateStock={handleGenerateStock}
-                        triggerDeleteAccount={triggerDeleteAccount}
-                    />}
-
-                    {view === 'form' && <SaleForm
-                        formData={formData} setFormData={setFormData}
-                        bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
-                        allClients={allClients}
-                        packageCatalog={packageCatalog}
-                        maxAvailableSlots={maxAvailableSlots}
-                        getClientPreviousProfiles={getClientPreviousProfiles}
-                        handleClientNameChange={handleClientNameChange}
-                        handleBulkProfileChange={handleBulkProfileChange}
-                        handleSingleProfileChange={handleSingleProfileChange}
-                        handleSaveSale={handleSaveSale}
-                        setView={setView}
-                        resetForm={resetForm}
-                        catalog={catalog}
-                    />}
-                </main>
-
-                {/* BOTTOM NAV (SOLO MOVIL) */}
-                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 p-2 flex justify-around z-40 pb-safe">
-                    <button onClick={() => setView('dashboard')} className={`p-3 rounded-2xl ${view === 'dashboard' ? 'bg-[#007AFF] text-white shadow-lg' : 'text-slate-400'}`}><Layers size={24}/></button>
-                    <button onClick={() => setView('add_stock')} className={`p-3 rounded-2xl ${view === 'add_stock' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-400'}`}><Box size={24}/></button>
-                    <button onClick={() => setView('config')} className={`p-3 rounded-2xl ${view === 'config' ? 'bg-slate-100 text-slate-800' : 'text-slate-400'}`}><Settings size={24}/></button>
-                </nav>
-
             </div>
-        </div>
+        </>
     );
 };
 
