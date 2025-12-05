@@ -1,6 +1,39 @@
 // src/utils/helpers.js
 
-// 1. Lógica de cálculo de días restantes (No necesita cambios)
+// Funciones para la Detección y Creación Dinámica del Enlace de WhatsApp
+// ----------------------------------------------------------------------
+
+/**
+ * Determina el prefijo del enlace de WhatsApp basándose en si es un dispositivo móvil o PC.
+ * @returns {string} El prefijo de URL: 'api' para móvil/tablet, 'web' para escritorio/PC.
+ */
+export const getWhatsappPrefix = () => {
+    // Detecta pantallas estrechas (típicamente móvil) Y que usan puntero táctil (coarse pointer)
+    const isMobileOrTablet = window.matchMedia("(max-width: 768px) and (pointer: coarse)").matches;
+    
+    if (isMobileOrTablet) {
+        return "api"; // api.whatsapp.com (Mejor para abrir la app o la web en móvil)
+    } else {
+        return "web"; // web.whatsapp.com (Mejor para abrir la interfaz web en PC/escritorio)
+    }
+};
+
+/**
+ * Genera la URL base de WhatsApp con el prefijo correcto.
+ * @param {string} phone - El número de teléfono.
+ * @returns {string} La URL base (ej: https://api.whatsapp.com/send?phone=...)
+ */
+export const createWhatsappBaseUrl = (phone) => {
+    const prefix = getWhatsappPrefix();
+    
+    // El formato de URL es el mismo, solo cambia el subdominio.
+    return `https://${prefix}.whatsapp.com/send?phone=${phone}&text=`;
+};
+
+
+// Lógica de cálculo de días restantes (No necesita cambios)
+// ----------------------------------------------------------------------
+
 export const getDaysRemaining = (endDateStr) => {
     if (!endDateStr || typeof endDateStr !== 'string') return null;
     try {
@@ -11,7 +44,9 @@ export const getDaysRemaining = (endDateStr) => {
     } catch (e) { return null; }
 };
 
-// 2. Lógica de Agrupación de Servicios (Añade 'sales' y 'catalog' como argumentos)
+// Lógica de Agrupación de Servicios (Mantenido)
+// ----------------------------------------------------------------------
+
 export const getGroupedServicesMessage = (clientName, sales, catalog, targetDaysCondition) => {
     // La función interna `getDaysRemaining` se importa automáticamente en este archivo
     
@@ -45,7 +80,9 @@ export const getGroupedServicesMessage = (clientName, sales, catalog, targetDays
 };
 
 
-// 3. Lógica de WhatsApp (Añade 'sales' y 'catalog' como argumentos)
+// Lógica de WhatsApp (MODIFICADA para usar el prefijo dinámico)
+// ----------------------------------------------------------------------
+
 export const sendWhatsApp = (sale, catalog, sales, actionType) => {
     const dateText = sale.endDate ? sale.endDate.split('-').reverse().join('/') : ''; 
     let serviceUpper = sale.service.toUpperCase();
@@ -73,5 +110,9 @@ export const sendWhatsApp = (sale, catalog, sales, actionType) => {
         message = `*${serviceUpper}*\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}\nPIN:\n${sale.pin}\n\n☑️ Su Perfil Vence el día ${dateText} ☑️`;
     }
     
-    window.open(`https://api.whatsapp.com/send?phone=${sale.phone}&text=${encodeURIComponent(message)}`, '_blank');
+    // *******************************************************************
+    // LÓGICA MODIFICADA PARA USAR PREFIJO DINÁMICO
+    // *******************************************************************
+    const baseUrl = createWhatsappBaseUrl(sale.phone);
+    window.open(`${baseUrl}${encodeURIComponent(message)}`, '_blank');
 };
