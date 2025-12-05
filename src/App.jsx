@@ -14,7 +14,7 @@ import { writeBatch, collection, doc, addDoc, updateDoc, deleteDoc } from 'fireb
 // Importaciones de Archivos Modulares
 import { useDataSync } from './hooks/useDataSync'; 
 import { auth, db } from './firebase/config'; 
-import { getDaysRemaining, sendWhatsApp } from './utils/helpers'; // Asegúrate de que sendWhatsApp esté importado
+import { getDaysRemaining, sendWhatsApp } from './utils/helpers'; 
 
 // Importar Vistas y Componentes
 import LoginScreen from './components/LoginScreen';
@@ -38,7 +38,7 @@ const App = () => {
     // --- 2. ESTADOS DE UI Y FORMULARIO ---
     const [loginEmail, setLoginEmail] = useState('');
     const [loginPass, setLoginPass] = useState('');
-    const [loginError, setLoginError] = useState(''); // Mantener para input validation si es necesario
+    const [loginError, setLoginError] = useState(''); 
 
     const [view, setView] = useState('dashboard');
     const [stockTab, setStockTab] = useState('add');
@@ -48,7 +48,7 @@ const App = () => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
-    const [importStatus, setImportStatus] = useState(''); // Se puede eliminar si solo usamos toast
+    const [importStatus, setImportStatus] = useState(''); // Estado antiguo
 
     // ✅ ESTADO DE NOTIFICACIÓN (TOAST)
     const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); 
@@ -70,7 +70,6 @@ const App = () => {
         setLoginError('');
         try {
             await signInWithEmailAndPassword(auth, loginEmail, loginPass);
-            // Mostrar un Toast de éxito al iniciar sesión
             setNotification({ show: true, message: '¡Bienvenido! Sesión iniciada con éxito.', type: 'success' });
         } catch (error) {
             console.error(error);
@@ -492,9 +491,9 @@ const App = () => {
                 {confirmModal.show && (
                     <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
                         <div className="bg-white/90 backdrop-blur-xl rounded-[2rem] p-8 shadow-2xl max-w-sm w-full border border-white/50 text-center transform scale-100">
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 mx-auto shadow-inner ${confirmModal.type === 'delete_service' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
-                            {confirmModal.type === 'delete_service' ? <Trash2 size={32}/> : <RotateCcw size={32}/>}
-                        </div>
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 mx-auto shadow-inner ${confirmModal.type === 'delete_service' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'}`}>
+                                {confirmModal.type === 'delete_service' ? <Trash2 size={32}/> : <RotateCcw size={32}/>}
+                            </div>
                             <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">{confirmModal.title}</h3>
                             <p className="text-slate-500 mb-8 text-base font-medium leading-relaxed">{confirmModal.msg}</p>
                             <div className="flex flex-col gap-3">
@@ -541,6 +540,7 @@ const App = () => {
                             openMenuId={openMenuId} setOpenMenuId={setOpenMenuId}
                             setBulkProfiles={setBulkProfiles}
                             NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES}
+                            loadingData={loadingData} // <-- PASAMOS LA PROP DE CARGA
                         />}
 
                         {view === 'config' && <Config 
