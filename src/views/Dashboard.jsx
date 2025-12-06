@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (FINAL: AJUSTE DE DISEÑO Y BOTÓN DE COPIAR CREDENCIALES EN TARJETA)
+// src/views/Dashboard.jsx (FINAL CORREGIDO: Filtros Restaurados, Persistencia, Vencidas, Copiar OK)
 
 import React, { useState } from 'react';
 import { 
@@ -34,7 +34,7 @@ const Dashboard = ({
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
     
-    // 🔥 NUEVA FUNCIÓN: Copiar email y contraseña al portapapeles
+    // 🔥 FUNCIÓN: Copiar email y contraseña al portapapeles
     const handleCopyCredentials = (e, email, pass) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${email}:${pass}`);
@@ -53,6 +53,8 @@ const Dashboard = ({
 
     const expiringToday = validSales.filter(s => getDaysRemaining(s.endDate) === 0);
     const expiringTomorrow = validSales.filter(s => getDaysRemaining(s.endDate) === 1);
+    // 🔥 Ventas Vencidas (días < 0)
+    const overdueSales = validSales.filter(s => getDaysRemaining(s.endDate) < 0);
 
     const sortedSales = filteredSales.slice().sort((a, b) => {
         const clientA = a.client ? a.client.toUpperCase() : '';
@@ -61,18 +63,21 @@ const Dashboard = ({
     });
 
     const openBulkModal = (type) => {
+        // La eliminación de setSentIds([]) en el cuerpo de la función permite la persistencia
         if (type === 'today') {
             if (expiringToday.length === 0) return;
             setBulkModal({ show: true, title: 'Vencen Hoy', list: expiringToday, msgType: 'expired_today' });
-        } else {
+        } else if (type === 'tomorrow') {
             if (expiringTomorrow.length === 0) return;
             setBulkModal({ show: true, title: 'Vencen Mañana', list: expiringTomorrow, msgType: 'warning_tomorrow' });
+        } else if (type === 'overdue') { // Modal Vencidas
+            if (overdueSales.length === 0) return;
+            setBulkModal({ show: true, title: 'Vencidas (Pago)', list: overdueSales, msgType: 'overdue_payment' });
         }
-        setSentIds([]); 
     };
 
     const handleBulkSend = (sale) => {
-        // 1. Enviar el mensaje de WhatsApp (asumimos que el mensaje ya consolida la información)
+        // 1. Enviar el mensaje de WhatsApp
         sendWhatsApp(sale, bulkModal.msgType);
         
         // 2. Identificar al cliente y teléfono para agrupar
@@ -138,7 +143,7 @@ const Dashboard = ({
                                 {!isFree && !isProblem && (
                                     <div className="text-right md:hidden flex flex-col items-end leading-none">
                                         {cost > 0 && <span className={`text-sm font-black tracking-tight ${priceColor}`}>${cost}</span>}
-                                        <div className={`text-[9px] font-bold mt-0.5 ${days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
+                                        <div className={`text-[9px] font-bold mt-0.5 ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
                                     </div>
                                 )}
                             </div>
@@ -167,7 +172,7 @@ const Dashboard = ({
                                     <div className="text-[10px] md:text-xs font-mono font-bold text-slate-600 truncate select-all" title="Contraseña">
                                         {sale.pass}
                                     </div>
-                                    {/* 🔥 BOTÓN DE COPIAR */}
+                                    {/* Botón de Copiar */}
                                     <button 
                                         onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)}
                                         className="text-slate-400 hover:text-indigo-600 p-1 rounded-full transition-colors active:scale-90"
@@ -197,7 +202,7 @@ const Dashboard = ({
                     <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
                             <div className="text-center">
-                                <div className={`text-xl font-black tracking-tighter ${days <= 3 ? 'text-amber-500' : textPrimary}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
+                                <div className={`text-xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : textPrimary}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
                                 <div className={`text-[10px] font-bold uppercase tracking-wider ${textSecondary}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
                             </div>
                         ) : (
@@ -206,7 +211,7 @@ const Dashboard = ({
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">---</span>
                         )}
                         {/* El precio en PC ahora se muestra aquí para usar el espacio adicional */}
-                        {!isFree && !isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
+                        {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
                     </div>
 
                     {/* 4. ACCIONES (COLUMNA 4: BOTONES) - Reducido a col-span-2 y botones compactos */}
@@ -289,15 +294,33 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* ALERTAS */}
-            {(expiringToday.length > 0 || expiringTomorrow.length > 0) && (
+            {/* ALERTAS - FILTROS VENCIDAS, HOY, MAÑANA */}
+            {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
+                    
+                    {/* Botón: Vencidas (Días < 0) */}
+                    {overdueSales.length > 0 && (
+                        <button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-white/20 rounded-lg"><Ban size={16} className="fill-white"/></div>
+                                <div className="text-left leading-none">
+                                    <p className="text-[10px] font-bold opacity-80 uppercase">Vencidas</p>
+                                    <p className="text-sm font-black">{overdueSales.length} Clientes</p>
+                                </div>
+                            </div>
+                            <ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
+                        </button>
+                    )}
+
+                    {/* Botón: Vencen Hoy (Días = 0) */}
                     {expiringToday.length > 0 && (<button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-3 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1.5 bg-white/20 rounded-lg"><Bell size={16} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[10px] font-bold opacity-80 uppercase">Hoy</p><p className="text-sm font-black">{expiringToday.length} Clientes</p></div></div><ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
+                    
+                    {/* Botón: Vencen Mañana (Días = 1) */}
                     {expiringTomorrow.length > 0 && (<button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1.5 bg-white/20 rounded-lg"><Calendar size={16} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[10px] font-bold opacity-80 uppercase">Mañana</p><p className="text-sm font-black">{expiringTomorrow.length} Clientes</p></div></div><ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
                 </div>
             )}
 
-            {/* FILTROS (Igual) */}
+            {/* 🔥 SECCIÓN DE FILTROS (RESTAURADA) */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar cliente, correo..." className="block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-transparent border-none text-slate-800 placeholder-slate-400 focus:ring-0 text-sm md:text-base font-medium rounded-2xl transition-all" value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>

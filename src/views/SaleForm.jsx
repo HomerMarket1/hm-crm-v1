@@ -1,4 +1,4 @@
-// src/views/SaleForm.jsx (BOTONES SIEMPRE VISIBLES + SCROLL INTERNO Y ORDEN ALFABÉTICO)
+// src/views/SaleForm.jsx (FINAL CORREGIDO: Lógica Robusta de Filtro de Conversión)
 
 import React from 'react';
 import { Copy, Package, User, Smartphone, Calendar, DollarSign, Layers, X, Check, Save } from 'lucide-react';
@@ -24,8 +24,45 @@ const SaleForm = ({
     const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none";
     const INPUT_STYLE = "w-full p-4 pl-11 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-200 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400";
     
+    // 🔥 UTILITY: Obtiene la categoría principal del servicio (más robusta)
+    const getBaseServiceName = (serviceName) => {
+        if (!serviceName) return 'UNKNOWN';
+        const lowerName = serviceName.toLowerCase();
+        
+        if (lowerName.includes('disney') || lowerName.includes('star')) return 'Disney';
+        if (lowerName.includes('netflix')) return 'Netflix';
+        if (lowerName.includes('prime')) return 'Prime';
+        if (lowerName.includes('max')) return 'Max';
+        if (lowerName.includes('crunchyroll')) return 'Crunchyroll';
+        if (lowerName.includes('vix')) return 'Vix';
+        if (lowerName.includes('paramount')) return 'Paramount';
+        
+        // Si no coincide con un conocido, usamos la primera palabra para compatibilidad
+        const base = lowerName.split(' ')[0].replace('+', '');
+        return base;
+    };
+
+
     // 🔥 MODIFICACIÓN 1: Asegurar que la lista de paquetes también esté ordenada alfabéticamente
     const sortedPackageCatalog = [...packageCatalog].sort((a, b) => a.name.localeCompare(b.name));
+
+    // 🔥 MODIFICACIÓN 2: Lógica de Filtrado para la conversión
+    const baseService = getBaseServiceName(formData.service);
+    
+    // El catálogo filtrado debe incluir tanto los paquetes como los perfiles individuales
+    const filteredConversionCatalog = catalog.filter(s => {
+        const serviceCategory = getBaseServiceName(s.name);
+        // Si el servicio actual es UNKNOWN, no filtramos.
+        if (baseService === 'UNKNOWN') return true; 
+        // Filtramos solo por la categoría base, a menos que sea el servicio ya seleccionado
+        return serviceCategory === baseService || s.name === formData.service;
+    });
+
+    // Dividimos el catálogo filtrado en paquetes y perfiles
+    const filteredPackages = sortedPackageCatalog.filter(pkg => 
+        getBaseServiceName(pkg.name) === baseService || pkg.name === formData.service
+    );
+    const filteredProfiles = filteredConversionCatalog.filter(s => s.type !== 'Paquete');
 
     const copyCredentials = (e) => {
         e.preventDefault();
@@ -81,7 +118,33 @@ const SaleForm = ({
                                         <button 
                                             key={num} 
                                             type="button" 
-                                            onClick={()=>setFormData({...formData, profilesToBuy: num})} 
+                                            // Lógica de selección de precio de perfil individual por defecto
+                                            onClick={()=> {
+                                                let newCost = formData.cost;
+                                                let newService = formData.service;
+                                                
+                                                if (formData.client === 'LIBRE' && num > 0) {
+                                                    const base = getBaseServiceName(formData.service);
+                                                    // Buscar el servicio individual (1 Perfil) de esa plataforma
+                                                    const individualService = catalog.find(s => 
+                                                        s.type === 'Perfil' && 
+                                                        s.defaultSlots === 1 && 
+                                                        getBaseServiceName(s.name) === base
+                                                    );
+                                                    
+                                                    if (individualService) {
+                                                        newCost = Number(individualService.cost) * num; // Costo total = Precio individual * cantidad
+                                                        newService = individualService.name; 
+                                                    }
+                                                }
+
+                                                setFormData({
+                                                    ...formData, 
+                                                    profilesToBuy: num,
+                                                    cost: newCost,
+                                                    service: newService
+                                                });
+                                            }}
                                             disabled={num > maxAvailableSlots && formData.client === 'LIBRE'} 
                                             className={`flex-1 h-9 rounded-lg text-sm font-black transition-all ${
                                                 formData.profilesToBuy === num 
@@ -183,9 +246,15 @@ const SaleForm = ({
                                         <option value={formData.service}>{formData.service} (Actual)</option>
                                         <option disabled>──────────</option>
                                         {/* Usamos la versión ordenada de paquetes */}
-                                        {sortedPackageCatalog.map(pkg => <option key={pkg.id} value={pkg.name}>{pkg.name} (${pkg.cost})</option>)}
-                                        {/* Esta lista ya viene ordenada desde App.jsx */}
-                                        {catalog.filter(s => s.type !== 'Paquete').map(ind => <option key={`ind-${ind.id}`} value={ind.name}>{ind.name}</option>)}
+                                        {sortedPackageCatalog
+                                            .filter(pkg => getBaseServiceName(pkg.name) === baseService) // FILTRO: Mostrar solo paquetes de la misma plataforma
+                                            .map(pkg => <option key={pkg.id} value={pkg.name}>{pkg.name} (${pkg.cost})</option>)
+                                        }
+                                        {/* Paquetes individuales y cuentas filtrados */}
+                                        {filteredProfiles
+                                            .filter(s => getBaseServiceName(s.name) === baseService) // FILTRO: Mostrar solo perfiles/cuentas de la misma plataforma
+                                            .map(ind => <option key={`ind-${ind.id}`} value={ind.name}>{ind.name}</option>)
+                                        }
                                     </select>
                                 </div>
                             </div>
