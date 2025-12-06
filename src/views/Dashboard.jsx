@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (CON CENTRO DE NOTIFICACIONES MASIVAS)
+// src/views/Dashboard.jsx (SOLUCIÓN: SCROLL EN NOTIFICACIONES MASIVAS)
 
 import React, { useState } from 'react';
 import { 
@@ -33,9 +33,9 @@ const Dashboard = ({
 
     // ESTADO PARA EL MODAL DE ENVÍO MASIVO
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
-    const [sentIds, setSentIds] = useState([]); // Para marcar visualmente los enviados
+    const [sentIds, setSentIds] = useState([]); 
 
-    // 1. LÓGICA: FILTRAR VENCIMIENTOS PARA ALERTAS (Excluyendo Libres/Problemas/Admin)
+    // 1. LÓGICA: FILTRAR VENCIMIENTOS
     const validSales = sales.filter(s => 
         s.client !== 'LIBRE' && 
         s.client !== 'Admin' && 
@@ -45,14 +45,14 @@ const Dashboard = ({
     const expiringToday = validSales.filter(s => getDaysRemaining(s.endDate) === 0);
     const expiringTomorrow = validSales.filter(s => getDaysRemaining(s.endDate) === 1);
 
-    // 2. ORDENAMIENTO LISTA PRINCIPAL (A-Z)
+    // 2. ORDENAMIENTO
     const sortedSales = filteredSales.slice().sort((a, b) => {
         const clientA = a.client ? a.client.toUpperCase() : '';
         const clientB = b.client ? b.client.toUpperCase() : '';
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
-    // 3. HANDLERS PARA NOTIFICACIONES
+    // 3. HANDLERS
     const openBulkModal = (type) => {
         if (type === 'today') {
             if (expiringToday.length === 0) return;
@@ -61,15 +61,15 @@ const Dashboard = ({
             if (expiringTomorrow.length === 0) return;
             setBulkModal({ show: true, title: 'Vencen Mañana', list: expiringTomorrow, msgType: 'warning_tomorrow' });
         }
-        setSentIds([]); // Resetear marcas de enviado
+        setSentIds([]); 
     };
 
     const handleBulkSend = (sale) => {
         sendWhatsApp(sale, bulkModal.msgType);
-        setSentIds(prev => [...prev, sale.id]); // Marcar como enviado
+        setSentIds(prev => [...prev, sale.id]); 
     };
 
-    // 4. COMPONENTE TARJETA (Mantenemos el diseño compacto)
+    // 4. COMPONENTE TARJETA (COMPACTO)
     const SaleCard = ({ sale }) => {
         const isFree = sale.client === 'LIBRE';
         const isProblem = NON_BILLABLE_STATUSES && NON_BILLABLE_STATUSES.includes(sale.client);
@@ -181,7 +181,7 @@ const Dashboard = ({
     return (
         <div className="w-full pb-32 space-y-3 md:space-y-8">
             
-            {/* --- MODAL DE ENVÍO MASIVO --- */}
+            {/* --- MODAL DE ENVÍO MASIVO (CORREGIDO: pb-24 PARA SCROLL) --- */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm animate-in fade-in duration-300 p-0 md:p-4">
                     <div className="w-full md:max-w-md bg-white rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh]">
@@ -194,7 +194,8 @@ const Dashboard = ({
                                 <X size={20} className="text-slate-500"/>
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+                        {/* ✅ AQUI ESTA LA CORRECCIÓN: pb-24 en el contenedor de la lista */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 pb-24">
                             {bulkModal.list.map((sale) => {
                                 const isSent = sentIds.includes(sale.id);
                                 return (
@@ -210,7 +211,7 @@ const Dashboard = ({
                                         </div>
                                         {isSent ? (
                                             <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl">
-                                                <CheckCircle2 size={14}/> Enviado
+                                                <CheckCircle2 size={14}/>
                                             </span>
                                         ) : (
                                             <button onClick={() => handleBulkSend(sale)} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all">
@@ -225,7 +226,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* --- BARRA DE NOTIFICACIONES MASIVAS (NUEVO) --- */}
+            {/* --- BARRA DE NOTIFICACIONES MASIVAS --- */}
             {(expiringToday.length > 0 || expiringTomorrow.length > 0) && (
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     {expiringToday.length > 0 && (
@@ -233,7 +234,7 @@ const Dashboard = ({
                             <div className="flex items-center gap-2">
                                 <div className="p-1.5 bg-white/20 rounded-lg"><Bell size={16} className="fill-white"/></div>
                                 <div className="text-left leading-none">
-                                    <p className="text-[10px] font-bold opacity-80 uppercase">Vencen Hoy</p>
+                                    <p className="text-[10px] font-bold opacity-80 uppercase">Hoy</p>
                                     <p className="text-sm font-black">{expiringToday.length} Clientes</p>
                                 </div>
                             </div>
@@ -255,7 +256,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* BARRA DE FILTROS (Sin cambios) */}
+            {/* BARRA DE FILTROS */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     <div className="relative group w-full">
@@ -318,7 +319,7 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {/* LISTA DE VENTAS */}
+            {/* LISTA COMPACTA */}
             <div className="grid grid-cols-1 gap-2 md:gap-4">
                 {sortedSales.length > 0 ? (
                     sortedSales.map(sale => <SaleCard key={sale.id} sale={sale} />)
