@@ -1,237 +1,249 @@
-// src/views/Dashboard.jsx (CÓDIGO FINAL Y FUNCIONAL CON USEREDUCER)
+// src/views/Dashboard.jsx (FILTROS OPTIMIZADOS: FECHAS SEPARADAS EN MÓVIL)
 
 import React from 'react';
 import { 
-    Search, Plus, Smartphone, MessageCircle, Lock, Key, Trash2, Edit2, Ban, XCircle, 
-    CheckCircle, Filter, DollarSign, RotateCcw, X, MoreVertical, Menu, 
-    RefreshCw, Globe, Shield, Skull, CalendarPlus, ChevronRight, AlertTriangle, Calendar,
-    Loader 
+    Search, Smartphone, Key, Lock, Edit2, Ban, XCircle, RotateCcw, 
+    X, Calendar, ChevronRight, CalendarPlus, Filter 
 } from 'lucide-react';
 
 const Dashboard = ({
     sales, 
     filteredSales,
     catalog, 
-    filterClient, // Valor actual del filtro de cliente
-    filterService, // Valor actual del filtro de servicio
-    filterStatus, // Valor actual del filtro de estado
-    dateFrom, // Valor actual de la fecha "Desde"
-    dateTo, // Valor actual de la fecha "Hasta"
-    
-    // ✅ FUNCIÓN DE ACTUALIZACIÓN (VIENE DEL DISPATCH)
+    filterClient, 
+    filterService, 
+    filterStatus, 
+    dateFrom, 
+    dateTo, 
     setFilter, 
-    
-    totalItems, totalFilteredMoney, getStatusIcon, getStatusColor,
-    getDaysRemaining, sendWhatsApp, handleQuickRenew, triggerLiberate, 
-    setFormData, setView, openMenuId, setOpenMenuId, setBulkProfiles,
-    NON_BILLABLE_STATUSES, loadingData 
+    totalItems, 
+    totalFilteredMoney, 
+    getStatusIcon, 
+    getStatusColor,
+    getDaysRemaining, 
+    sendWhatsApp, 
+    handleQuickRenew, 
+    triggerLiberate, 
+    setFormData, 
+    setView, 
+    setBulkProfiles,
+    NON_BILLABLE_STATUSES, 
+    loadingData 
 }) => {
 
-    // 1. LÓGICA DE ORDENAMIENTO (A-Z por Cliente)
+    // 1. ORDENAMIENTO (A-Z)
     const sortedSales = filteredSales.slice().sort((a, b) => {
         const clientA = a.client ? a.client.toUpperCase() : '';
         const clientB = b.client ? b.client.toUpperCase() : '';
-
-        if (clientA < clientB) {
-            return -1;
-        }
-        if (clientA > clientB) {
-            return 1;
-        }
-        return 0; 
+        return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
-
-    // 2. FUNCIÓN INTERNA DE RENDERIZADO DE LA TARJETA (SaleCard)
+    // 2. TARJETA (DISEÑO COMPACTO MANTENIDO)
     const SaleCard = ({ sale }) => {
-        
         const isFree = sale.client === 'LIBRE';
         const isProblem = NON_BILLABLE_STATUSES && NON_BILLABLE_STATUSES.includes(sale.client);
         const isAdmin = sale.client === 'Admin';
         const days = getDaysRemaining(sale.endDate);
-        let cardClass = "bg-white/80 backdrop-blur-sm border border-white hover:border-blue-200 hover:shadow-lg hover:-translate-y-0.5";
-        if (isFree) cardClass = "bg-emerald-50/40 border border-emerald-100 border-dashed";
-        if (isProblem) cardClass = "bg-red-50/20 border border-red-100 hover:border-red-200";
-        if (isAdmin) cardClass = "bg-slate-900 border border-slate-700 text-white";
+        const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
+
+        let containerStyle = "bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60";
+        let textPrimary = "text-slate-800";
+        let textSecondary = "text-slate-500";
+        let accentColor = "bg-indigo-500 text-white shadow-indigo-500/30";
+        let priceColor = isAdmin ? "text-white/80" : "text-slate-700"; 
+
+        if (isFree) {
+            containerStyle = "bg-emerald-50/30 backdrop-blur-sm border border-emerald-100/50";
+            textPrimary = "text-emerald-900";
+            textSecondary = "text-emerald-600/70";
+            accentColor = "bg-emerald-500 text-white shadow-emerald-500/30";
+        }
+        if (isProblem) {
+            containerStyle = "bg-rose-50/30 backdrop-blur-sm border border-rose-100/50";
+            textPrimary = "text-rose-900";
+            accentColor = "bg-rose-500 text-white";
+        }
+        if (isAdmin) {
+            containerStyle = "bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white";
+            textPrimary = "text-white";
+            textSecondary = "text-slate-400";
+            accentColor = "bg-white text-black";
+        }
 
         return (
-            <div key={sale.id} className={`p-3 rounded-2xl transition-all relative group ${cardClass}`}>
-                <div className="flex flex-col md:grid md:grid-cols-12 gap-3 md:gap-4 items-center">
-                    
-                    {/* CLIENTE (col-span-2) */}
-                    <div className="col-span-12 md:col-span-2 w-full flex items-center gap-3">
-                        <div className={`w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-2xl flex items-center justify-center text-lg md:text-xl font-bold shadow-sm flex-shrink-0 ${getStatusColor(sale.client)}`}>{getStatusIcon(sale.client)}</div>
-                        <div className="flex-1 overflow-hidden">
-                            <div className={`font-bold text-sm md:text-base truncate leading-tight ${isAdmin ? 'text-white' : 'text-slate-900'}`}>{isFree ? 'Cupo Disponible' : sale.client}</div>
-                            <div className={`text-[10px] md:text-xs font-medium mt-0.5 truncate ${isAdmin ? 'text-slate-400' : 'text-slate-500'}`}>{sale.service}</div>
-                            {!isFree && !isProblem && <div className="text-[10px] text-blue-500 font-bold mt-1 md:hidden flex items-center gap-1"><Smartphone size={10}/> {sale.phone}</div>}
+            <div className={`p-3 md:p-5 rounded-[20px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
+                <div className="flex flex-col md:grid md:grid-cols-12 md:gap-4 items-center">
+                    {/* CABECERA */}
+                    <div className="col-span-12 md:col-span-3 w-full flex items-start gap-3">
+                        <div className={`w-10 h-10 md:w-14 md:h-14 rounded-[14px] md:rounded-[18px] flex items-center justify-center text-lg md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
+                            {getStatusIcon(sale.client)}
                         </div>
-                        <div className={`text-sm font-bold md:hidden ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
-                    </div>
-
-                    {/* DETALLES/EMAIL/PERFIL (col-span-5) */}
-                    <div className="col-span-12 md:col-span-5 w-full flex flex-col justify-center">
-                        {!isFree && !isProblem ? (
-                            <>
-                                <div className={`text-[10px] md:text-xs font-medium truncate ${isAdmin ? 'text-slate-300' : 'text-slate-600'}`} title={sale.email}>{sale.email}</div>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="bg-blue-50 text-blue-600 text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100 truncate max-w-[100px]">{sale.profile || 'Gral'}</span>
-                                    <span className="bg-slate-50 text-slate-500 text-[9px] md:text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-200">{sale.pin || '****'}</span>
+                        <div className="flex-1 min-w-0 relative">
+                            <div className="flex justify-between items-start">
+                                <div className='pr-2'>
+                                    <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-tight`}>{isFree ? 'Espacio Libre' : sale.client}</div>
+                                    <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary} mt-0.5`}>{sale.service}</div>
                                 </div>
-                            </>
-                        ) : isFree && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full w-fit hidden md:block">Disponible para venta</span>}
-                    </div>
-
-                    {/* VENCIMIENTO (col-span-1) */}
-                    <div className="col-span-6 md:col-span-1 w-full text-left md:text-center flex items-center md:block gap-2">
-                        {!isFree && !isProblem ? (
-                            <>
-                                <div className={`text-xs md:text-sm font-bold ${days <= 3 ? 'text-amber-500' : (isAdmin ? 'text-white' : 'text-slate-800')}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase md:mt-0.5">{days} Días Rest.</div>
-                            </>
-                        ) : <span className="text-slate-400 text-[10px] font-bold bg-slate-100 px-2 py-1 rounded-full">{isFree ? 'LIBRE' : 'N/A'}</span>}
-                    </div>
-
-                    {/* COSTO (col-span-2) */}
-                    <div className="hidden md:block col-span-2 text-center">
-                        <div className={`text-sm font-bold ${isAdmin ? 'text-white' : 'text-slate-700'}`}>${(isFree || isProblem || isAdmin) ? 0 : sale.cost}</div>
-                    </div>
-
-                    {/* CONTROLES (col-span-2) - CORREGIDO PARA MOVIL */}
-                    <div className="col-span-12 md:col-span-2 w-full flex justify-end pt-2 md:pt-0 border-t border-black/5 md:border-none mt-1 md:mt-0 relative">
-                        {isFree ? (
-                            <button onClick={() => { setFormData(sale); setView('form'); }} className="h-8 md:h-9 w-full md:w-auto px-4 bg-black text-white rounded-lg font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95">Asignar <ChevronRight size={12}/></button>
-                        ) : (
-                            // Botones visibles en una fila única para móvil/PC
-                            <div className="flex gap-1 md:space-x-1 md:w-auto w-full justify-end">
-                                
-                                {/* 1. Botón de Alerta/Vencimiento (Ban/XCircle) */}
-                                {!isProblem && days <= 3 && (<button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-8 h-8 rounded-lg flex items-center justify-center border shadow-sm transition-colors ${days <= 0 ? 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100' : 'bg-amber-50 text-amber-500 border-amber-100 hover:bg-amber-100'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>)}
-                                
-                                {/* 2. Botón de Detalles de Cuenta (KEY) */}
-                                {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Key size={14}/></button>}
-                                
-                                {/* 3. Botón de Perfil/PIN (LOCK) - RESTAURADO */}
-                                {!isProblem && sale.type === 'Perfil' && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-blue-600 bg-white border border-slate-100 hover:border-blue-200 shadow-sm'}`}><Lock size={14}/></button>}
-                                
-                                {/* Botón Editar */}
-                                <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800 bg-white border border-slate-100 hover:border-slate-300 shadow-sm'}`}><Edit2 size={14}/></button>
-                                
-                                {/* Botón Renovar */}
-                                {!isProblem && <button onClick={() => { handleQuickRenew(sale.id); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-emerald-500 hover:text-emerald-400' : 'text-emerald-500 hover:text-emerald-700 bg-white border border-slate-100 hover:border-emerald-200 shadow-sm'}`}><CalendarPlus size={14}/></button>}
-                                
-                                {/* Botón Liberar */}
-                                <button onClick={() => { triggerLiberate(sale.id); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isAdmin ? 'text-red-400 hover:text-red-300' : 'text-red-400 hover:text-red-600 bg-white border border-slate-100 hover:border-red-200 shadow-sm'}`}><RotateCcw size={14}/></button>
+                                {!isFree && !isProblem && (
+                                    <div className="text-right md:hidden flex flex-col items-end leading-none">
+                                        {cost > 0 && <span className={`text-sm font-black tracking-tight ${priceColor}`}>${cost}</span>}
+                                        <div className={`text-[10px] font-bold mt-1 ${days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                            {!isFree && !isProblem && (
+                                <div className="md:hidden mt-1 flex items-center gap-1 opacity-70">
+                                    <Smartphone size={10} className="text-slate-400"/> <span className="text-[10px] font-medium text-slate-500">{sale.phone}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {/* INFO */}
+                    <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-1 md:mt-0">
+                        {!isFree && !isProblem ? (
+                            <div className="flex md:block items-center justify-between md:justify-center bg-white/30 md:bg-transparent rounded-lg p-1.5 md:p-0 border border-white/20 md:border-none">
+                                <div className={`text-[10px] md:text-xs font-medium truncate max-w-[140px] md:max-w-none select-all ${textSecondary}`} title={sale.email}>{sale.email}</div>
+                                <div className="flex items-center gap-1.5 ml-2 md:ml-0 md:mt-1">
+                                    <span className={`px-1.5 py-0.5 rounded md:rounded-lg text-[9px] md:text-[10px] font-bold uppercase border border-white/20 ${isAdmin ? 'bg-white/10 text-white' : 'bg-white/60 text-indigo-600'}`}>{sale.profile || 'Gral'}</span>
+                                    <span className={`font-mono text-[9px] md:text-[10px] tracking-widest px-1.5 py-0.5 rounded md:rounded-lg border border-white/20 ${isAdmin ? 'bg-white/5 text-slate-300' : 'bg-slate-100/50 text-slate-500'}`}>{sale.pin || '••••'}</span>
+                                </div>
+                            </div>
+                        ) : isFree && <div className="hidden md:flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Disponible ahora</span></div>}
+                    </div>
+                    {/* ESTADO PC */}
+                    <div className="hidden md:flex col-span-2 w-full flex-col items-center">
+                        {!isFree && !isProblem ? (
+                            <div className="text-center">
+                                <div className={`text-xl font-black tracking-tighter ${days <= 3 ? 'text-amber-500' : textPrimary}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
+                                <div className={`text-[10px] font-bold uppercase tracking-wider ${textSecondary}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
+                            </div>
+                        ) : <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{isFree ? 'LIBRE' : '---'}</span>}
+                    </div>
+                    {/* ACCIONES */}
+                    <div className="col-span-12 md:col-span-3 w-full flex flex-col md:flex-row items-center justify-end gap-4 mt-2 md:mt-0 pt-2 md:pt-0 border-t border-black/5 md:border-none">
+                        {!isFree && !isProblem && cost > 0 && <div className={`hidden md:block text-xl font-black tracking-tight ${priceColor}`}>${cost}</div>}
+                        <div className="flex justify-end gap-2 w-full md:w-auto">
+                            {isFree ? (
+                                <button onClick={() => { setFormData(sale); setView('form'); }} className={`w-full md:w-auto px-6 h-8 md:h-10 rounded-full font-bold text-xs shadow-lg flex items-center justify-center gap-2 ${accentColor}`}>Asignar <ChevronRight size={14}/></button>
+                            ) : (
+                                <div className="flex items-center gap-1 w-full justify-end">
+                                    <div className="flex gap-1">
+                                        {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>}
+                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={14}/></button>}
+                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={14}/></button>
+                                    </div>
+                                    <div className="flex gap-1 pl-2 border-l border-slate-200 ml-1">
+                                        {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-500 hover:text-white shadow-sm"><CalendarPlus size={14}/></button>}
+                                        <button onClick={() => triggerLiberate(sale.id)} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white border border-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 shadow-sm"><RotateCcw size={14}/></button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
         );
     };
 
-
-    // 3. BLOQUE PRINCIPAL DEL DASHBOARD
-    
-    // ✅ LOADER FROSTED GLASS
-    if (loadingData) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[70vh] bg-white/90 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/50 p-10 mx-auto max-w-lg">
-                <Loader size={48} className="animate-spin text-indigo-400/80"/>
-                <p className="mt-4 text-slate-700 font-extrabold tracking-tight">Cargando Datos Centrales...</p>
-                <div className="mt-1 text-sm text-slate-500">Sincronizando Firebase, espere un momento.</div>
-            </div>
-        );
-    }
+    // 3. RENDER PRINCIPAL
+    if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh]"><div className="w-16 h-16 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"/><p className="text-slate-400 font-bold tracking-widest text-xs uppercase animate-pulse">Sincronizando...</p></div>;
 
     return (
-        <div className="space-y-4 md:space-y-6 w-full pb-20">
+        <div className="w-full pb-32 space-y-4 md:space-y-8">
             
-            {/* BLOQUE DE FILTROS MINIMALISTA */}
-            <div className="bg-white/70 backdrop-blur-xl p-1.5 rounded-[1.5rem] shadow-sm border border-white sticky top-0 z-30">
-                <div className="flex flex-col gap-2">
+            {/* --- BARRA DE COMANDOS OPTIMIZADA --- */}
+            <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
+                <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     
-                    {/* BUSCADOR DE PILL (iOS Search Bar Style) */}
-                    <div className="relative group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input type="text" placeholder="Buscar Cliente o Correo..." className="w-full pl-11 pr-4 h-10 md:h-12 bg-slate-100/70 border border-slate-200/50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium" 
+                    {/* FILA 1: BUSCADOR */}
+                    <div className="relative group w-full">
+                        <div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none">
+                            <Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                        </div>
+                        <input type="text" placeholder="Buscar cliente, correo..." 
+                            className="block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-transparent border-none text-slate-800 placeholder-slate-400 focus:ring-0 text-sm md:text-base font-medium rounded-2xl transition-all"
                             value={filterClient} 
-                            onChange={e => setFilter('filterClient', e.target.value)} // ✅ USO DE SET FILTER
+                            onChange={e => setFilter('filterClient', e.target.value)} 
                         />
                     </div>
-                    
-                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                        {/* SELECTOR DE SERVICIO */}
-                        <select className="h-8 md:h-10 px-4 bg-slate-100/70 rounded-xl text-xs font-bold text-slate-600 outline-none border border-slate-200/50 focus:bg-white cursor-pointer min-w-[120px]" 
-                            value={filterService} 
-                            onChange={e => setFilter('filterService', e.target.value)} // ✅ USO DE SET FILTER
-                        >
-                            <option value="Todos">Todos</option>
-                            {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                        </select>
+
+                    {/* FILAS DE FILTROS: SEPARADAS EN MÓVIL (Flex Column) / JUNTAS EN PC (Flex Row) */}
+                    <div className="flex flex-col md:flex-row gap-2 w-full">
                         
-                        {/* CONTROL SEGMENTADO (iOS Style Status Filter) */}
-                        <div className="flex bg-slate-100/50 p-1 rounded-xl border border-slate-200/50 backdrop-blur-sm shadow-inner text-sm font-semibold">
-                            {['Todos', 'Libres', 'Ocupados', 'Problemas'].map((status) => (
-                                <button
-                                    key={status}
-                                    onClick={() => setFilter('filterStatus', status)} // ✅ USO DE SET FILTER
-                                    className={`px-4 py-2 rounded-lg transition-all active:scale-[0.98] ${
-                                        filterStatus === status
-                                            ? 'bg-white text-slate-800 shadow-sm border border-white/50'
-                                            : 'text-slate-500 hover:bg-slate-200/70'
-                                    }`}
+                        {/* GRUPO A: SELECT + BOTONES (Scroll horizontal en móvil) */}
+                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto">
+                            
+                            {/* Select Servicio */}
+                            <div className="relative flex-shrink-0">
+                                <select className="appearance-none bg-slate-100/80 hover:bg-white text-slate-600 font-bold text-[10px] md:text-xs py-2 pl-3 pr-6 rounded-xl border border-transparent hover:border-indigo-100 transition-all cursor-pointer outline-none"
+                                    value={filterService} 
+                                    onChange={e => setFilter('filterService', e.target.value)}
                                 >
-                                    {status}
+                                    <option value="Todos">Todos</option>
+                                    {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                </select>
+                                <Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                            </div>
+
+                            {/* Píldoras de Estado */}
+                            <div className="flex bg-slate-200/50 p-1 rounded-xl flex-shrink-0">
+                                {['Todos', 'Libres', 'Ocupados', 'Problemas'].map((status) => (
+                                    <button key={status} onClick={() => setFilter('filterStatus', status)}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${filterStatus === status ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                                        {status}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* GRUPO B: FECHAS (Fila nueva en móvil, misma línea en PC) */}
+                        <div className="flex items-center justify-between md:justify-start gap-1 bg-white/50 px-2 py-1.5 rounded-xl border border-white/50 w-full md:w-auto">
+                            <div className="flex items-center gap-1">
+                                <Calendar size={14} className="text-slate-400"/>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase md:hidden">Desde:</span>
+                                <input type="date" className="bg-transparent text-[10px] md:text-xs font-bold text-slate-600 w-24 md:w-24 outline-none" 
+                                    value={dateFrom} onChange={e => setFilter('dateFrom', e.target.value)}/>
+                            </div>
+                            
+                            <div className="flex items-center gap-1">
+                                <span className="text-slate-400 text-xs">-</span>
+                                <input type="date" className="bg-transparent text-[10px] md:text-xs font-bold text-slate-600 w-24 md:w-24 outline-none text-right md:text-left" 
+                                    value={dateTo} onChange={e => setFilter('dateTo', e.target.value)}/>
+                            </div>
+
+                            {(dateFrom || dateTo) && (
+                                <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100">
+                                    <X size={10}/>
                                 </button>
-                            ))}
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* FILTRO AVANZADO DE FECHAS */}
-            <div className="flex items-center gap-2 bg-white/70 backdrop-blur-xl p-2 rounded-xl border border-white/50">
-                <Calendar size={16} className="text-slate-400 flex-shrink-0"/>
-                <span className="text-xs font-bold text-slate-500 uppercase flex-shrink-0">Vence:</span>
-                <input type="date" className="bg-slate-100/50 p-1 rounded-lg text-xs font-medium text-slate-700 outline-none w-1/2 cursor-pointer" 
-                    value={dateFrom} 
-                    onChange={e => setFilter('dateFrom', e.target.value)} // ✅ USO DE SET FILTER
-                />
-                <span className="text-slate-400 text-xs">-</span>
-                <input type="date" className="bg-slate-100/50 p-1 rounded-lg text-xs font-medium text-slate-700 outline-none w-1/2 cursor-pointer" 
-                    value={dateTo} 
-                    onChange={e => setFilter('dateTo', e.target.value)} // ✅ USO DE SET FILTER
-                />
-                {(dateFrom || dateTo) && (<button onClick={() => {setFilter('dateFrom', ''); setFilter('dateTo', '');}} className="p-1 text-red-400 hover:text-red-600 rounded-lg"><X size={14}/></button>)}
+            {/* Resumen Financiero */}
+            <div className="flex items-end justify-between px-2 md:px-4">
+                <div>
+                    <h1 className="text-3xl md:text-6xl font-black text-slate-900 tracking-tighter mb-1">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500">
+                            ${totalFilteredMoney.toLocaleString()}
+                        </span>
+                    </h1>
+                    <p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest pl-1">Ingresos Mensuales</p>
+                </div>
+                <div className="text-right pb-1 md:pb-2">
+                    <div className="text-xl md:text-2xl font-black text-slate-800">{totalItems}</div>
+                    <div className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Activos</div>
+                </div>
             </div>
 
-            {/* CONTADORES */}
-            <div className="flex justify-between items-center px-2">
-                <div className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">{totalItems} Resultados</div>
-                <div className="flex items-center gap-2"><span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase">Total:</span><span className="text-base md:text-xl font-black text-slate-800 tracking-tight">${totalFilteredMoney.toLocaleString()}</span></div>
-            </div>
-
-            {/* ENCABEZADO DE COLUMNAS (PC) */}
-            <div className="grid grid-cols-1 gap-2 md:gap-4">
-                <div className="hidden md:grid grid-cols-12 gap-4 px-6 text-xs font-bold text-slate-400 uppercase tracking-wider pl-8">
-                    <div className="col-span-2">Cliente</div>          
-                    <div className="col-span-5">Servicio & Detalles</div> 
-                    <div className="col-span-1 text-center">Vencimiento</div> 
-                    <div className="col-span-2 text-center">Costo</div>        
-                    <div className="col-span-2 text-right">Controles</div>    
-                </div>
-
-                {/* LISTA DE VENTAS (Mapeado y Ordenado) */}
-                <div className="space-y-2">
-                    {sortedSales.length > 0 ? (
-                        sortedSales.map(sale => ( // Usamos sortedSales para el orden alfabético
-                            <SaleCard key={sale.id} sale={sale} />
-                        ))
-                    ) : (
-                        <div className="text-center py-12 text-slate-400">Sin resultados</div>
-                    )}
-                </div>
+            {/* Grid de Ventas */}
+            <div className="grid grid-cols-1 gap-3 md:gap-4">
+                {sortedSales.length > 0 ? (
+                    sortedSales.map(sale => <SaleCard key={sale.id} sale={sale} />)
+                ) : (
+                    <div className="flex flex-col items-center justify-center py-20 opacity-50"><div className="w-24 h-24 bg-slate-200 rounded-full mb-4 animate-pulse"/><p className="text-slate-400 font-bold">Sin resultados</p></div>
+                )}
             </div>
         </div>
     );

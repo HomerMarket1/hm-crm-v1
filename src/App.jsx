@@ -50,7 +50,9 @@ const App = () => {
     });
     const [stockForm, setStockForm] = useState({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
     const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
-    const [packageForm, setPackageForm] = useState({ name: 'Netflix', cost: 480, slots: 2 });
+    
+    // ✅ CORRECCIÓN AQUÍ: Inicializamos vacío para que se vean los placeholders
+    const [packageForm, setPackageForm] = useState({ name: '', cost: '', slots: 2 });
     
     // 5. COMPUTED DATA
     const {
@@ -60,7 +62,7 @@ const App = () => {
         getStatusIcon, getStatusColor, getDaysRemaining
     } = useSalesData(sales, catalog, clientsDirectory, uiState, formData);
 
-    // --- HANDLERS SIMPLIFICADOS (Usan el nuevo Hook) ---
+    // --- HANDLERS SIMPLIFICADOS ---
 
     const handleLogin = async (e) => {
         e.preventDefault(); setLoginError('');
@@ -78,7 +80,8 @@ const App = () => {
     const handleAddPackageToCatalog = async (e) => {
         e.preventDefault();
         const success = await crmActions.addCatalogPackage(packageForm);
-        if (success) setPackageForm({ name: 'Netflix', cost: 480, slots: 2 });
+        // Al guardar, limpiamos el formulario nuevamente
+        if (success) setPackageForm({ name: '', cost: '', slots: 2 });
     };
 
     const handleGenerateStock = async (e) => {
@@ -95,7 +98,7 @@ const App = () => {
         if (success || !success) setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // --- ACCIONES COMPLEJAS (Restauradas aquí) ---
+    // --- ACCIONES COMPLEJAS (Restauradas) ---
 
     const handleSaveSale = async (e) => {
         e.preventDefault(); if (!user) return;
