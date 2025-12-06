@@ -1,9 +1,11 @@
-// src/views/Dashboard.jsx (FINAL: Ajustes visuales para botones de alerta móvil)
+// src/views/Dashboard.jsx (FINAL: Botón "Renovar" y sin Iconos de Plataforma)
 
 import React, { useState } from 'react';
 import { 
     Search, Smartphone, Key, Lock, Edit2, Ban, XCircle, RotateCcw, 
-    X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Eye 
+    X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Eye,
+    // (Se remueven las importaciones de íconos de plataforma como Tv, Film, etc.)
+    Package, Box 
 } from 'lucide-react';
 
 const Dashboard = ({
@@ -34,13 +36,15 @@ const Dashboard = ({
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
     
-    // 🔥 FUNCIÓN: Copiar email y contraseña al portapapeles
+    // 🔥 NOTA: getServiceVisuals fue eliminado para volver al diseño anterior.
+    // Si desea agregar un ícono, hágalo directamente en el JSX usando <IconName size={12}/>
+
+    // FUNCIÓN: Copiar email y contraseña al portapapeles
     const handleCopyCredentials = (e, email, pass) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${email}:${pass}`);
         const btn = e.currentTarget;
         const originalContent = btn.innerHTML;
-        // Cambiar el icono o texto temporalmente para indicar que se copió
         btn.innerHTML = `<span class="text-emerald-600 flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copiado</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
     };
@@ -53,7 +57,6 @@ const Dashboard = ({
 
     const expiringToday = validSales.filter(s => getDaysRemaining(s.endDate) === 0);
     const expiringTomorrow = validSales.filter(s => getDaysRemaining(s.endDate) === 1);
-    // 🔥 Ventas Vencidas (días < 0)
     const overdueSales = validSales.filter(s => getDaysRemaining(s.endDate) < 0);
 
     const sortedSales = filteredSales.slice().sort((a, b) => {
@@ -63,35 +66,41 @@ const Dashboard = ({
     });
 
     const openBulkModal = (type) => {
-        // La eliminación de setSentIds([]) en el cuerpo de la función permite la persistencia
         if (type === 'today') {
             if (expiringToday.length === 0) return;
             setBulkModal({ show: true, title: 'Vencen Hoy', list: expiringToday, msgType: 'expired_today' });
         } else if (type === 'tomorrow') {
             if (expiringTomorrow.length === 0) return;
             setBulkModal({ show: true, title: 'Vencen Mañana', list: expiringTomorrow, msgType: 'warning_tomorrow' });
-        } else if (type === 'overdue') { // Modal Vencidas
+        } else if (type === 'overdue') { 
             if (overdueSales.length === 0) return;
             setBulkModal({ show: true, title: 'Vencidas (Pago)', list: overdueSales, msgType: 'overdue_payment' });
         }
     };
 
     const handleBulkSend = (sale) => {
-        // 1. Enviar el mensaje de WhatsApp
         sendWhatsApp(sale, bulkModal.msgType);
-        
-        // 2. Identificar al cliente y teléfono para agrupar
         const clientName = sale.client;
         const clientPhone = sale.phone;
-        
-        // 3. Encontrar TODOS los IDs en la lista modal que pertenecen a este cliente/teléfono
         const allClientIdsInQueue = bulkModal.list
             .filter(item => item.client === clientName && item.phone === clientPhone)
             .map(item => item.id);
-
-        // 4. Marcar TODOS esos IDs como enviados simultáneamente
         setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
     };
+
+    // 🔥 FUNCIÓN: Renovar y Marcar como Procesado (para el botón "Renovar")
+    const handleModalRenew = (sale) => {
+        handleQuickRenew(sale.id); // 1. Ejecutar la renovación de 30 días
+        
+        // 2. Marcar como PROCESADO/ENVIADO (sin enviar WhatsApp, solo actualizando sentIds)
+        const clientName = sale.client;
+        const clientPhone = sale.phone;
+        const allClientIdsInQueue = bulkModal.list
+            .filter(item => item.client === clientName && item.phone === clientPhone)
+            .map(item => item.id);
+        setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
+    };
+
 
     // --- COMPONENTE TARJETA UNIFICADO ---
     const SaleCard = ({ sale }) => {
@@ -124,6 +133,8 @@ const Dashboard = ({
             textSecondary = "text-slate-400";
             accentColor = "bg-white text-black";
         }
+        
+        // La iconografía personalizada fue removida aquí.
 
         return (
             <div className={`p-2.5 md:p-5 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
@@ -138,7 +149,12 @@ const Dashboard = ({
                             <div className="flex justify-between items-start">
                                 <div className='pr-1'>
                                     <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
-                                    <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>{sale.service}</div>
+                                    
+                                    {/* Mostrar Servicio sin Icono de Plataforma */}
+                                    <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>
+                                        {sale.service}
+                                    </div>
+                                    
                                 </div>
                                 {!isFree && !isProblem && (
                                     <div className="text-right md:hidden flex flex-col items-end leading-none">
@@ -282,9 +298,22 @@ const Dashboard = ({
                                             </div>
                                         </div>
                                         {isClientSent ? (
-                                            <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl"><CheckCircle2 size={14}/> Enviado</span>
+                                            <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl"><CheckCircle2 size={14}/> Procesado</span>
                                         ) : (
-                                            <button onClick={() => handleBulkSend(sale)} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all">Enviar <Send size={12}/></button>
+                                            <div className="flex gap-2">
+                                                {/* NUEVO BOTÓN: Renovar */}
+                                                <button 
+                                                    onClick={() => handleModalRenew(sale)} 
+                                                    className="px-3 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center"
+                                                >
+                                                    Renovar
+                                                </button>
+                                                
+                                                {/* Botón existente: Enviar WhatsApp */}
+                                                <button onClick={() => handleBulkSend(sale)} className="px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center">
+                                                    Enviar <Send size={12}/>
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 );
@@ -338,7 +367,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* 🔥 SECCIÓN DE FILTROS (RESTAURADA) */}
+            {/* SECCIÓN DE FILTROS (RESTAURADA) */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar cliente, correo..." className="block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-transparent border-none text-slate-800 placeholder-slate-400 focus:ring-0 text-sm md:text-base font-medium rounded-2xl transition-all" value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
