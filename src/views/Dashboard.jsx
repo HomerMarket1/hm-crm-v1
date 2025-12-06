@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (FINAL: Ajuste de Columnas para mejor visualización y botones reinsertados)
+// src/views/Dashboard.jsx (FINAL: AJUSTE DE DISEÑO Y BOTÓN DE COPIAR CREDENCIALES EN TARJETA)
 
 import React, { useState } from 'react';
 import { 
@@ -33,6 +33,17 @@ const Dashboard = ({
 
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
+    
+    // 🔥 NUEVA FUNCIÓN: Copiar email y contraseña al portapapeles
+    const handleCopyCredentials = (e, email, pass) => {
+        e.preventDefault();
+        navigator.clipboard.writeText(`${email}:${pass}`);
+        const btn = e.currentTarget;
+        const originalContent = btn.innerHTML;
+        // Cambiar el icono o texto temporalmente para indicar que se copió
+        btn.innerHTML = `<span class="text-emerald-600 flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copiado</span>`;
+        setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
+    };
 
     const validSales = sales.filter(s => 
         s.client !== 'LIBRE' && 
@@ -148,11 +159,22 @@ const Dashboard = ({
                                 {sale.email}
                             </div>
                             
-                            {/* Contraseña + Badge */}
+                            {/* Contraseña + Botón Copiar */}
                             <div className="flex items-center justify-between gap-2 border-t border-black/5 pt-1 md:border-none md:pt-0">
-                                {/* Contraseña visible y copiable */}
-                                <div className="text-[10px] md:text-xs font-mono font-bold text-slate-600 truncate select-all bg-slate-100/50 px-1 rounded flex items-center gap-1" title="Contraseña">
-                                    {sale.pass}
+                                
+                                {/* Contraseña visible */}
+                                <div className="flex items-center gap-1">
+                                    <div className="text-[10px] md:text-xs font-mono font-bold text-slate-600 truncate select-all" title="Contraseña">
+                                        {sale.pass}
+                                    </div>
+                                    {/* 🔥 BOTÓN DE COPIAR */}
+                                    <button 
+                                        onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)}
+                                        className="text-slate-400 hover:text-indigo-600 p-1 rounded-full transition-colors active:scale-90"
+                                        title="Copiar Correo y Contraseña"
+                                    >
+                                        <Copy size={12}/>
+                                    </button>
                                 </div>
                                 
                                 {/* Badge de Estado o PIN */}
@@ -171,7 +193,7 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) - Aumentado a col-span-3 para evitar desbordamiento */}
+                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) - Aumentado a col-span-3 */}
                     <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
                             <div className="text-center">
@@ -199,7 +221,7 @@ const Dashboard = ({
                                         {/* 1. Advertencia/Expiración */}
                                         {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}><XCircle size={12}/></button>}
                                         
-                                        {/* 2. ENVIAR PERFIL (Candado/Lock - Reinsertado) */}
+                                        {/* 2. ENVIAR PERFIL (Candado/Lock) */}
                                         {!isProblem && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-indigo-100 hover:text-indigo-600"><Lock size={12}/></button>}
                                         
                                         {/* 3. ENVIAR CUENTA (Llave/Key) */}
