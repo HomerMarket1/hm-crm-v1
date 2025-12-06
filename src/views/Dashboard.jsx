@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (CREDENCIALES VISIBLES SIEMPRE + ENVÍO MASIVO POR CLIENTE)
+// src/views/Dashboard.jsx (FINAL: Ajuste de Columnas para mejor visualización y botones reinsertados)
 
 import React, { useState } from 'react';
 import { 
@@ -60,7 +60,6 @@ const Dashboard = ({
         setSentIds([]); 
     };
 
-    // 🔥 INICIO MODIFICACIÓN: Enviar por cliente y marcar todos como enviados
     const handleBulkSend = (sale) => {
         // 1. Enviar el mensaje de WhatsApp (asumimos que el mensaje ya consolida la información)
         sendWhatsApp(sale, bulkModal.msgType);
@@ -70,7 +69,6 @@ const Dashboard = ({
         const clientPhone = sale.phone;
         
         // 3. Encontrar TODOS los IDs en la lista modal que pertenecen a este cliente/teléfono
-        // Usamos tanto el cliente como el teléfono para mayor precisión si hay nombres duplicados
         const allClientIdsInQueue = bulkModal.list
             .filter(item => item.client === clientName && item.phone === clientPhone)
             .map(item => item.id);
@@ -78,7 +76,6 @@ const Dashboard = ({
         // 4. Marcar TODOS esos IDs como enviados simultáneamente
         setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
     };
-    // 🔥 FIN MODIFICACIÓN
 
     // --- COMPONENTE TARJETA UNIFICADO ---
     const SaleCard = ({ sale }) => {
@@ -174,8 +171,8 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 3. ESTADO PC */}
-                    <div className="hidden md:flex col-span-2 w-full flex-col items-center">
+                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) - Aumentado a col-span-3 para evitar desbordamiento */}
+                    <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
                             <div className="text-center">
                                 <div className={`text-xl font-black tracking-tighter ${days <= 3 ? 'text-amber-500' : textPrimary}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
@@ -186,24 +183,38 @@ const Dashboard = ({
                             <span className="text-xs font-black text-emerald-400 uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg">LIBRE</span> :
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">---</span>
                         )}
+                        {/* El precio en PC ahora se muestra aquí para usar el espacio adicional */}
+                        {!isFree && !isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
                     </div>
 
-                    {/* 4. ACCIONES */}
-                    <div className="col-span-12 md:col-span-3 w-full flex flex-col md:flex-row items-center justify-end gap-4 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
-                        {!isFree && !isProblem && cost > 0 && <div className={`hidden md:block text-xl font-black tracking-tight ${priceColor}`}>${cost}</div>}
-                        <div className="flex justify-end gap-2 w-full md:w-auto">
+                    {/* 4. ACCIONES (COLUMNA 4: BOTONES) - Reducido a col-span-2 y botones compactos */}
+                    <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
+                        
+                        <div className="flex justify-end gap-1 w-full md:w-auto">
                             {isFree ? (
-                                <button onClick={() => { setFormData(sale); setView('form'); }} className={`w-full md:w-auto px-6 h-8 md:h-10 rounded-full font-bold text-xs shadow-lg flex items-center justify-center gap-2 ${accentColor}`}>Asignar <ChevronRight size={14}/></button>
+                                <button onClick={() => { setFormData(sale); setView('form'); }} className={`w-full md:w-auto px-4 h-8 md:h-9 rounded-full font-bold text-xs shadow-lg flex items-center justify-center gap-1 ${accentColor}`}>Asignar <ChevronRight size={14}/></button>
                             ) : (
                                 <div className="flex items-center gap-1 w-full justify-end">
                                     <div className="flex gap-1">
-                                        {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>{days <= 0 ? <XCircle size={13}/> : <Ban size={13}/>}</button>}
-                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={13}/></button>}
-                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={13}/></button>
+                                        {/* 1. Advertencia/Expiración */}
+                                        {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}><XCircle size={12}/></button>}
+                                        
+                                        {/* 2. ENVIAR PERFIL (Candado/Lock - Reinsertado) */}
+                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-indigo-100 hover:text-indigo-600"><Lock size={12}/></button>}
+                                        
+                                        {/* 3. ENVIAR CUENTA (Llave/Key) */}
+                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={12}/></button>}
+                                        
+                                        {/* 4. Editar */}
+                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={12}/></button>
                                     </div>
-                                    <div className="flex gap-1 pl-2 border-l border-slate-200 ml-1">
-                                        {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-500 hover:text-white shadow-sm"><CalendarPlus size={13}/></button>}
-                                        <button onClick={() => triggerLiberate(sale.id)} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-white border border-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 shadow-sm"><RotateCcw size={13}/></button>
+                                    
+                                    <div className="flex gap-1 pl-1 border-l border-slate-200 ml-1">
+                                        {/* 5. Renovación Rápida */}
+                                        {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-500 hover:text-white shadow-sm"><CalendarPlus size={12}/></button>}
+                                        
+                                        {/* 6. Liberar */}
+                                        <button onClick={() => triggerLiberate(sale.id)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border border-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 shadow-sm"><RotateCcw size={12}/></button>
                                     </div>
                                 </div>
                             )}
