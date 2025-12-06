@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (FINAL CORREGIDO: Filtros Restaurados, Persistencia, Vencidas, Copiar OK)
+// src/views/Dashboard.jsx (FINAL: Ajustes visuales para botones de alerta móvil)
 
 import React, { useState } from 'react';
 import { 
@@ -300,23 +300,41 @@ const Dashboard = ({
                     
                     {/* Botón: Vencidas (Días < 0) */}
                     {overdueSales.length > 0 && (
-                        <button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group">
+                        <button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group">
                             <div className="flex items-center gap-2">
-                                <div className="p-1.5 bg-white/20 rounded-lg"><Ban size={16} className="fill-white"/></div>
+                                <div className="p-1 bg-white/20 rounded-lg"><Ban size={14} className="fill-white"/></div>
                                 <div className="text-left leading-none">
-                                    <p className="text-[10px] font-bold opacity-80 uppercase">Vencidas</p>
-                                    <p className="text-sm font-black">{overdueSales.length} Clientes</p>
+                                    <p className="text-[9px] font-bold opacity-80 uppercase">Vencidas</p>
+                                    <p className="text-xs font-black">{overdueSales.length} Clientes</p>
                                 </div>
                             </div>
-                            <ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
+                            <ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
                         </button>
                     )}
 
                     {/* Botón: Vencen Hoy (Días = 0) */}
-                    {expiringToday.length > 0 && (<button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-3 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1.5 bg-white/20 rounded-lg"><Bell size={16} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[10px] font-bold opacity-80 uppercase">Hoy</p><p className="text-sm font-black">{expiringToday.length} Clientes</p></div></div><ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
+                    {expiringToday.length > 0 && (<button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-2 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1 bg-white/20 rounded-lg"><Bell size={14} className="fill-white"/></div>
+                            <div className="text-left leading-none">
+                                <p className="text-[9px] font-bold opacity-80 uppercase">Hoy</p>
+                                <p className="text-xs font-black">{expiringToday.length} Clientes</p>
+                            </div>
+                        </div>
+                        <ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
+                    </button>)}
                     
                     {/* Botón: Vencen Mañana (Días = 1) */}
-                    {expiringTomorrow.length > 0 && (<button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1.5 bg-white/20 rounded-lg"><Calendar size={16} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[10px] font-bold opacity-80 uppercase">Mañana</p><p className="text-sm font-black">{expiringTomorrow.length} Clientes</p></div></div><ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
+                    {expiringTomorrow.length > 0 && (<button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-2 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1 bg-white/20 rounded-lg"><Calendar size={14} className="fill-white"/></div>
+                            <div className="text-left leading-none">
+                                <p className="text-[9px] font-bold opacity-80 uppercase">Mañana</p>
+                                <p className="text-xs font-black">{expiringTomorrow.length} Clientes</p>
+                            </div>
+                        </div>
+                        <ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
+                    </button>)}
                 </div>
             )}
 
