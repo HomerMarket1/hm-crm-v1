@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (FILTROS OPTIMIZADOS: FECHAS SEPARADAS EN MÓVIL)
+// src/views/Dashboard.jsx (VERSIÓN ULTRA-COMPACTA PARA MÓVIL)
 
 import React from 'react';
 import { 
@@ -38,7 +38,7 @@ const Dashboard = ({
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
-    // 2. TARJETA (DISEÑO COMPACTO MANTENIDO)
+    // 2. TARJETA (VERSIÓN SLIM / COMPACTA)
     const SaleCard = ({ sale }) => {
         const isFree = sale.client === 'LIBRE';
         const isProblem = NON_BILLABLE_STATUSES && NON_BILLABLE_STATUSES.includes(sale.client);
@@ -71,45 +71,51 @@ const Dashboard = ({
         }
 
         return (
-            <div className={`p-3 md:p-5 rounded-[20px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
-                <div className="flex flex-col md:grid md:grid-cols-12 md:gap-4 items-center">
-                    {/* CABECERA */}
-                    <div className="col-span-12 md:col-span-3 w-full flex items-start gap-3">
-                        <div className={`w-10 h-10 md:w-14 md:h-14 rounded-[14px] md:rounded-[18px] flex items-center justify-center text-lg md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
+            // CAMBIO 1: p-2.5 en móvil (antes p-3/p-5) para reducir márgenes internos
+            <div className={`p-2.5 md:p-5 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
+                
+                {/* CAMBIO 2: gap-1 en flex-col para pegar las filas verticalmente */}
+                <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
+                    
+                    {/* CABECERA (Compacta) */}
+                    <div className="col-span-12 md:col-span-3 w-full flex items-start gap-2.5">
+                        <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
                             {getStatusIcon(sale.client)}
                         </div>
-                        <div className="flex-1 min-w-0 relative">
+                        <div className="flex-1 min-w-0 relative pt-0.5">
                             <div className="flex justify-between items-start">
-                                <div className='pr-2'>
-                                    <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-tight`}>{isFree ? 'Espacio Libre' : sale.client}</div>
-                                    <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary} mt-0.5`}>{sale.service}</div>
+                                <div className='pr-1'>
+                                    <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
+                                    <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>{sale.service}</div>
                                 </div>
                                 {!isFree && !isProblem && (
                                     <div className="text-right md:hidden flex flex-col items-end leading-none">
                                         {cost > 0 && <span className={`text-sm font-black tracking-tight ${priceColor}`}>${cost}</span>}
-                                        <div className={`text-[10px] font-bold mt-1 ${days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
+                                        <div className={`text-[9px] font-bold mt-0.5 ${days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
                                     </div>
                                 )}
                             </div>
                             {!isFree && !isProblem && (
-                                <div className="md:hidden mt-1 flex items-center gap-1 opacity-70">
-                                    <Smartphone size={10} className="text-slate-400"/> <span className="text-[10px] font-medium text-slate-500">{sale.phone}</span>
+                                <div className="md:hidden mt-0.5 flex items-center gap-1 opacity-70">
+                                    <Smartphone size={9} className="text-slate-400"/> <span className="text-[9px] font-medium text-slate-500">{sale.phone}</span>
                                 </div>
                             )}
                         </div>
                     </div>
-                    {/* INFO */}
-                    <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-1 md:mt-0">
+
+                    {/* INFO (Email en una línea compacta) */}
+                    <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         {!isFree && !isProblem ? (
-                            <div className="flex md:block items-center justify-between md:justify-center bg-white/30 md:bg-transparent rounded-lg p-1.5 md:p-0 border border-white/20 md:border-none">
-                                <div className={`text-[10px] md:text-xs font-medium truncate max-w-[140px] md:max-w-none select-all ${textSecondary}`} title={sale.email}>{sale.email}</div>
-                                <div className="flex items-center gap-1.5 ml-2 md:ml-0 md:mt-1">
-                                    <span className={`px-1.5 py-0.5 rounded md:rounded-lg text-[9px] md:text-[10px] font-bold uppercase border border-white/20 ${isAdmin ? 'bg-white/10 text-white' : 'bg-white/60 text-indigo-600'}`}>{sale.profile || 'Gral'}</span>
-                                    <span className={`font-mono text-[9px] md:text-[10px] tracking-widest px-1.5 py-0.5 rounded md:rounded-lg border border-white/20 ${isAdmin ? 'bg-white/5 text-slate-300' : 'bg-slate-100/50 text-slate-500'}`}>{sale.pin || '••••'}</span>
+                            <div className="flex items-center justify-between md:justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1 md:p-0 border border-white/20 md:border-none">
+                                <div className={`text-[10px] md:text-xs font-medium truncate max-w-[150px] select-all ${textSecondary}`} title={sale.email}>{sale.email}</div>
+                                <div className="flex items-center gap-1 ml-2">
+                                    <span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase border border-white/20 ${isAdmin ? 'bg-white/10 text-white' : 'bg-white/60 text-indigo-600'}`}>{sale.profile || 'Gral'}</span>
+                                    <span className={`font-mono text-[9px] tracking-widest px-1 py-0.5 rounded border border-white/20 ${isAdmin ? 'bg-white/5 text-slate-300' : 'bg-slate-100/50 text-slate-500'}`}>{sale.pin || '••••'}</span>
                                 </div>
                             </div>
-                        ) : isFree && <div className="hidden md:flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Disponible ahora</span></div>}
+                        ) : isFree && <div className="hidden md:flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Disponible</span></div>}
                     </div>
+
                     {/* ESTADO PC */}
                     <div className="hidden md:flex col-span-2 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
@@ -119,8 +125,9 @@ const Dashboard = ({
                             </div>
                         ) : <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{isFree ? 'LIBRE' : '---'}</span>}
                     </div>
-                    {/* ACCIONES */}
-                    <div className="col-span-12 md:col-span-3 w-full flex flex-col md:flex-row items-center justify-end gap-4 mt-2 md:mt-0 pt-2 md:pt-0 border-t border-black/5 md:border-none">
+
+                    {/* ACCIONES (Barra más delgada y pegada arriba) */}
+                    <div className="col-span-12 md:col-span-3 w-full flex flex-col md:flex-row items-center justify-end gap-4 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
                         {!isFree && !isProblem && cost > 0 && <div className={`hidden md:block text-xl font-black tracking-tight ${priceColor}`}>${cost}</div>}
                         <div className="flex justify-end gap-2 w-full md:w-auto">
                             {isFree ? (
@@ -128,13 +135,13 @@ const Dashboard = ({
                             ) : (
                                 <div className="flex items-center gap-1 w-full justify-end">
                                     <div className="flex gap-1">
-                                        {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>{days <= 0 ? <XCircle size={14}/> : <Ban size={14}/>}</button>}
-                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={14}/></button>}
-                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={14}/></button>
+                                        {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>{days <= 0 ? <XCircle size={13}/> : <Ban size={13}/>}</button>}
+                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={13}/></button>}
+                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={13}/></button>
                                     </div>
                                     <div className="flex gap-1 pl-2 border-l border-slate-200 ml-1">
-                                        {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-500 hover:text-white shadow-sm"><CalendarPlus size={14}/></button>}
-                                        <button onClick={() => triggerLiberate(sale.id)} className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white border border-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 shadow-sm"><RotateCcw size={14}/></button>
+                                        {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-500 hover:text-white shadow-sm"><CalendarPlus size={13}/></button>}
+                                        <button onClick={() => triggerLiberate(sale.id)} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-white border border-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 shadow-sm"><RotateCcw size={13}/></button>
                                     </div>
                                 </div>
                             )}
@@ -149,13 +156,12 @@ const Dashboard = ({
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh]"><div className="w-16 h-16 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"/><p className="text-slate-400 font-bold tracking-widest text-xs uppercase animate-pulse">Sincronizando...</p></div>;
 
     return (
-        <div className="w-full pb-32 space-y-4 md:space-y-8">
+        <div className="w-full pb-32 space-y-3 md:space-y-8">
             
-            {/* --- BARRA DE COMANDOS OPTIMIZADA --- */}
+            {/* BARRA DE FILTROS */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     
-                    {/* FILA 1: BUSCADOR */}
                     <div className="relative group w-full">
                         <div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none">
                             <Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
@@ -167,25 +173,17 @@ const Dashboard = ({
                         />
                     </div>
 
-                    {/* FILAS DE FILTROS: SEPARADAS EN MÓVIL (Flex Column) / JUNTAS EN PC (Flex Row) */}
                     <div className="flex flex-col md:flex-row gap-2 w-full">
-                        
-                        {/* GRUPO A: SELECT + BOTONES (Scroll horizontal en móvil) */}
                         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto">
-                            
-                            {/* Select Servicio */}
                             <div className="relative flex-shrink-0">
                                 <select className="appearance-none bg-slate-100/80 hover:bg-white text-slate-600 font-bold text-[10px] md:text-xs py-2 pl-3 pr-6 rounded-xl border border-transparent hover:border-indigo-100 transition-all cursor-pointer outline-none"
-                                    value={filterService} 
-                                    onChange={e => setFilter('filterService', e.target.value)}
+                                    value={filterService} onChange={e => setFilter('filterService', e.target.value)}
                                 >
                                     <option value="Todos">Todos</option>
                                     {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                 </select>
                                 <Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
                             </div>
-
-                            {/* Píldoras de Estado */}
                             <div className="flex bg-slate-200/50 p-1 rounded-xl flex-shrink-0">
                                 {['Todos', 'Libres', 'Ocupados', 'Problemas'].map((status) => (
                                     <button key={status} onClick={() => setFilter('filterStatus', status)}
@@ -195,39 +193,27 @@ const Dashboard = ({
                                 ))}
                             </div>
                         </div>
-
-                        {/* GRUPO B: FECHAS (Fila nueva en móvil, misma línea en PC) */}
                         <div className="flex items-center justify-between md:justify-start gap-1 bg-white/50 px-2 py-1.5 rounded-xl border border-white/50 w-full md:w-auto">
                             <div className="flex items-center gap-1">
                                 <Calendar size={14} className="text-slate-400"/>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase md:hidden">Desde:</span>
-                                <input type="date" className="bg-transparent text-[10px] md:text-xs font-bold text-slate-600 w-24 md:w-24 outline-none" 
-                                    value={dateFrom} onChange={e => setFilter('dateFrom', e.target.value)}/>
+                                <input type="date" className="bg-transparent text-[10px] md:text-xs font-bold text-slate-600 w-24 md:w-24 outline-none" value={dateFrom} onChange={e => setFilter('dateFrom', e.target.value)}/>
                             </div>
-                            
                             <div className="flex items-center gap-1">
                                 <span className="text-slate-400 text-xs">-</span>
-                                <input type="date" className="bg-transparent text-[10px] md:text-xs font-bold text-slate-600 w-24 md:w-24 outline-none text-right md:text-left" 
-                                    value={dateTo} onChange={e => setFilter('dateTo', e.target.value)}/>
+                                <input type="date" className="bg-transparent text-[10px] md:text-xs font-bold text-slate-600 w-24 md:w-24 outline-none text-right md:text-left" value={dateTo} onChange={e => setFilter('dateTo', e.target.value)}/>
                             </div>
-
-                            {(dateFrom || dateTo) && (
-                                <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100">
-                                    <X size={10}/>
-                                </button>
-                            )}
+                            {(dateFrom || dateTo) && <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100"><X size={10}/></button>}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Resumen Financiero */}
+            {/* RESUMEN FINANCIERO */}
             <div className="flex items-end justify-between px-2 md:px-4">
                 <div>
                     <h1 className="text-3xl md:text-6xl font-black text-slate-900 tracking-tighter mb-1">
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500">
-                            ${totalFilteredMoney.toLocaleString()}
-                        </span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500">${totalFilteredMoney.toLocaleString()}</span>
                     </h1>
                     <p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest pl-1">Ingresos Mensuales</p>
                 </div>
@@ -237,8 +223,9 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {/* Grid de Ventas */}
-            <div className="grid grid-cols-1 gap-3 md:gap-4">
+            {/* LISTA COMPACTA */}
+            {/* CAMBIO 3: gap-2 en la lista para que estén más pegadas */}
+            <div className="grid grid-cols-1 gap-2 md:gap-4">
                 {sortedSales.length > 0 ? (
                     sortedSales.map(sale => <SaleCard key={sale.id} sale={sale} />)
                 ) : (
