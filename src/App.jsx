@@ -62,7 +62,7 @@ const App = () => {
         getStatusIcon, getStatusColor, getDaysRemaining
     } = useSalesData(sales, catalog, clientsDirectory, uiState, formData);
 
-    // 🔥 MODIFICACIÓN 1: Catálogo Ordenado Alfabéticamente
+    // 🔥 MODIFICACIÓN: Catálogo Ordenado Alfabéticamente (usado en props)
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
 
     // --- HANDLERS SIMPLIFICADOS ---
@@ -134,12 +134,12 @@ const App = () => {
                         targetServiceName = matchingService ? matchingService.name : `${baseName} 1 Perfil`;
                     }
 
-                    // Seguro de Capacidad
+                    // Seguro de Capacidad (Lógica de Slots Personalizada)
                     const sName = originalSale.service.toLowerCase();
                     let totalSlots = 5; 
-                    if (sName.includes('disney') || sName.includes('star')) totalSlots = 4; // MODIFICACIÓN DEL USUARIO
-                    else if (sName.includes('spotify')) totalSlots = 4;                      // MODIFICACIÓN DEL USUARIO
-                    else if (sName.includes('directv')) totalSlots = 4;                      // MODIFICACIÓN DEL USUARIO
+                    if (sName.includes('disney') || sName.includes('star')) totalSlots = 4;
+                    else if (sName.includes('spotify')) totalSlots = 4;  
+                    else if (sName.includes('directv')) totalSlots = 4;          
                     else totalSlots = 5;
 
                     const slotsToCreate = totalSlots - 1; 
@@ -162,10 +162,11 @@ const App = () => {
                     setView('dashboard'); resetForm(); return;
                 }
             }
-            // Edición Normal
-            const pName = bulkProfiles[0]?.profile !== '' ? bulkProfiles[0].profile : formData.profile;
-            const pPin = bulkProfiles[0]?.pin !== '' ? bulkProfiles[0].pin : formData.pin;
-            await updateDoc(doc(db, userPath, 'sales', formData.id), { ...formData, profile: pName, pin: pPin, cost: costPerProfile }); 
+            // Edición Normal (CÓDIGO CORREGIDO: Guarda Profile/PIN directamente desde formData)
+            await updateDoc(doc(db, userPath, 'sales', formData.id), { 
+                ...formData, 
+                cost: costPerProfile // Aseguramos que se use el costo por perfil calculado
+            }); 
             setNotification({ show: true, message: 'Venta actualizada.', type: 'success' });
             setView('dashboard'); resetForm(); return;
         }
@@ -177,9 +178,9 @@ const App = () => {
             const accountCard = freeRows[0];
             const sName = accountCard.service.toLowerCase();
             let totalSlots = 5;
-            if (sName.includes('disney') || sName.includes('star')) totalSlots = 4; // MODIFICACIÓN DEL USUARIO
-            else if (sName.includes('spotify')) totalSlots = 4;  // MODIFICACIÓN DEL USUARIO
-            else if (sName.includes('directv')) totalSlots = 4;  // MODIFICACIÓN DEL USUARIO
+            if (sName.includes('disney') || sName.includes('star')) totalSlots = 4;
+            else if (sName.includes('spotify')) totalSlots = 4;  
+            else if (sName.includes('directv')) totalSlots = 4;          
             else totalSlots = 5;
 
             if (totalSlots >= quantity) { 
@@ -386,8 +387,7 @@ const App = () => {
             <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} />
 
             {view === 'dashboard' && <Dashboard 
-                sales={sales} filteredSales={filteredSales} 
-                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
+                sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
                 filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
                 totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
                 getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
@@ -401,8 +401,7 @@ const App = () => {
             />}
 
             {view === 'config' && <Config 
-                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
-                catalogForm={catalogForm} setCatalogForm={setCatalogForm}
+                catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm}
                 packageForm={packageForm} setPackageForm={setPackageForm}
                 handleAddServiceToCatalog={handleAddServiceToCatalog}
                 handleAddPackageToCatalog={handleAddPackageToCatalog}
@@ -415,8 +414,7 @@ const App = () => {
 
             {view === 'add_stock' && <StockManager
                 accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab}
-                stockForm={stockForm} setStockForm={setStockForm} 
-                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
+                stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
                 handleStockServiceChange={handleStockServiceChange}
                 handleGenerateStock={handleGenerateStock}
                 triggerDeleteAccount={triggerDeleteAccount}
@@ -431,8 +429,7 @@ const App = () => {
                 handleBulkProfileChange={handleBulkProfileChange}
                 handleSingleProfileChange={handleSingleProfileChange}
                 handleSaveSale={handleSaveSale}
-                setView={setView} resetForm={resetForm} 
-                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
+                setView={setView} resetForm={resetForm} catalog={sortedCatalog}
             />}
         </MainLayout>
     );
