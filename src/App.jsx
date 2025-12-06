@@ -1,3 +1,5 @@
+// src/App.jsx (VERSIÓN DEFINITIVA: DETECCIÓN PROACTIVA DE FRAGMENTACIÓN)
+
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
 
@@ -35,7 +37,7 @@ const App = () => {
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
     const [openMenuId, setOpenMenuId] = useState(null);
 
-    // 3. ACTIONS HOOK (Lógica limpia)
+    // 3. ACTIONS HOOK
     const crmActions = useCRMActions(user, userPath, setNotification);
 
     // 4. FORM STATES
@@ -50,8 +52,6 @@ const App = () => {
     });
     const [stockForm, setStockForm] = useState({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
     const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
-    
-    // ✅ CORRECCIÓN AQUÍ: Inicializamos vacío para que se vean los placeholders
     const [packageForm, setPackageForm] = useState({ name: '', cost: '', slots: 2 });
     
     // 5. COMPUTED DATA
@@ -80,7 +80,6 @@ const App = () => {
     const handleAddPackageToCatalog = async (e) => {
         e.preventDefault();
         const success = await crmActions.addCatalogPackage(packageForm);
-        // Al guardar, limpiamos el formulario nuevamente
         if (success) setPackageForm({ name: '', cost: '', slots: 2 });
     };
 
@@ -98,21 +97,89 @@ const App = () => {
         if (success || !success) setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // --- ACCIONES COMPLEJAS (Restauradas) ---
+    // --- ACCIONES COMPLEJAS CON LÓGICA DE NEGOCIO ---
 
+    // ✅ GUARDAR VENTA (LÓGICA BLINDADA DE FRAGMENTACIÓN)
     const handleSaveSale = async (e) => {
         e.preventDefault(); if (!user) return;
         
+        // 1. Guardar cliente en directorio
         if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
             const exists = allClients.some(c => c.name.toLowerCase() === formData.client.toLowerCase());
-            if (!exists) await addDoc(collection(db, userPath, 'clients'), { name: formData.client, phone: formData.phone });
+            if (!exists) {
+                await addDoc(collection(db, userPath, 'clients'), { name: formData.client, phone: formData.phone });
+            }
         }
 
         const isSingleEdit = formData.client !== 'LIBRE' && formData.id && (!formData.profilesToBuy || formData.profilesToBuy === 1);
         const quantity = parseInt(formData.profilesToBuy || 1);
         const costPerProfile = (quantity > 1) ? Number(formData.cost / quantity).toFixed(2) : Number(formData.cost).toFixed(2);
         
+        // --- A. EDICIÓN DE UN SOLO ÍTEM ---
         if (isSingleEdit) {
+            const originalSale = sales.find(s => s.id === formData.id);
+            
+            // 🔥 DETECCIÓN PROACTIVA: SI EL ORIGEN ES 'CUENTA', INTERVENIMOS SIEMPRE 🔥
+            if (originalSale && originalSale.type === 'Cuenta') {
+                
+                // Preguntamos explícitamente al usuario qué quiere hacer
+                const userChoice = window.confirm(
+                    "⚠️ ESTÁS EDITANDO UNA CUENTA COMPLETA.\n\n" +
+                    "Presiona [ACEPTAR] para FRAGMENTARLA en perfiles individuales (Venta de 1 Perfil).\n" +
+                    "Presiona [CANCELAR] para vender la CUENTA ENTERA sin dividirla."
+                );
+
+                if (userChoice) {
+                    // --- MODO FRAGMENTACIÓN ACTIVADO ---
+                    
+                    // 1. Calcular Nombres y Capacidad
+                    let targetServiceName = formData.service;
+                    if (targetServiceName.toLowerCase().includes('cuenta')) {
+                        const baseName = targetServiceName.replace(/cuenta\s*completa/gi, '').replace(/cuenta/gi, '').trim();
+                        targetServiceName = `${baseName} 1 Perfil`; // Nombre forzado para perfiles
+                    }
+
+                    // Seguro de capacidad: Si catálogo dice 1 o nada, forzamos a 5
+                    const serviceInfo = catalog.find(c => c.name === originalSale.service);
+                    let totalSlots = serviceInfo ? Number(serviceInfo.defaultSlots) : 5;
+                    if (totalSlots <= 1) totalSlots = 5; // Fallback seguro
+
+                    const slotsToCreate = totalSlots - 1; 
+
+                    const batch = writeBatch(db);
+                    
+                    // 2. Convertir la tarjeta actual en "Perfil 1" (Vendido)
+                    batch.update(doc(db, userPath, 'sales', formData.id), { 
+                        ...formData, 
+                        service: targetServiceName, // Nombre actualizado
+                        cost: costPerProfile, 
+                        type: 'Perfil', // CAMBIO CRÍTICO DE TIPO
+                        profile: formData.profile || 'Perfil 1' 
+                    });
+
+                    // 3. Generar los cupos libres restantes
+                    for (let i = 0; i < slotsToCreate; i++) {
+                        batch.set(doc(collection(db, userPath, 'sales')), {
+                            client: 'LIBRE', phone: '', 
+                            service: targetServiceName, // Mismo nombre corregido
+                            endDate: '', 
+                            email: formData.email, pass: formData.pass, 
+                            profile: `Perfil ${i + 2}`, 
+                            pin: '', 
+                            cost: costPerProfile, 
+                            type: 'Perfil', // Son perfiles
+                            createdAt: Date.now() + i
+                        });
+                    }
+                    
+                    await batch.commit();
+                    setNotification({ show: true, message: `Cuenta convertida a perfiles (${totalSlots} en total).`, type: 'success' });
+                    setView('dashboard'); resetForm(); return;
+                }
+                // Si da Cancelar, sigue abajo y guarda como Cuenta Completa (sin fragmentar)
+            }
+
+            // Edición Normal (Sin fragmentar o si el usuario canceló la fragmentación)
             const pName = bulkProfiles[0]?.profile !== '' ? bulkProfiles[0].profile : formData.profile;
             const pPin = bulkProfiles[0]?.pin !== '' ? bulkProfiles[0].pin : formData.pin;
             await updateDoc(doc(db, userPath, 'sales', formData.id), { ...formData, profile: pName, pin: pPin, cost: costPerProfile }); 
@@ -120,7 +187,47 @@ const App = () => {
             setView('dashboard'); resetForm(); return;
         }
 
+        // --- B. VENTA MÚLTIPLE (FRAGMENTACIÓN AUTOMÁTICA) ---
         let freeRows = sales.filter(s => s.email === formData.email && s.client === 'LIBRE'); 
+        
+        // Si hay solo 1 tarjeta libre (Cuenta) y vendemos varios...
+        if (freeRows.length === 1 && freeRows[0].type === 'Cuenta' && quantity > 1) {
+            const accountCard = freeRows[0];
+            
+            // Seguro de Capacidad
+            const serviceInfo = catalog.find(c => c.name === accountCard.service);
+            let totalSlots = serviceInfo ? Number(serviceInfo.defaultSlots) : 5;
+            if (totalSlots <= 1) totalSlots = 5;
+
+            if (totalSlots >= quantity) { 
+                if (window.confirm(`⚠️ Esta es una CUENTA COMPLETA.\n\n¿Fragmentar automáticamente para vender ${quantity} perfiles?`)) {
+                    
+                    let targetServiceName = accountCard.service;
+                    if (targetServiceName.toLowerCase().includes('cuenta')) {
+                        const baseName = targetServiceName.replace(/cuenta\s*completa/gi, '').replace(/cuenta/gi, '').trim();
+                        targetServiceName = `${baseName} 1 Perfil`;
+                    }
+
+                    const batch = writeBatch(db);
+                    // Crear cupos extra
+                    for (let i = 0; i < totalSlots - 1; i++) {
+                        batch.set(doc(collection(db, userPath, 'sales')), {
+                            client: 'LIBRE', phone: '', service: targetServiceName, endDate: '', email: accountCard.email, pass: accountCard.pass,
+                            profile: `Perfil ${i + 2}`, pin: '', cost: accountCard.cost, type: 'Perfil', createdAt: Date.now() + i
+                        });
+                    }
+                    // Actualizar original para que deje de ser 'Cuenta'
+                    batch.update(doc(db, userPath, 'sales', accountCard.id), { 
+                        type: 'Perfil', profile: 'Perfil 1', service: targetServiceName 
+                    });
+                    
+                    await batch.commit();
+                    setNotification({ show: true, message: '¡Cuenta fragmentada! Confirma la venta nuevamente.', type: 'success' });
+                    return; 
+                 } else { return; } 
+            }
+        }
+
         if (quantity > freeRows.length) { 
             setNotification({ show: true, message: `Error: Solo quedan ${freeRows.length} perfiles libres.`, type: 'error' });
             return; 
@@ -153,46 +260,72 @@ const App = () => {
         }
     };
 
+    // ✅ IMPORTACIÓN INTELIGENTE (ANTI-CONFLICTOS)
     const handleImportCSV = (event, type) => {
         const file = event.target.files[0]; if (!file || !user) return;
-        setNotification({ show: true, message: 'Cargando datos...', type: 'warning' });
+        setNotification({ show: true, message: 'Procesando archivo...', type: 'warning' });
+        
         const reader = new FileReader();
         reader.onload = async (e) => {
-            const text = e.target.result; const rows = text.split('\n').map(row => row.split(','));
-            const batch = writeBatch(db); let count = 0; let errors = 0;
-            const SALES_MAP = { CLIENT: 0, SERVICE: 1, END_DATE: 2, EMAIL: 3, PASS: 4, PROFILE: 5, PIN: 6, COST: 7, PHONE: 8 };
+            const text = e.target.result; const rows = text.split('\n').map(row => row.split(',')).filter(r => r.length > 1);
+            const batch = writeBatch(db); let salesCount = 0; let clientsCount = 0;
+            const MAP = { CLIENT: 0, SERVICE: 1, END_DATE: 2, EMAIL: 3, PASS: 4, PROFILE: 5, PIN: 6, COST: 7, PHONE: 8 };
 
             try {
                 if (type === 'sales') {
+                    const csvClientsMap = new Map();
                     rows.forEach((row, i) => {
                         if (i === 0 || !row[0] || row[0].toLowerCase().includes('cliente')) return;
-                        if (row[SALES_MAP.SERVICE] && row[SALES_MAP.EMAIL]) {
-                            const serviceName = row[SALES_MAP.SERVICE].trim();
-                            const profileNames = (row[SALES_MAP.PROFILE] || '').split(';').map(p => p.trim()).filter(p => p !== '');
-                            const pinCodes = (row[SALES_MAP.PIN] || '').split(';').map(p => p.trim());
+                        const rawName = row[MAP.CLIENT].trim();
+                        const rawPhone = row[MAP.PHONE] ? row[MAP.PHONE].trim() : '';
+                        if (rawName && rawName !== 'LIBRE' && rawName !== 'N/A') {
+                            const normalizedKey = rawName.toLowerCase();
+                            if (!csvClientsMap.has(normalizedKey)) csvClientsMap.set(normalizedKey, { name: rawName, phone: rawPhone });
+                        }
+                    });
+
+                    csvClientsMap.forEach((clientData, key) => {
+                        const existsInDB = clientsDirectory.some(dbClient => dbClient.name.toLowerCase() === key);
+                        if (!existsInDB) {
+                            const newClientRef = doc(collection(db, userPath, 'clients'));
+                            batch.set(newClientRef, { name: clientData.name, phone: clientData.phone, createdAt: Date.now() });
+                            clientsCount++;
+                        }
+                    });
+
+                    rows.forEach((row, i) => {
+                        if (i === 0 || !row[0] || row[0].toLowerCase().includes('cliente')) return;
+                        if (row[MAP.SERVICE] && row[MAP.EMAIL]) {
+                            const serviceName = row[MAP.SERVICE].trim();
+                            const profileNames = (row[MAP.PROFILE] || '').split(';').map(p => p.trim()).filter(p => p !== '');
+                            const pinCodes = (row[MAP.PIN] || '').split(';').map(p => p.trim());
                             const quantity = Math.max(profileNames.length, pinCodes.length, 1);
-                            const totalCost = Number(row[SALES_MAP.COST] || 0); const costPerProfile = totalCost / quantity;
+                            const totalCost = Number(row[MAP.COST] || 0); const costPerProfile = (totalCost / quantity).toFixed(2);
 
                             for (let j = 0; j < quantity; j++) {
                                 const ref = doc(collection(db, userPath, 'sales'));
                                 batch.set(ref, { 
-                                    client: row[SALES_MAP.CLIENT] ? row[SALES_MAP.CLIENT].trim() : 'N/A', service: serviceName, endDate: row[SALES_MAP.END_DATE] ? row[SALES_MAP.END_DATE].trim() : null, email: row[SALES_MAP.EMAIL].trim(), pass: row[SALES_MAP.PASS] ? row[SALES_MAP.PASS].trim() : 'N/A', profile: profileNames[j] || '', pin: pinCodes[j] || '', cost: Number(costPerProfile).toFixed(2), type: serviceName.includes('Cuenta') ? 'Cuenta' : 'Perfil', createdAt: Date.now() + (i * 100) + j
+                                    client: row[MAP.CLIENT] ? row[MAP.CLIENT].trim() : 'N/A', phone: row[MAP.PHONE] ? row[MAP.PHONE].trim() : '',
+                                    service: serviceName, endDate: row[MAP.END_DATE] ? row[MAP.END_DATE].trim() : null, 
+                                    email: row[MAP.EMAIL].trim(), pass: row[MAP.PASS] ? row[MAP.PASS].trim() : 'N/A', 
+                                    profile: profileNames[j] || '', pin: pinCodes[j] || '', cost: Number(costPerProfile).toFixed(2), 
+                                    type: serviceName.toLowerCase().includes('cuenta') ? 'Cuenta' : 'Perfil', createdAt: Date.now() + (i * 100) + j
                                 });
-                                count++;
+                                salesCount++;
                             }
-                        } else { errors++; }
+                        }
                     });
                 } else if (type === 'catalog') {
                     rows.forEach((row, i) => {
-                       if (i === 0 || !row[0] || row[0].toLowerCase().includes('nombre')) return;
+                       if (i === 0 || !row[0]) return;
                        if (row[0] && row[1]) {
                             const ref = doc(collection(db, userPath, 'catalog'));
                             batch.set(ref, { name: row[0].trim(), cost: Number(row[1] || 0), defaultSlots: Number(row[2] || 4), type: row[3] ? row[3].trim() : 'Perfil' });
-                            count++;
+                            salesCount++;
                        }
                     });
                 }
-                await batch.commit(); setNotification({ show: true, message: `Importación lista: ${count} agregados.`, type: 'success' });
+                await batch.commit(); setNotification({ show: true, message: `Importado: ${salesCount} registros, ${clientsCount} clientes nuevos.`, type: 'success' });
             } catch (error) { setNotification({ show: true, message: `Error CSV.`, type: 'error' }); }
         };
         reader.readAsText(file);
@@ -204,7 +337,7 @@ const App = () => {
     const triggerDeleteAccount = (accountData) => { setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${accountData.email}.`, data: accountData.ids }); };
     
     // --- MANEJO DE CLIENTES ---
-    const triggerDeleteClient = async (id) => { if(window.confirm("¿Eliminar cliente?")) await deleteDoc(doc(db, userPath, 'clients', id)); };
+    const triggerDeleteClient = async (id) => { if(window.confirm("¿Eliminar cliente del directorio?")) await deleteDoc(doc(db, userPath, 'clients', id)); };
     const triggerEditClient = async (clientId, newName, newPhone) => {
         const batch = writeBatch(db);
         let targetId = clientId;
@@ -253,7 +386,7 @@ const App = () => {
     const setView = (newView) => dispatch({ type: uiActionTypes.SET_VIEW, payload: newView });
     const setStockTab = (newTab) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: newTab });
 
-    // --- RENDERIZADO FINAL ---
+    // --- RENDERIZADO ---
 
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
