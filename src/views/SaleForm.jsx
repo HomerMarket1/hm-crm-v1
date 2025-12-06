@@ -1,4 +1,4 @@
-// src/views/SaleForm.jsx (BOTONES SIEMPRE VISIBLES + SCROLL INTERNO)
+// src/views/SaleForm.jsx (BOTONES SIEMPRE VISIBLES + SCROLL INTERNO Y ORDEN ALFABÉTICO)
 
 import React from 'react';
 import { Copy, Package, User, Smartphone, Calendar, DollarSign, Layers, X, Check, Save } from 'lucide-react';
@@ -16,7 +16,7 @@ const SaleForm = ({
     handleSaveSale,
     setView,
     resetForm,
-    catalog
+    catalog // Este prop ya es la lista COMPLETA ordenada alfabéticamente desde App.jsx
 }) => {
 
     // ESTILOS REUTILIZABLES
@@ -24,6 +24,9 @@ const SaleForm = ({
     const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none";
     const INPUT_STYLE = "w-full p-4 pl-11 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-200 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400";
     
+    // 🔥 MODIFICACIÓN 1: Asegurar que la lista de paquetes también esté ordenada alfabéticamente
+    const sortedPackageCatalog = [...packageCatalog].sort((a, b) => a.name.localeCompare(b.name));
+
     const copyCredentials = (e) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${formData.email}:${formData.pass}`);
@@ -179,7 +182,9 @@ const SaleForm = ({
                                     >
                                         <option value={formData.service}>{formData.service} (Actual)</option>
                                         <option disabled>──────────</option>
-                                        {packageCatalog.map(pkg => <option key={pkg.id} value={pkg.name}>{pkg.name} (${pkg.cost})</option>)}
+                                        {/* Usamos la versión ordenada de paquetes */}
+                                        {sortedPackageCatalog.map(pkg => <option key={pkg.id} value={pkg.name}>{pkg.name} (${pkg.cost})</option>)}
+                                        {/* Esta lista ya viene ordenada desde App.jsx */}
                                         {catalog.filter(s => s.type !== 'Paquete').map(ind => <option key={`ind-${ind.id}`} value={ind.name}>{ind.name}</option>)}
                                     </select>
                                 </div>

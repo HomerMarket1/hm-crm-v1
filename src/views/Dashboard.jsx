@@ -128,7 +128,7 @@ const Dashboard = ({
                     </div>
 
                     {/* 2. INFO DE CUENTA (VISIBLE PARA TODOS) */}
-                    {/* ✅ CAMBIO: Quitamos la condición '!isFree' para que se muestre siempre */}
+                    {/* MODIFICACIÓN: Se elimina la condición '!isFree' para que siempre muestre las credenciales */}
                     <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         <div className="flex flex-col justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1.5 md:p-0 border border-white/20 md:border-none">
                             

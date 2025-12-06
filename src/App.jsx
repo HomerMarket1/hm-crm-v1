@@ -1,4 +1,4 @@
-// src/App.jsx (VERSIÓN MAESTRA FINAL: CON EDICIÓN DE CLIENTES CORREGIDA)
+// src/App.jsx (VERSIÓN MAESTRA FINAL: CON EDICIÓN DE CLIENTES CORREGIDA Y ORDENAMIENTO ALFABÉTICO)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -61,6 +61,9 @@ const App = () => {
         accountsInventory, packageCatalog,
         getStatusIcon, getStatusColor, getDaysRemaining
     } = useSalesData(sales, catalog, clientsDirectory, uiState, formData);
+
+    // 🔥 MODIFICACIÓN 1: Catálogo Ordenado Alfabéticamente
+    const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
 
     // --- HANDLERS SIMPLIFICADOS ---
 
@@ -134,10 +137,10 @@ const App = () => {
                     // Seguro de Capacidad
                     const sName = originalSale.service.toLowerCase();
                     let totalSlots = 5; 
-                    if (sName.includes('disney') || sName.includes('star')) totalSlots = 7;
-                    else if (sName.includes('prime')) totalSlots = 3;
-                    else if (sName.includes('netflix')) totalSlots = 5;
-                    else totalSlots = 4;
+                    if (sName.includes('disney') || sName.includes('star')) totalSlots = 4; // MODIFICACIÓN DEL USUARIO
+                    else if (sName.includes('spotify')) totalSlots = 4;                      // MODIFICACIÓN DEL USUARIO
+                    else if (sName.includes('directv')) totalSlots = 4;                      // MODIFICACIÓN DEL USUARIO
+                    else totalSlots = 5;
 
                     const slotsToCreate = totalSlots - 1; 
                     const batch = writeBatch(db);
@@ -174,10 +177,10 @@ const App = () => {
             const accountCard = freeRows[0];
             const sName = accountCard.service.toLowerCase();
             let totalSlots = 5;
-            if (sName.includes('disney') || sName.includes('star')) totalSlots = 7;
-            else if (sName.includes('prime')) totalSlots = 3;
-            else if (sName.includes('netflix')) totalSlots = 5;
-            else totalSlots = 4;
+            if (sName.includes('disney') || sName.includes('star')) totalSlots = 4; // MODIFICACIÓN DEL USUARIO
+            else if (sName.includes('spotify')) totalSlots = 4;  // MODIFICACIÓN DEL USUARIO
+            else if (sName.includes('directv')) totalSlots = 4;  // MODIFICACIÓN DEL USUARIO
+            else totalSlots = 5;
 
             if (totalSlots >= quantity) { 
                 if (window.confirm(`⚠️ Esta es una CUENTA COMPLETA.\n\n¿Fragmentar automáticamente en ${totalSlots} perfiles?`)) {
@@ -383,7 +386,8 @@ const App = () => {
             <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} />
 
             {view === 'dashboard' && <Dashboard 
-                sales={sales} filteredSales={filteredSales} catalog={catalog}
+                sales={sales} filteredSales={filteredSales} 
+                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
                 filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
                 totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
                 getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
@@ -397,7 +401,8 @@ const App = () => {
             />}
 
             {view === 'config' && <Config 
-                catalog={catalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm}
+                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
+                catalogForm={catalogForm} setCatalogForm={setCatalogForm}
                 packageForm={packageForm} setPackageForm={setPackageForm}
                 handleAddServiceToCatalog={handleAddServiceToCatalog}
                 handleAddPackageToCatalog={handleAddPackageToCatalog}
@@ -410,7 +415,8 @@ const App = () => {
 
             {view === 'add_stock' && <StockManager
                 accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab}
-                stockForm={stockForm} setStockForm={setStockForm} catalog={catalog}
+                stockForm={stockForm} setStockForm={setStockForm} 
+                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
                 handleStockServiceChange={handleStockServiceChange}
                 handleGenerateStock={handleGenerateStock}
                 triggerDeleteAccount={triggerDeleteAccount}
@@ -425,7 +431,8 @@ const App = () => {
                 handleBulkProfileChange={handleBulkProfileChange}
                 handleSingleProfileChange={handleSingleProfileChange}
                 handleSaveSale={handleSaveSale}
-                setView={setView} resetForm={resetForm} catalog={catalog}
+                setView={setView} resetForm={resetForm} 
+                catalog={sortedCatalog} // MODIFICACIÓN 2: Usar catálogo ordenado
             />}
         </MainLayout>
     );
