@@ -1,9 +1,9 @@
-// src/views/Dashboard.jsx (VERSIÓN ULTRA-COMPACTA PARA MÓVIL)
+// src/views/Dashboard.jsx (CON CENTRO DE NOTIFICACIONES MASIVAS)
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     Search, Smartphone, Key, Lock, Edit2, Ban, XCircle, RotateCcw, 
-    X, Calendar, ChevronRight, CalendarPlus, Filter 
+    X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2 
 } from 'lucide-react';
 
 const Dashboard = ({
@@ -31,14 +31,45 @@ const Dashboard = ({
     loadingData 
 }) => {
 
-    // 1. ORDENAMIENTO (A-Z)
+    // ESTADO PARA EL MODAL DE ENVÍO MASIVO
+    const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
+    const [sentIds, setSentIds] = useState([]); // Para marcar visualmente los enviados
+
+    // 1. LÓGICA: FILTRAR VENCIMIENTOS PARA ALERTAS (Excluyendo Libres/Problemas/Admin)
+    const validSales = sales.filter(s => 
+        s.client !== 'LIBRE' && 
+        s.client !== 'Admin' && 
+        (!NON_BILLABLE_STATUSES || !NON_BILLABLE_STATUSES.includes(s.client))
+    );
+
+    const expiringToday = validSales.filter(s => getDaysRemaining(s.endDate) === 0);
+    const expiringTomorrow = validSales.filter(s => getDaysRemaining(s.endDate) === 1);
+
+    // 2. ORDENAMIENTO LISTA PRINCIPAL (A-Z)
     const sortedSales = filteredSales.slice().sort((a, b) => {
         const clientA = a.client ? a.client.toUpperCase() : '';
         const clientB = b.client ? b.client.toUpperCase() : '';
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
-    // 2. TARJETA (VERSIÓN SLIM / COMPACTA)
+    // 3. HANDLERS PARA NOTIFICACIONES
+    const openBulkModal = (type) => {
+        if (type === 'today') {
+            if (expiringToday.length === 0) return;
+            setBulkModal({ show: true, title: 'Vencen Hoy', list: expiringToday, msgType: 'expired_today' });
+        } else {
+            if (expiringTomorrow.length === 0) return;
+            setBulkModal({ show: true, title: 'Vencen Mañana', list: expiringTomorrow, msgType: 'warning_tomorrow' });
+        }
+        setSentIds([]); // Resetear marcas de enviado
+    };
+
+    const handleBulkSend = (sale) => {
+        sendWhatsApp(sale, bulkModal.msgType);
+        setSentIds(prev => [...prev, sale.id]); // Marcar como enviado
+    };
+
+    // 4. COMPONENTE TARJETA (Mantenemos el diseño compacto)
     const SaleCard = ({ sale }) => {
         const isFree = sale.client === 'LIBRE';
         const isProblem = NON_BILLABLE_STATUSES && NON_BILLABLE_STATUSES.includes(sale.client);
@@ -71,13 +102,9 @@ const Dashboard = ({
         }
 
         return (
-            // CAMBIO 1: p-2.5 en móvil (antes p-3/p-5) para reducir márgenes internos
             <div className={`p-2.5 md:p-5 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
-                
-                {/* CAMBIO 2: gap-1 en flex-col para pegar las filas verticalmente */}
                 <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
-                    
-                    {/* CABECERA (Compacta) */}
+                    {/* CABECERA */}
                     <div className="col-span-12 md:col-span-3 w-full flex items-start gap-2.5">
                         <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
                             {getStatusIcon(sale.client)}
@@ -102,8 +129,7 @@ const Dashboard = ({
                             )}
                         </div>
                     </div>
-
-                    {/* INFO (Email en una línea compacta) */}
+                    {/* INFO */}
                     <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         {!isFree && !isProblem ? (
                             <div className="flex items-center justify-between md:justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1 md:p-0 border border-white/20 md:border-none">
@@ -115,7 +141,6 @@ const Dashboard = ({
                             </div>
                         ) : isFree && <div className="hidden md:flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Disponible</span></div>}
                     </div>
-
                     {/* ESTADO PC */}
                     <div className="hidden md:flex col-span-2 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
@@ -125,8 +150,7 @@ const Dashboard = ({
                             </div>
                         ) : <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{isFree ? 'LIBRE' : '---'}</span>}
                     </div>
-
-                    {/* ACCIONES (Barra más delgada y pegada arriba) */}
+                    {/* ACCIONES */}
                     <div className="col-span-12 md:col-span-3 w-full flex flex-col md:flex-row items-center justify-end gap-4 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
                         {!isFree && !isProblem && cost > 0 && <div className={`hidden md:block text-xl font-black tracking-tight ${priceColor}`}>${cost}</div>}
                         <div className="flex justify-end gap-2 w-full md:w-auto">
@@ -152,16 +176,88 @@ const Dashboard = ({
         );
     };
 
-    // 3. RENDER PRINCIPAL
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh]"><div className="w-16 h-16 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"/><p className="text-slate-400 font-bold tracking-widest text-xs uppercase animate-pulse">Sincronizando...</p></div>;
 
     return (
         <div className="w-full pb-32 space-y-3 md:space-y-8">
             
-            {/* BARRA DE FILTROS */}
+            {/* --- MODAL DE ENVÍO MASIVO --- */}
+            {bulkModal.show && (
+                <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm animate-in fade-in duration-300 p-0 md:p-4">
+                    <div className="w-full md:max-w-md bg-white rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh]">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800">{bulkModal.title}</h3>
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Cola de envío: {bulkModal.list.length}</p>
+                            </div>
+                            <button onClick={() => setBulkModal({ ...bulkModal, show: false })} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+                                <X size={20} className="text-slate-500"/>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+                            {bulkModal.list.map((sale) => {
+                                const isSent = sentIds.includes(sale.id);
+                                return (
+                                    <div key={sale.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isSent ? 'bg-emerald-50 border-emerald-100 opacity-50' : 'bg-white border-slate-100 shadow-sm'}`}>
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${getStatusColor(sale.client)}`}>
+                                                {getStatusIcon(sale.client)}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="font-bold text-sm text-slate-800 truncate">{sale.client}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 truncate">{sale.phone}</p>
+                                            </div>
+                                        </div>
+                                        {isSent ? (
+                                            <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl">
+                                                <CheckCircle2 size={14}/> Enviado
+                                            </span>
+                                        ) : (
+                                            <button onClick={() => handleBulkSend(sale)} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all">
+                                                Enviar <Send size={12}/>
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- BARRA DE NOTIFICACIONES MASIVAS (NUEVO) --- */}
+            {(expiringToday.length > 0 || expiringTomorrow.length > 0) && (
+                <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
+                    {expiringToday.length > 0 && (
+                        <button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-3 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-white/20 rounded-lg"><Bell size={16} className="fill-white"/></div>
+                                <div className="text-left leading-none">
+                                    <p className="text-[10px] font-bold opacity-80 uppercase">Vencen Hoy</p>
+                                    <p className="text-sm font-black">{expiringToday.length} Clientes</p>
+                                </div>
+                            </div>
+                            <ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
+                        </button>
+                    )}
+                    {expiringTomorrow.length > 0 && (
+                        <button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-white/20 rounded-lg"><Calendar size={16} className="fill-white"/></div>
+                                <div className="text-left leading-none">
+                                    <p className="text-[10px] font-bold opacity-80 uppercase">Mañana</p>
+                                    <p className="text-sm font-black">{expiringTomorrow.length} Clientes</p>
+                                </div>
+                            </div>
+                            <ChevronRight size={16} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* BARRA DE FILTROS (Sin cambios) */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
-                    
                     <div className="relative group w-full">
                         <div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none">
                             <Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
@@ -172,7 +268,6 @@ const Dashboard = ({
                             onChange={e => setFilter('filterClient', e.target.value)} 
                         />
                     </div>
-
                     <div className="flex flex-col md:flex-row gap-2 w-full">
                         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto">
                             <div className="relative flex-shrink-0">
@@ -223,8 +318,7 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {/* LISTA COMPACTA */}
-            {/* CAMBIO 3: gap-2 en la lista para que estén más pegadas */}
+            {/* LISTA DE VENTAS */}
             <div className="grid grid-cols-1 gap-2 md:gap-4">
                 {sortedSales.length > 0 ? (
                     sortedSales.map(sale => <SaleCard key={sale.id} sale={sale} />)
