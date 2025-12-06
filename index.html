@@ -7,32 +7,35 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/locale/es.min.js"></script>
 
-    <link rel="icon" type="image/png" href="/Logo.png" />
-    <link rel="apple-touch-icon" href="/Logo.png">
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png">
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
     <title>HM Digital CRM</title>
 
     <meta name="apple-mobile-web-app-capable" content="yes">
-    
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
     <meta name="apple-mobile-web-app-title" content="HM Digital">
-
-    <meta name="theme-color" content="#F2F2F7">
 
     <link rel="manifest" href="/manifest.json">
 
     <style>
-      html, body {
+      :root {
+        --app-bg: #F2F2F7; /* Tu color gris exacto */
+      }
+      html {
+        background-color: var(--app-bg);
+      }
+      body {
+        background-color: var(--app-bg);
         margin: 0;
         padding: 0;
-        width: 100%;
-        height: 100%;
-        background-color: #F2F2F7; /* El color de tu fondo */
-        overflow: hidden; /* Evita rebotes elásticos blancos */
-        -webkit-tap-highlight-color: transparent;
+        /* Esto asegura que ocupe el 100% real del dispositivo */
+        width: 100vw;
+        height: 100vh; 
+        height: 100dvh; /* Altura dinámica moderna */
+        overflow: hidden;
       }
       #root {
         height: 100%;
