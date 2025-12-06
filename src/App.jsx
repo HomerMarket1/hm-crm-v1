@@ -1,4 +1,4 @@
-// src/App.jsx (VERSIÓN DEFINITIVA: DETECCIÓN PROACTIVA DE FRAGMENTACIÓN)
+// src/App.jsx (VERSIÓN CORREGIDA: SIN ERRORES DE SINTAXIS)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -97,9 +97,9 @@ const App = () => {
         if (success || !success) setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // --- ACCIONES COMPLEJAS CON LÓGICA DE NEGOCIO ---
+    // --- ACCIONES COMPLEJAS (DEFINIDAS AQUÍ PARA QUE NO FALTEN) ---
 
-    // ✅ GUARDAR VENTA (LÓGICA BLINDADA DE FRAGMENTACIÓN)
+    // ✅ GUARDAR VENTA CON AUTO-FRAGMENTACIÓN
     const handleSaveSale = async (e) => {
         e.preventDefault(); if (!user) return;
         
@@ -115,71 +115,55 @@ const App = () => {
         const quantity = parseInt(formData.profilesToBuy || 1);
         const costPerProfile = (quantity > 1) ? Number(formData.cost / quantity).toFixed(2) : Number(formData.cost).toFixed(2);
         
-        // --- A. EDICIÓN DE UN SOLO ÍTEM ---
+        // --- A. EDICIÓN / FRAGMENTACIÓN SIMPLE ---
         if (isSingleEdit) {
             const originalSale = sales.find(s => s.id === formData.id);
             
-            // 🔥 DETECCIÓN PROACTIVA: SI EL ORIGEN ES 'CUENTA', INTERVENIMOS SIEMPRE 🔥
-            if (originalSale && originalSale.type === 'Cuenta') {
-                
-                // Preguntamos explícitamente al usuario qué quiere hacer
-                const userChoice = window.confirm(
-                    "⚠️ ESTÁS EDITANDO UNA CUENTA COMPLETA.\n\n" +
-                    "Presiona [ACEPTAR] para FRAGMENTARLA en perfiles individuales (Venta de 1 Perfil).\n" +
-                    "Presiona [CANCELAR] para vender la CUENTA ENTERA sin dividirla."
-                );
-
-                if (userChoice) {
-                    // --- MODO FRAGMENTACIÓN ACTIVADO ---
+            // 🔥 DETECTAR SI ES CUENTA QUE SE VUELVE PERFIL
+            if (originalSale && originalSale.type === 'Cuenta' && formData.type === 'Perfil') {
+                if (window.confirm("⚠️ ESTÁS TRANSFORMANDO UNA CUENTA COMPLETA EN PERFIL.\n\n¿Deseas generar los cupos libres restantes automáticamente?")) {
                     
-                    // 1. Calcular Nombres y Capacidad
+                    // 1. Nombrado Inteligente
                     let targetServiceName = formData.service;
                     if (targetServiceName.toLowerCase().includes('cuenta')) {
                         const baseName = targetServiceName.replace(/cuenta\s*completa/gi, '').replace(/cuenta/gi, '').trim();
-                        targetServiceName = `${baseName} 1 Perfil`; // Nombre forzado para perfiles
+                        const matchingService = catalog.find(c => c.name.toLowerCase().includes(baseName.toLowerCase()) && c.type === 'Perfil' && Number(c.defaultSlots) === 1);
+                        targetServiceName = matchingService ? matchingService.name : `${baseName} 1 Perfil`;
                     }
 
-                    // Seguro de capacidad: Si catálogo dice 1 o nada, forzamos a 5
+                    // 2. SEGURO DE CAPACIDAD
                     const serviceInfo = catalog.find(c => c.name === originalSale.service);
                     let totalSlots = serviceInfo ? Number(serviceInfo.defaultSlots) : 5;
-                    if (totalSlots <= 1) totalSlots = 5; // Fallback seguro
+                    if (totalSlots <= 1) {
+                        if (originalSale.service.toLowerCase().includes('disney') || originalSale.service.toLowerCase().includes('star')) totalSlots = 7;
+                        else if (originalSale.service.toLowerCase().includes('netflix')) totalSlots = 5;
+                        else totalSlots = 4;
+                    }
 
                     const slotsToCreate = totalSlots - 1; 
 
                     const batch = writeBatch(db);
                     
-                    // 2. Convertir la tarjeta actual en "Perfil 1" (Vendido)
+                    // Actualizar la venta actual
                     batch.update(doc(db, userPath, 'sales', formData.id), { 
-                        ...formData, 
-                        service: targetServiceName, // Nombre actualizado
-                        cost: costPerProfile, 
-                        type: 'Perfil', // CAMBIO CRÍTICO DE TIPO
-                        profile: formData.profile || 'Perfil 1' 
+                        ...formData, cost: costPerProfile, type: 'Perfil', 
+                        profile: formData.profile || 'Perfil 1',
+                        service: targetServiceName 
                     });
 
-                    // 3. Generar los cupos libres restantes
+                    // Crear los hermanos libres
                     for (let i = 0; i < slotsToCreate; i++) {
                         batch.set(doc(collection(db, userPath, 'sales')), {
-                            client: 'LIBRE', phone: '', 
-                            service: targetServiceName, // Mismo nombre corregido
-                            endDate: '', 
-                            email: formData.email, pass: formData.pass, 
-                            profile: `Perfil ${i + 2}`, 
-                            pin: '', 
-                            cost: costPerProfile, 
-                            type: 'Perfil', // Son perfiles
-                            createdAt: Date.now() + i
+                            client: 'LIBRE', phone: '', service: targetServiceName, endDate: '', email: formData.email, pass: formData.pass, 
+                            profile: `Perfil ${i + 2}`, pin: '', cost: costPerProfile, type: 'Perfil', createdAt: Date.now() + i
                         });
                     }
-                    
                     await batch.commit();
-                    setNotification({ show: true, message: `Cuenta convertida a perfiles (${totalSlots} en total).`, type: 'success' });
+                    setNotification({ show: true, message: `Cuenta fragmentada en ${totalSlots} partes.`, type: 'success' });
                     setView('dashboard'); resetForm(); return;
                 }
-                // Si da Cancelar, sigue abajo y guarda como Cuenta Completa (sin fragmentar)
             }
-
-            // Edición Normal (Sin fragmentar o si el usuario canceló la fragmentación)
+            // Edición Normal
             const pName = bulkProfiles[0]?.profile !== '' ? bulkProfiles[0].profile : formData.profile;
             const pPin = bulkProfiles[0]?.pin !== '' ? bulkProfiles[0].pin : formData.pin;
             await updateDoc(doc(db, userPath, 'sales', formData.id), { ...formData, profile: pName, pin: pPin, cost: costPerProfile }); 
@@ -190,11 +174,10 @@ const App = () => {
         // --- B. VENTA MÚLTIPLE (FRAGMENTACIÓN AUTOMÁTICA) ---
         let freeRows = sales.filter(s => s.email === formData.email && s.client === 'LIBRE'); 
         
-        // Si hay solo 1 tarjeta libre (Cuenta) y vendemos varios...
         if (freeRows.length === 1 && freeRows[0].type === 'Cuenta' && quantity > 1) {
             const accountCard = freeRows[0];
             
-            // Seguro de Capacidad
+            // SEGURO DE CAPACIDAD
             const serviceInfo = catalog.find(c => c.name === accountCard.service);
             let totalSlots = serviceInfo ? Number(serviceInfo.defaultSlots) : 5;
             if (totalSlots <= 1) totalSlots = 5;
@@ -209,14 +192,12 @@ const App = () => {
                     }
 
                     const batch = writeBatch(db);
-                    // Crear cupos extra
                     for (let i = 0; i < totalSlots - 1; i++) {
                         batch.set(doc(collection(db, userPath, 'sales')), {
                             client: 'LIBRE', phone: '', service: targetServiceName, endDate: '', email: accountCard.email, pass: accountCard.pass,
                             profile: `Perfil ${i + 2}`, pin: '', cost: accountCard.cost, type: 'Perfil', createdAt: Date.now() + i
                         });
                     }
-                    // Actualizar original para que deje de ser 'Cuenta'
                     batch.update(doc(db, userPath, 'sales', accountCard.id), { 
                         type: 'Perfil', profile: 'Perfil 1', service: targetServiceName 
                     });
@@ -260,7 +241,6 @@ const App = () => {
         }
     };
 
-    // ✅ IMPORTACIÓN INTELIGENTE (ANTI-CONFLICTOS)
     const handleImportCSV = (event, type) => {
         const file = event.target.files[0]; if (!file || !user) return;
         setNotification({ show: true, message: 'Procesando archivo...', type: 'warning' });
@@ -400,6 +380,7 @@ const App = () => {
 
             <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} />
 
+            {/* ✅ AQUI SE PASAN LAS PROPS CORRECTAMENTE, SIN COMENTARIOS */}
             {view === 'dashboard' && <Dashboard 
                 sales={sales} filteredSales={filteredSales} catalog={catalog}
                 filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}

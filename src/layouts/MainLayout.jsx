@@ -1,4 +1,4 @@
-// src/layouts/MainLayout.jsx (CORRECCIÓN VISUAL: SIDEBAR SIN BORDES INTERNOS)
+// src/layouts/MainLayout.jsx (CÓDIGO COMPLETO Y CORREGIDO)
 
 import React from 'react';
 import { Calendar, LogOut, Layers, Box, Settings } from 'lucide-react';
@@ -26,7 +26,8 @@ const MainLayout = ({
 
     return (
         // CONTENEDOR MÁSTER
-        <div className="h-screen w-full bg-[#F2F2F7] relative overflow-hidden flex md:p-6 md:gap-6 selection:bg-indigo-100 selection:text-indigo-900">
+        // pt-12 md:pt-6 asegura espacio para la barra de estado en iOS
+        <div className="h-screen w-full bg-[#F2F2F7] relative overflow-hidden flex flex-col md:flex-row pt-12 md:pt-6 md:p-6 md:gap-6 selection:bg-indigo-100 selection:text-indigo-900">
             
             {/* FONDO ANIMADO */}
             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse pointer-events-none"/>
@@ -35,19 +36,16 @@ const MainLayout = ({
             {/* NOTIFICACIONES */}
             <div className="z-50"><Toast notification={notification} setNotification={setNotification} /></div>
 
-            {/* 1. ISLA IZQUIERDA (SIDEBAR) - CORREGIDO */}
-            {/* Quitamos el padding interno para que el Sidebar llene todo el contenedor y tome sus curvas */}
+            {/* 1. ISLA IZQUIERDA (SIDEBAR) - PC */}
             <aside className="hidden md:flex w-72 h-full flex-col bg-white/70 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl border border-white/40 overflow-hidden z-20 relative">
-                <div className="h-full w-full overflow-y-auto no-scrollbar">
-                    <Sidebar view={view} setView={setView} handleLogout={handleLogout}/>
-                </div>
+                <Sidebar view={view} setView={setView} handleLogout={handleLogout}/>
             </aside>
 
             {/* 2. ISLA DERECHA (CONTENIDO) */}
-            <div className="flex-1 h-full flex flex-col bg-white/60 backdrop-blur-2xl md:rounded-[2.5rem] md:shadow-2xl md:border border-white/40 overflow-hidden z-10 relative transition-all">
+            <div className="flex-1 h-full flex flex-col bg-white/60 backdrop-blur-2xl md:rounded-[2.5rem] md:shadow-2xl md:border border-white/40 overflow-hidden z-10 relative transition-all rounded-t-[2rem] md:rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-white/50">
                 
                 {/* HEADER */}
-                <header className="h-20 flex items-center justify-between px-6 md:px-10 flex-shrink-0 z-20">
+                <header className="h-16 md:h-20 flex items-center justify-between px-6 md:px-10 flex-shrink-0 z-20">
                     <div>
                         <h2 className="text-2xl md:text-4xl font-black text-slate-800 tracking-tighter drop-shadow-sm">
                             {getPageTitle()}
@@ -65,12 +63,12 @@ const MainLayout = ({
                 </header>
 
                 {/* CONTENIDO PRINCIPAL */}
-                <main className="flex-1 overflow-y-auto p-4 md:p-10 pb-24 md:pb-8 scroll-smooth no-scrollbar relative mask-linear-gradient">
+                <main className="flex-1 overflow-y-auto p-4 md:p-10 pb-28 md:pb-8 scroll-smooth no-scrollbar relative mask-linear-gradient">
                     {children}
                 </main>
 
                 {/* BOTTOM NAV (SOLO MÓVIL) */}
-                <nav className="md:hidden fixed bottom-4 left-4 right-4 bg-white/80 backdrop-blur-xl rounded-[2rem] border border-white/50 p-2 flex justify-around z-40 shadow-2xl">
+                <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-white/80 backdrop-blur-xl rounded-[2rem] border border-white/50 p-2 flex justify-around z-40 shadow-2xl">
                     <button onClick={() => setView('dashboard')} className={`p-3 rounded-2xl transition-all ${view === 'dashboard' ? 'bg-slate-900 text-white shadow-lg scale-105' : 'text-slate-400'}`}><Layers size={24}/></button>
                     <button onClick={() => setView('add_stock')} className={`p-3 rounded-2xl transition-all ${view === 'add_stock' ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'text-slate-400'}`}><Box size={24}/></button>
                     <button onClick={() => setView('config')} className={`p-3 rounded-2xl transition-all ${view === 'config' ? 'bg-slate-200 text-slate-800 scale-105' : 'text-slate-400'}`}><Settings size={24}/></button>
