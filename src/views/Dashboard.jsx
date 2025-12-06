@@ -1,11 +1,10 @@
-// src/views/Dashboard.jsx (FINAL: Botón "Renovar" y sin Iconos de Plataforma)
+// src/views/Dashboard.jsx (FINAL: Botón Copiar en la Posición Correcta)
 
 import React, { useState } from 'react';
 import { 
     Search, Smartphone, Key, Lock, Edit2, Ban, XCircle, RotateCcw, 
     X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Eye,
-    // (Se remueven las importaciones de íconos de plataforma como Tv, Film, etc.)
-    Package, Box 
+    // (Íconos de plataforma removidos)
 } from 'lucide-react';
 
 const Dashboard = ({
@@ -36,10 +35,7 @@ const Dashboard = ({
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
     
-    // 🔥 NOTA: getServiceVisuals fue eliminado para volver al diseño anterior.
-    // Si desea agregar un ícono, hágalo directamente en el JSX usando <IconName size={12}/>
-
-    // FUNCIÓN: Copiar email y contraseña al portapapeles
+    // FUNCIÓN: Copia de Credenciales (Restaurada)
     const handleCopyCredentials = (e, email, pass) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${email}:${pass}`);
@@ -88,11 +84,8 @@ const Dashboard = ({
         setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
     };
 
-    // 🔥 FUNCIÓN: Renovar y Marcar como Procesado (para el botón "Renovar")
     const handleModalRenew = (sale) => {
-        handleQuickRenew(sale.id); // 1. Ejecutar la renovación de 30 días
-        
-        // 2. Marcar como PROCESADO/ENVIADO (sin enviar WhatsApp, solo actualizando sentIds)
+        handleQuickRenew(sale.id);
         const clientName = sale.client;
         const clientPhone = sale.phone;
         const allClientIdsInQueue = bulkModal.list
@@ -134,14 +127,12 @@ const Dashboard = ({
             accentColor = "bg-white text-black";
         }
         
-        // La iconografía personalizada fue removida aquí.
-
         return (
             <div className={`p-2.5 md:p-5 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
                 <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
                     
-                    {/* 1. CABECERA (CLIENTE) */}
-                    <div className="col-span-12 md:col-span-3 w-full flex items-start gap-2.5">
+                    {/* 1. CABECERA (CLIENTE/SERVICIO) - AUMENTADO A col-span-4 */}
+                    <div className="col-span-12 md:col-span-4 w-full flex items-start gap-2.5">
                         <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
                             {getStatusIcon(sale.client)}
                         </div>
@@ -150,7 +141,7 @@ const Dashboard = ({
                                 <div className='pr-1'>
                                     <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
                                     
-                                    {/* Mostrar Servicio sin Icono de Plataforma */}
+                                    {/* Muestra Servicio (diseño limpio) */}
                                     <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>
                                         {sale.service}
                                     </div>
@@ -171,38 +162,39 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 2. INFO DE CUENTA (VISIBLE PARA TODOS) */}
-                    <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
+                    {/* 2. INFO DE CUENTA (CORREO, CONTRASEÑA, PIN) - REDUCIDO A col-span-3 */}
+                    <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         <div className="flex flex-col justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1.5 md:p-0 border border-white/20 md:border-none">
                             
-                            {/* Email */}
-                            <div className={`text-[10px] md:text-xs font-medium truncate select-all mb-0.5 ${textSecondary}`} title="Email">
-                                {sale.email}
+                            {/* 🔥 LÍNEA 1: Email y Botón Copiar (separada y clara) */}
+                            <div className={`flex items-start justify-between gap-1 mb-1 ${textSecondary}`}>
+                                <div className="flex items-start gap-1 min-w-0">
+                                    <div className="text-[10px] md:text-[11px] font-medium truncate select-all" title="Email">
+                                        {sale.email}
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)}
+                                    className="text-slate-400 hover:text-indigo-600 p-0.5 rounded-full transition-colors active:scale-90 flex-shrink-0 -mt-0.5"
+                                    title="Copiar Correo y Contraseña"
+                                >
+                                    <Copy size={12}/>
+                                </button>
                             </div>
                             
-                            {/* Contraseña + Botón Copiar */}
-                            <div className="flex items-center justify-between gap-2 border-t border-black/5 pt-1 md:border-none md:pt-0">
+                            {/* 🔥 LÍNEA 2: Contraseña y PIN (separada y clara) */}
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-black/5 md:border-none md:pt-0">
                                 
                                 {/* Contraseña visible */}
                                 <div className="flex items-center gap-1">
                                     <div className="text-[10px] md:text-xs font-mono font-bold text-slate-600 truncate select-all" title="Contraseña">
                                         {sale.pass}
                                     </div>
-                                    {/* Botón de Copiar */}
-                                    <button 
-                                        onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)}
-                                        className="text-slate-400 hover:text-indigo-600 p-1 rounded-full transition-colors active:scale-90"
-                                        title="Copiar Correo y Contraseña"
-                                    >
-                                        <Copy size={12}/>
-                                    </button>
                                 </div>
                                 
                                 {/* Badge de Estado o PIN */}
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                    {isFree ? (
-                                        <span className="text-[9px] font-black text-emerald-600 bg-emerald-100/50 px-1.5 py-0.5 rounded border border-emerald-100">DISPONIBLE</span>
-                                    ) : (
+                                    {!isFree && (
                                         <>
                                             <span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase border border-white/20 ${isAdmin ? 'bg-white/10 text-white' : 'bg-white/60 text-indigo-600'}`}>{sale.profile || 'Gral'}</span>
                                             <span className={`font-mono text-[9px] tracking-widest px-1 py-0.5 rounded border border-white/20 ${isAdmin ? 'bg-white/5 text-slate-300' : 'bg-slate-100/50 text-slate-500'}`}>{sale.pin || '••••'}</span>
@@ -214,7 +206,7 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) - Aumentado a col-span-3 */}
+                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) - Mantiene col-span-3 */}
                     <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
                             <div className="text-center">
@@ -230,7 +222,7 @@ const Dashboard = ({
                         {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
                     </div>
 
-                    {/* 4. ACCIONES (COLUMNA 4: BOTONES) - Reducido a col-span-2 y botones compactos */}
+                    {/* 4. ACCIONES (COLUMNA 4: BOTONES) - Mantiene col-span-2 */}
                     <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
                         
                         <div className="flex justify-end gap-1 w-full md:w-auto">
