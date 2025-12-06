@@ -1,0 +1,20 @@
+{
+    "short_name": "HM Digital",
+    "name": "HM Digital CRM",
+    "icons": [
+      {
+        "src": "/Logo.png",
+        "type": "image/png",
+        "sizes": "192x192"
+      },
+      {
+        "src": "/Logo.png",
+        "type": "image/png",
+        "sizes": "512x512"
+      }
+    ],
+    "start_url": ".",
+    "display": "standalone",
+    "theme_color": "#F2F2F7",
+    "background_color": "#F2F2F7"
+  }
