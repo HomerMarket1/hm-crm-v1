@@ -1,4 +1,4 @@
-// src/App.jsx (VERSIÓN MAESTRA FINAL: CON EDICIÓN DE CLIENTES CORREGIDA Y ORDENAMIENTO ALFABÉTICO)
+// src/App.jsx (VERSIÓN MAESTRA FINAL: CON EDICIÓN DE PERFIL CORREGIDA Y FUNCIÓN DE EDICIÓN DE CATÁLOGO)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -62,7 +62,7 @@ const App = () => {
         getStatusIcon, getStatusColor, getDaysRemaining
     } = useSalesData(sales, catalog, clientsDirectory, uiState, formData);
 
-    // 🔥 MODIFICACIÓN: Catálogo Ordenado Alfabéticamente (usado en props)
+    // 🔥 Catálogo Ordenado Alfabéticamente (usado en props)
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
 
     // --- HANDLERS SIMPLIFICADOS ---
@@ -86,6 +86,20 @@ const App = () => {
         if (success) setPackageForm({ name: '', cost: '', slots: 2 });
     };
 
+    // 🔥 NUEVA FUNCIÓN: Editar un servicio existente del catálogo
+    const handleEditCatalogService = async (serviceId, updatedData) => {
+        if (!user || !serviceId) return;
+        try {
+            await updateDoc(doc(db, userPath, 'catalog', serviceId), updatedData);
+            setNotification({ show: true, message: 'Servicio de catálogo actualizado.', type: 'success' });
+            return true;
+        } catch (error) {
+            setNotification({ show: true, message: 'Error al actualizar servicio.', type: 'error' });
+            console.error(error);
+            return false;
+        }
+    };
+    
     const handleGenerateStock = async (e) => {
         e.preventDefault();
         const success = await crmActions.generateStock(stockForm);
@@ -165,7 +179,7 @@ const App = () => {
             // Edición Normal (CÓDIGO CORREGIDO: Guarda Profile/PIN directamente desde formData)
             await updateDoc(doc(db, userPath, 'sales', formData.id), { 
                 ...formData, 
-                cost: costPerProfile // Aseguramos que se use el costo por perfil calculado
+                cost: costPerProfile
             }); 
             setNotification({ show: true, message: 'Venta actualizada.', type: 'success' });
             setView('dashboard'); resetForm(); return;
@@ -405,6 +419,7 @@ const App = () => {
                 packageForm={packageForm} setPackageForm={setPackageForm}
                 handleAddServiceToCatalog={handleAddServiceToCatalog}
                 handleAddPackageToCatalog={handleAddPackageToCatalog}
+                handleEditCatalogService={handleEditCatalogService} // <-- ¡Nueva función pasada aquí!
                 handleImportCSV={handleImportCSV} importStatus={importStatus}
                 triggerDeleteService={triggerDeleteService}
                 clientsDirectory={clientsDirectory} allClients={allClients} 
