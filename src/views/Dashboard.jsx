@@ -1,4 +1,4 @@
-// src/views/Dashboard.jsx (CREDENCIALES VISIBLES SIEMPRE: LIBRES Y OCUPADOS)
+// src/views/Dashboard.jsx (CREDENCIALES VISIBLES SIEMPRE + ENVÍO MASIVO POR CLIENTE)
 
 import React, { useState } from 'react';
 import { 
@@ -60,10 +60,25 @@ const Dashboard = ({
         setSentIds([]); 
     };
 
+    // 🔥 INICIO MODIFICACIÓN: Enviar por cliente y marcar todos como enviados
     const handleBulkSend = (sale) => {
+        // 1. Enviar el mensaje de WhatsApp (asumimos que el mensaje ya consolida la información)
         sendWhatsApp(sale, bulkModal.msgType);
-        setSentIds(prev => [...prev, sale.id]); 
+        
+        // 2. Identificar al cliente y teléfono para agrupar
+        const clientName = sale.client;
+        const clientPhone = sale.phone;
+        
+        // 3. Encontrar TODOS los IDs en la lista modal que pertenecen a este cliente/teléfono
+        // Usamos tanto el cliente como el teléfono para mayor precisión si hay nombres duplicados
+        const allClientIdsInQueue = bulkModal.list
+            .filter(item => item.client === clientName && item.phone === clientPhone)
+            .map(item => item.id);
+
+        // 4. Marcar TODOS esos IDs como enviados simultáneamente
+        setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
     };
+    // 🔥 FIN MODIFICACIÓN
 
     // --- COMPONENTE TARJETA UNIFICADO ---
     const SaleCard = ({ sale }) => {
@@ -128,7 +143,6 @@ const Dashboard = ({
                     </div>
 
                     {/* 2. INFO DE CUENTA (VISIBLE PARA TODOS) */}
-                    {/* MODIFICACIÓN: Se elimina la condición '!isFree' para que siempre muestre las credenciales */}
                     <div className="col-span-12 md:col-span-4 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         <div className="flex flex-col justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1.5 md:p-0 border border-white/20 md:border-none">
                             
@@ -215,8 +229,27 @@ const Dashboard = ({
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 pb-24">
                             {bulkModal.list.map((sale) => {
-                                const isSent = sentIds.includes(sale.id);
-                                return (<div key={sale.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isSent ? 'bg-emerald-50 border-emerald-100 opacity-50' : 'bg-white border-slate-100 shadow-sm'}`}><div className="flex items-center gap-3 overflow-hidden"><div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${getStatusColor(sale.client)}`}>{getStatusIcon(sale.client)}</div><div className="min-w-0"><p className="font-bold text-sm text-slate-800 truncate">{sale.client}</p><p className="text-[10px] font-bold text-slate-400 truncate">{sale.phone}</p></div></div>{isSent ? (<span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl"><CheckCircle2 size={14}/></span>) : (<button onClick={() => handleBulkSend(sale)} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all">Enviar <Send size={12}/></button>)}</div>);
+                                // Aquí se usa la lógica del cliente/teléfono
+                                const isClientSent = bulkModal.list
+                                    .filter(item => item.client === sale.client && item.phone === sale.phone)
+                                    .every(item => sentIds.includes(item.id));
+                                
+                                return (
+                                    <div key={sale.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isClientSent ? 'bg-emerald-50 border-emerald-100 opacity-50' : 'bg-white border-slate-100 shadow-sm'}`}>
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${getStatusColor(sale.client)}`}>{getStatusIcon(sale.client)}</div>
+                                            <div className="min-w-0">
+                                                <p className="font-bold text-sm text-slate-800 truncate">{sale.client}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 truncate">{sale.phone}</p>
+                                            </div>
+                                        </div>
+                                        {isClientSent ? (
+                                            <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl"><CheckCircle2 size={14}/> Enviado</span>
+                                        ) : (
+                                            <button onClick={() => handleBulkSend(sale)} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all">Enviar <Send size={12}/></button>
+                                        )}
+                                    </div>
+                                );
                             })}
                         </div>
                     </div>
