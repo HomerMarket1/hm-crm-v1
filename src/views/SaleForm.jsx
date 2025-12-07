@@ -1,7 +1,9 @@
-// src/views/SaleForm.jsx (FINAL CORREGIDO: Lógica Robusta de Filtro de Conversión)
+// src/views/SaleForm.jsx (FINAL CORREGIDO: Lógica Limpia)
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Copy, Package, User, Smartphone, Calendar, DollarSign, Layers, X, Check, Save } from 'lucide-react';
+// ✅ IMPORTAR LA UTILIDAD DE CATEGORIZACIÓN
+import { getServiceCategory } from '../utils/helpers'; 
 
 const SaleForm = ({
     formData, setFormData,
@@ -16,7 +18,7 @@ const SaleForm = ({
     handleSaveSale,
     setView,
     resetForm,
-    catalog // Este prop ya es la lista COMPLETA ordenada alfabéticamente desde App.jsx
+    catalog // Lista COMPLETA ordenada alfabéticamente desde App.jsx
 }) => {
 
     // ESTILOS REUTILIZABLES
@@ -24,45 +26,24 @@ const SaleForm = ({
     const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none";
     const INPUT_STYLE = "w-full p-4 pl-11 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-200 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400";
     
-    // 🔥 UTILITY: Obtiene la categoría principal del servicio (más robusta)
-    const getBaseServiceName = (serviceName) => {
-        if (!serviceName) return 'UNKNOWN';
-        const lowerName = serviceName.toLowerCase();
-        
-        if (lowerName.includes('disney') || lowerName.includes('star')) return 'Disney';
-        if (lowerName.includes('netflix')) return 'Netflix';
-        if (lowerName.includes('prime')) return 'Prime';
-        if (lowerName.includes('max')) return 'Max';
-        if (lowerName.includes('crunchyroll')) return 'Crunchyroll';
-        if (lowerName.includes('vix')) return 'Vix';
-        if (lowerName.includes('paramount')) return 'Paramount';
-        
-        // Si no coincide con un conocido, usamos la primera palabra para compatibilidad
-        const base = lowerName.split(' ')[0].replace('+', '');
-        return base;
-    };
+    // 🗑️ ELIMINADO: La función local getBaseServiceName
 
+    // ✅ OPTIMIZACIÓN: CÁLCULOS MEMORIZADOS
+    const baseService = getServiceCategory(formData.service);
 
-    // 🔥 MODIFICACIÓN 1: Asegurar que la lista de paquetes también esté ordenada alfabéticamente
-    const sortedPackageCatalog = [...packageCatalog].sort((a, b) => a.name.localeCompare(b.name));
+    const filteredConversionCatalog = useMemo(() => {
+        return catalog.filter(s => {
+            const serviceCategory = getServiceCategory(s.name);
+            // Mantiene la lógica de filtrado por categoría o el servicio actual
+            if (baseService === 'UNKNOWN') return true; 
+            return serviceCategory === baseService || s.name === formData.service;
+        });
+    }, [catalog, baseService, formData.service]); 
 
-    // 🔥 MODIFICACIÓN 2: Lógica de Filtrado para la conversión
-    const baseService = getBaseServiceName(formData.service);
-    
-    // El catálogo filtrado debe incluir tanto los paquetes como los perfiles individuales
-    const filteredConversionCatalog = catalog.filter(s => {
-        const serviceCategory = getBaseServiceName(s.name);
-        // Si el servicio actual es UNKNOWN, no filtramos.
-        if (baseService === 'UNKNOWN') return true; 
-        // Filtramos solo por la categoría base, a menos que sea el servicio ya seleccionado
-        return serviceCategory === baseService || s.name === formData.service;
-    });
-
-    // Dividimos el catálogo filtrado en paquetes y perfiles
-    const filteredPackages = sortedPackageCatalog.filter(pkg => 
-        getBaseServiceName(pkg.name) === baseService || pkg.name === formData.service
-    );
+    // ✅ OPTIMIZACIÓN: Usamos el catálogo filtrado memorizado
+    const filteredPackages = filteredConversionCatalog.filter(s => s.type === 'Paquete');
     const filteredProfiles = filteredConversionCatalog.filter(s => s.type !== 'Paquete');
+
 
     const copyCredentials = (e) => {
         e.preventDefault();
@@ -77,8 +58,7 @@ const SaleForm = ({
         // FONDO OSCURO (MODAL)
         <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
             
-            {/* TARJETA PRINCIPAL (Flex Column para separar Header, Body y Footer) */}
-            {/* h-[90dvh] asegura que no ocupe toda la pantalla y deje espacio arriba */}
+            {/* TARJETA PRINCIPAL */}
             <div className="w-full md:max-w-lg h-[85dvh] md:h-auto md:max-h-[90vh] bg-white rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
                 
                 {/* 1. ENCABEZADO (Fijo) */}
@@ -118,22 +98,21 @@ const SaleForm = ({
                                         <button 
                                             key={num} 
                                             type="button" 
-                                            // Lógica de selección de precio de perfil individual por defecto
                                             onClick={()=> {
                                                 let newCost = formData.cost;
                                                 let newService = formData.service;
                                                 
                                                 if (formData.client === 'LIBRE' && num > 0) {
-                                                    const base = getBaseServiceName(formData.service);
-                                                    // Buscar el servicio individual (1 Perfil) de esa plataforma
+                                                    // ✅ USAMOS LA UTILIDAD IMPORTADA
+                                                    const base = getServiceCategory(formData.service); 
                                                     const individualService = catalog.find(s => 
                                                         s.type === 'Perfil' && 
                                                         s.defaultSlots === 1 && 
-                                                        getBaseServiceName(s.name) === base
+                                                        getServiceCategory(s.name) === base
                                                     );
                                                     
                                                     if (individualService) {
-                                                        newCost = Number(individualService.cost) * num; // Costo total = Precio individual * cantidad
+                                                        newCost = Number(individualService.cost) * num; 
                                                         newService = individualService.name; 
                                                     }
                                                 }
@@ -159,7 +138,7 @@ const SaleForm = ({
                             </div>
                         )}
 
-                        {/* DATOS CLIENTE */}
+                        {/* DATOS CLIENTE (Sin cambios) */}
                         <div className="space-y-3">
                             <div className="grid grid-cols-1 gap-3">
                                 <div className={INPUT_WRAPPER}>
@@ -197,7 +176,7 @@ const SaleForm = ({
                             </div>
                         </div>
 
-                        {/* PERFILES */}
+                        {/* PERFILES (Sin cambios) */}
                         <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100">
                             <div className="flex items-center gap-2 mb-3">
                                 <Layers size={16} className="text-indigo-500"/>
@@ -224,7 +203,7 @@ const SaleForm = ({
                             </div>
                         </div>
 
-                        {/* SELECTOR DE PAQUETE (Si aplica) */}
+                        {/* SELECTOR DE PAQUETE (Conversión) */}
                         {packageCatalog.length > 0 && (
                             <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50">
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase mb-2">
@@ -237,7 +216,7 @@ const SaleForm = ({
                                             const selected = catalog.find(s => s.name === selectedName);
                                             if (selected) setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots }));
                                             else {
-                                                const baseService = catalog.find(s => s.name.toLowerCase().includes('1 perfil') && s.type !== 'Paquete');
+                                                const baseService = catalog.find(s => getServiceCategory(s.name) === getServiceCategory(formData.service) && s.type !== 'Paquete');
                                                 setFormData(prev => ({ ...prev, service: baseService ? baseService.name : 'Netflix 1 Perfil', profilesToBuy: 1, cost: baseService ? baseService.cost : prev.cost }));
                                             }
                                         }} 
@@ -245,14 +224,13 @@ const SaleForm = ({
                                     >
                                         <option value={formData.service}>{formData.service} (Actual)</option>
                                         <option disabled>──────────</option>
-                                        {/* Usamos la versión ordenada de paquetes */}
-                                        {sortedPackageCatalog
-                                            .filter(pkg => getBaseServiceName(pkg.name) === baseService) // FILTRO: Mostrar solo paquetes de la misma plataforma
+                                        {/* Paquetes y Perfiles filtrados por la categoría base actual */}
+                                        {filteredPackages
+                                            .filter(pkg => getServiceCategory(pkg.name) === baseService) // FILTRO: Mostrar solo paquetes de la misma plataforma
                                             .map(pkg => <option key={pkg.id} value={pkg.name}>{pkg.name} (${pkg.cost})</option>)
                                         }
-                                        {/* Paquetes individuales y cuentas filtrados */}
                                         {filteredProfiles
-                                            .filter(s => getBaseServiceName(s.name) === baseService) // FILTRO: Mostrar solo perfiles/cuentas de la misma plataforma
+                                            .filter(s => getServiceCategory(s.name) === baseService) // FILTRO: Mostrar solo perfiles/cuentas de la misma plataforma
                                             .map(ind => <option key={`ind-${ind.id}`} value={ind.name}>{ind.name}</option>)
                                         }
                                     </select>
@@ -260,7 +238,7 @@ const SaleForm = ({
                             </div>
                         )}
                         
-                        {/* Espacio extra al final para que no choque */}
+                        {/* Espacio extra al final */}
                         <div className="h-4"></div>
                     </form>
                 </div>

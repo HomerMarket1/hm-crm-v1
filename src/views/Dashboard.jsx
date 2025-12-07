@@ -1,10 +1,7 @@
-// src/views/Dashboard.jsx (FINAL: Botón Copiar en la Posición Correcta)
-
 import React, { useState } from 'react';
 import { 
     Search, Smartphone, Key, Lock, Edit2, Ban, XCircle, RotateCcw, 
     X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Eye,
-    // (Íconos de plataforma removidos)
 } from 'lucide-react';
 
 const Dashboard = ({
@@ -29,31 +26,28 @@ const Dashboard = ({
     setView, 
     setBulkProfiles,
     NON_BILLABLE_STATUSES, 
-    loadingData 
+    loadingData,
+    // ✅ PROPS MEMORIZADAS (Calculadas ahora en useSalesData.js)
+    expiringToday, 
+    expiringTomorrow, 
+    overdueSales 
 }) => {
 
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
     
-    // FUNCIÓN: Copia de Credenciales (Restaurada)
+    // FUNCIÓN: Copia de Credenciales 
     const handleCopyCredentials = (e, email, pass) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${email}:${pass}`);
         const btn = e.currentTarget;
         const originalContent = btn.innerHTML;
+        // Icono de confirmación SVG simplificado para evitar errores de renderizado
         btn.innerHTML = `<span class="text-emerald-600 flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copiado</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
     };
 
-    const validSales = sales.filter(s => 
-        s.client !== 'LIBRE' && 
-        s.client !== 'Admin' && 
-        (!NON_BILLABLE_STATUSES || !NON_BILLABLE_STATUSES.includes(s.client))
-    );
-
-    const expiringToday = validSales.filter(s => getDaysRemaining(s.endDate) === 0);
-    const expiringTomorrow = validSales.filter(s => getDaysRemaining(s.endDate) === 1);
-    const overdueSales = validSales.filter(s => getDaysRemaining(s.endDate) < 0);
+    // 🗑️ ELIMINADO: La lógica de cálculo de ventas críticas. Ahora se usan las props.
 
     const sortedSales = filteredSales.slice().sort((a, b) => {
         const clientA = a.client ? a.client.toUpperCase() : '';
@@ -61,17 +55,28 @@ const Dashboard = ({
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
+    // Función limpia para abrir el modal de alertas
     const openBulkModal = (type) => {
+        let list;
+        let title;
+        let msgType;
+
         if (type === 'today') {
-            if (expiringToday.length === 0) return;
-            setBulkModal({ show: true, title: 'Vencen Hoy', list: expiringToday, msgType: 'expired_today' });
+            list = expiringToday;
+            title = 'Vencen Hoy';
+            msgType = 'expired_today';
         } else if (type === 'tomorrow') {
-            if (expiringTomorrow.length === 0) return;
-            setBulkModal({ show: true, title: 'Vencen Mañana', list: expiringTomorrow, msgType: 'warning_tomorrow' });
+            list = expiringTomorrow;
+            title = 'Vencen Mañana';
+            msgType = 'warning_tomorrow';
         } else if (type === 'overdue') { 
-            if (overdueSales.length === 0) return;
-            setBulkModal({ show: true, title: 'Vencidas (Pago)', list: overdueSales, msgType: 'overdue_payment' });
+            list = overdueSales;
+            title = 'Vencidas (Pago)';
+            msgType = 'overdue_payment';
         }
+        
+        if (list.length === 0) return;
+        setBulkModal({ show: true, title, list, msgType });
     };
 
     const handleBulkSend = (sale) => {
@@ -92,6 +97,13 @@ const Dashboard = ({
             .filter(item => item.client === clientName && item.phone === clientPhone)
             .map(item => item.id);
         setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
+    };
+
+    // Función para iniciar la edición (Mejora la legibilidad del JSX)
+    const handleStartEditSale = (sale) => {
+        setFormData({...sale, profilesToBuy: 1}); 
+        setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); 
+        setView('form');
     };
 
 
@@ -131,7 +143,7 @@ const Dashboard = ({
             <div className={`p-2.5 md:p-5 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
                 <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
                     
-                    {/* 1. CABECERA (CLIENTE/SERVICIO) - AUMENTADO A col-span-4 */}
+                    {/* 1. CABECERA (CLIENTE/SERVICIO) */}
                     <div className="col-span-12 md:col-span-4 w-full flex items-start gap-2.5">
                         <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
                             {getStatusIcon(sale.client)}
@@ -141,7 +153,6 @@ const Dashboard = ({
                                 <div className='pr-1'>
                                     <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
                                     
-                                    {/* Muestra Servicio (diseño limpio) */}
                                     <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>
                                         {sale.service}
                                     </div>
@@ -162,11 +173,11 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 2. INFO DE CUENTA (CORREO, CONTRASEÑA, PIN) - REDUCIDO A col-span-3 */}
+                    {/* 2. INFO DE CUENTA (CORREO, CONTRASEÑA, PIN) */}
                     <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         <div className="flex flex-col justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1.5 md:p-0 border border-white/20 md:border-none">
                             
-                            {/* 🔥 LÍNEA 1: Email y Botón Copiar (separada y clara) */}
+                            {/* LÍNEA 1: Email y Botón Copiar */}
                             <div className={`flex items-start justify-between gap-1 mb-1 ${textSecondary}`}>
                                 <div className="flex items-start gap-1 min-w-0">
                                     <div className="text-[10px] md:text-[11px] font-medium truncate select-all" title="Email">
@@ -182,7 +193,7 @@ const Dashboard = ({
                                 </button>
                             </div>
                             
-                            {/* 🔥 LÍNEA 2: Contraseña y PIN (separada y clara) */}
+                            {/* LÍNEA 2: Contraseña y PIN */}
                             <div className="flex items-center justify-between gap-2 pt-1 border-t border-black/5 md:border-none md:pt-0">
                                 
                                 {/* Contraseña visible */}
@@ -206,7 +217,7 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) - Mantiene col-span-3 */}
+                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) */}
                     <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
                             <div className="text-center">
@@ -218,11 +229,10 @@ const Dashboard = ({
                             <span className="text-xs font-black text-emerald-400 uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg">LIBRE</span> :
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">---</span>
                         )}
-                        {/* El precio en PC ahora se muestra aquí para usar el espacio adicional */}
                         {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
                     </div>
 
-                    {/* 4. ACCIONES (COLUMNA 4: BOTONES) - Mantiene col-span-2 */}
+                    {/* 4. ACCIONES (COLUMNA 4: BOTONES) */}
                     <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
                         
                         <div className="flex justify-end gap-1 w-full md:w-auto">
@@ -240,8 +250,8 @@ const Dashboard = ({
                                         {/* 3. ENVIAR CUENTA (Llave/Key) */}
                                         {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={12}/></button>}
                                         
-                                        {/* 4. Editar */}
-                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={12}/></button>
+                                        {/* 4. Editar (USA LA FUNCIÓN LIMPIA) */}
+                                        <button onClick={() => handleStartEditSale(sale)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={12}/></button>
                                     </div>
                                     
                                     <div className="flex gap-1 pl-1 border-l border-slate-200 ml-1">
@@ -265,7 +275,7 @@ const Dashboard = ({
     return (
         <div className="w-full pb-32 space-y-3 md:space-y-8">
             
-            {/* --- MODAL DE ENVÍO MASIVO --- */}
+            {/* --- MODAL DE ENVÍO MASIVO (Sin cambios) --- */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm animate-in fade-in duration-300 p-0 md:p-4">
                     <div className="w-full md:max-w-md bg-white rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh]">
@@ -275,7 +285,6 @@ const Dashboard = ({
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 pb-24">
                             {bulkModal.list.map((sale) => {
-                                // Aquí se usa la lógica del cliente/teléfono
                                 const isClientSent = bulkModal.list
                                     .filter(item => item.client === sale.client && item.phone === sale.phone)
                                     .every(item => sentIds.includes(item.id));
@@ -315,8 +324,9 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* ALERTAS - FILTROS VENCIDAS, HOY, MAÑANA */}
-            {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
+            {/* ALERTAS - FILTROS VENCIDAS, HOY, MAÑANA (USANDO PROPS CORREGIDAS) */}
+            {/* Si el error de pantalla en blanco persiste, es porque estas listas no están llegando bien. */}
+            {(expiringToday?.length > 0 || expiringTomorrow?.length > 0 || overdueSales?.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     
                     {/* Botón: Vencidas (Días < 0) */}
@@ -359,7 +369,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* SECCIÓN DE FILTROS (RESTAURADA) */}
+            {/* SECCIÓN DE FILTROS (Sin cambios) */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar cliente, correo..." className="block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-transparent border-none text-slate-800 placeholder-slate-400 focus:ring-0 text-sm md:text-base font-medium rounded-2xl transition-all" value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>

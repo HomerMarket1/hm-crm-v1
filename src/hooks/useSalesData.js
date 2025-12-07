@@ -1,12 +1,11 @@
-// src/hooks/useSalesData.js
-
 import { useMemo } from 'react';
-import { getDaysRemaining } from '../utils/helpers';
+// Importamos las utilidades de fecha y UI desde helpers.js
+import { getDaysRemaining, getStatusIcon, getStatusColor } from '../utils/helpers'; 
 
 // Lista de estados que no deben sumar a las ganancias totales
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED'];
 
-export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData) => {
+export const useSalesData = (sales, catalog, allClients, uiState, formData) => { 
     
     // Desestructurar los filtros del estado de UI
     const { 
@@ -14,7 +13,7 @@ export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData
     } = uiState;
 
     // =========================================================================
-    // 1. LÓGICA DE FILTRADO (La parte más importante que movemos de App.jsx)
+    // 1. LÓGICA DE FILTRADO
     // =========================================================================
 
     const filteredSales = useMemo(() => {
@@ -51,16 +50,55 @@ export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData
                     matchDate = endDate.getTime() === dateF.getTime(); 
                 }
             } else if (dateFrom || dateTo) {
-                matchDate = false; // Excluir ventas sin fecha si se aplica un filtro de fecha
+                matchDate = false; 
             }
             
             return matchSearch && matchService && matchStatus && matchDate;
         });
     }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo]);
 
+    // =========================================================================
+    // 2. CÁLCULO DE ALERTAS DE VENCIMIENTO
+    // =========================================================================
+    
+    const NON_ALERT_STATUSES = ['LIBRE', 'Admin', ...NON_BILLABLE_STATUSES];
+
+    const validSales = useMemo(() => {
+        return sales.filter(s => 
+            s.client && 
+            !NON_ALERT_STATUSES.includes(s.client)
+        );
+    }, [sales, NON_BILLABLE_STATUSES]); 
+
+    const expiringAlerts = useMemo(() => {
+        const today = [];
+        const tomorrow = [];
+        const overdue = [];
+
+        validSales.forEach(sale => {
+            const days = getDaysRemaining(sale.endDate); 
+            
+            if (days === 0) {
+                today.push(sale);
+            } else if (days === 1) {
+                tomorrow.push(sale);
+            } else if (days < 0) {
+                overdue.push(sale);
+            }
+        });
+
+        return { 
+            expiringToday: today, 
+            expiringTomorrow: tomorrow, 
+            overdueSales: overdue 
+        };
+    }, [validSales, getDaysRemaining]);
+    
+    const { expiringToday, expiringTomorrow, overdueSales } = expiringAlerts;
+
 
     // =========================================================================
-    // 2. CÁLCULOS DERIVADOS (Que también se mueven de App.jsx)
+    // 3. CÁLCULOS DERIVADOS
     // =========================================================================
 
     const totalFilteredMoney = useMemo(() => {
@@ -73,25 +111,8 @@ export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData
     const totalItems = filteredSales.length;
 
     // =========================================================================
-    // 3. DATOS SECUNDARIOS (Otros useMemo que estaban en App.jsx)
+    // 4. DATOS SECUNDARIOS
     // =========================================================================
-    
-    const allClients = useMemo(() => {
-        const fromDir = clientsDirectory.map(c => ({ name: c.name, phone: c.phone }));
-        const fromSales = sales
-            .filter(s => s.client && s.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(s.client))
-            .map(s => ({ name: s.client, phone: s.phone }));
-        
-        const combined = [...fromDir, ...fromSales];
-        const unique = [];
-        const map = new Map();
-        for (const item of combined) {
-            if (!item.name) continue;
-            const key = item.name.toLowerCase().trim();
-            if(!map.has(key)) { map.set(key, true); unique.push(item); }
-        }
-        return unique.sort((a, b) => a.name.localeCompare(b.name));
-    }, [sales, clientsDirectory]);
     
     const getClientPreviousProfiles = useMemo(() => {
         if (!formData.client || formData.client === 'LIBRE') return [];
@@ -123,6 +144,7 @@ export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData
                 };
             }
             groups[sale.email].total++;
+            // ✅ CORRECCIÓN DE TYPO: groups[sale.email].free++ en lugar de groups[f.email].free++
             if (sale.client === 'LIBRE') groups[sale.email].free++;
             groups[sale.email].ids.push(sale.id);
         });
@@ -134,37 +156,20 @@ export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData
     }, [catalog]);
 
     // =========================================================================
-    // 4. FUNCIONES DE UTILITY (Mantener aquí las funciones que dependen de props)
+    // 5. EXPORTACIÓN
     // =========================================================================
-
-    const getStatusIcon = (clientName) => {
-        // ... (Iconos iguales)
-        if (clientName === 'LIBRE') return '✅';
-        if (clientName === 'Caída') return '⚠️';
-        if (clientName === 'Actualizar') return '🔄';
-        if (clientName === 'Dominio') return '🌐';
-        if (clientName === 'Admin') return '🛡️';
-        if (clientName === 'EXPIRED') return '💀';
-        return clientName.charAt(0);
-    };
-    
-    const getStatusColor = (clientName) => {
-        // ... (Colores iguales)
-        if (clientName === 'LIBRE') return 'bg-emerald-100 text-emerald-600';
-        if (clientName === 'Caída') return 'bg-red-100 text-red-600';
-        if (clientName === 'Actualizar') return 'bg-blue-100 text-blue-600';
-        if (clientName === 'Dominio') return 'bg-violet-100 text-violet-600';
-        if (clientName === 'Admin') return 'bg-slate-800 text-white';
-        if (clientName === 'EXPIRED') return 'bg-slate-200 text-slate-500';
-        return 'bg-[#007AFF] text-white'; 
-    };
 
     return {
         // Datos filtrados
         filteredSales,
         totalFilteredMoney,
         totalItems,
-        NON_BILLABLE_STATUSES, // <-- Exportar la constante
+        NON_BILLABLE_STATUSES, 
+
+        // Datos de Alertas
+        expiringToday,
+        expiringTomorrow,
+        overdueSales,
 
         // Datos secundarios y utilidades
         allClients,
@@ -173,9 +178,9 @@ export const useSalesData = (sales, catalog, clientsDirectory, uiState, formData
         accountsInventory,
         packageCatalog,
 
-        // Funciones de utilidad (solo si se usan en la vista sin depender de más props)
-        getStatusIcon,
+        // Funciones de utilidad (importadas de helpers)
+        getStatusIcon, 
         getStatusColor,
-        getDaysRemaining, // <-- Importada desde utils/helpers
+        getDaysRemaining, 
     };
 };

@@ -1,6 +1,6 @@
-// src/views/StockManager.jsx (CORRECCIONES: EMAIL TYPE Y MINIMUM SLOTS)
+// src/views/StockManager.jsx (CÓDIGO FINAL Y PULIDO)
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'; // ✅ Importar useMemo
 import { 
     Plus, Trash2, Search, Copy, Check, Shield, Zap, Box, 
     Layers, Smartphone, Lock, Mail 
@@ -21,11 +21,13 @@ const StockManager = ({
     const [searchInventory, setSearchInventory] = useState('');
     const [copiedId, setCopiedId] = useState(null); 
 
-    // 2. FILTRADO
-    const filteredAccounts = accountsInventory.filter(acc => 
-        acc.email.toLowerCase().includes(searchInventory.toLowerCase()) ||
-        acc.service.toLowerCase().includes(searchInventory.toLowerCase())
-    );
+    // 2. FILTRADO (✅ OPTIMIZACIÓN: Usar useMemo)
+    const filteredAccounts = useMemo(() => {
+        return accountsInventory.filter(acc => 
+            acc.email.toLowerCase().includes(searchInventory.toLowerCase()) ||
+            acc.service.toLowerCase().includes(searchInventory.toLowerCase())
+        );
+    }, [accountsInventory, searchInventory]); // Recalcula solo si el inventario o la búsqueda cambian
 
     // 3. COPIADO
     const handleCopy = (text, uniqueId) => {
@@ -34,7 +36,7 @@ const StockManager = ({
         setTimeout(() => setCopiedId(null), 2000); 
     };
 
-    // 4. TARJETA BÓVEDA
+    // 4. TARJETA BÓVEDA (Sin cambios)
     const VaultCard = ({ acc, index }) => {
         const percentFree = Math.round((acc.free / acc.total) * 100);
         let barColor = "bg-emerald-500 shadow-emerald-500/50";
@@ -104,7 +106,7 @@ const StockManager = ({
     return (
         <div className="w-full pb-32 space-y-6">
             
-            {/* 1. HEADER */}
+            {/* 1. HEADER (Sin cambios) */}
             <div className="sticky top-0 z-30 bg-[#F2F2F7]/80 backdrop-blur-xl py-2 -mx-1 px-1">
                 <div className="bg-white/60 backdrop-blur-md p-1.5 rounded-2xl border border-white/50 shadow-sm flex gap-1">
                     <button onClick={() => setStockTab('manage')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all ${stockTab === 'manage' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400 hover:bg-white/40'}`}>
@@ -142,7 +144,6 @@ const StockManager = ({
                                     <div className="space-y-1">
                                         <label className="text-xs font-bold text-slate-500 ml-3">Credenciales</label>
                                         
-                                        {/* ✅ CORRECCIÓN 1: Input type="email" */}
                                         <input 
                                             type="email" 
                                             required
@@ -164,14 +165,12 @@ const StockManager = ({
                                         <label className="text-xs font-bold text-slate-500 ml-3">Capacidad</label>
                                         <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50 flex flex-col items-center justify-center h-full">
                                             
-                                            {/* ✅ CORRECCIÓN 2: Límite Mínimo de 1 */}
                                             <input 
                                                 type="number" 
                                                 min="1" 
                                                 className="bg-transparent text-4xl font-black text-indigo-600 text-center w-full outline-none placeholder-indigo-200" 
                                                 value={stockForm.slots} 
                                                 onChange={e => {
-                                                    // Lógica para que nunca baje de 1
                                                     const val = parseInt(e.target.value);
                                                     setStockForm({...stockForm, slots: isNaN(val) || val < 1 ? 1 : val})
                                                 }}
@@ -205,7 +204,7 @@ const StockManager = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredAccounts.length > 0 ? (
-                            filteredAccounts.map((acc, i) => <VaultCard key={i} acc={acc} index={i} />)
+                            filteredAccounts.map((acc, i) => <VaultCard key={acc.email} acc={acc} index={i} />)
                         ) : (
                             <div className="col-span-full py-20 text-center">
                                 <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">

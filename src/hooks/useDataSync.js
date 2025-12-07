@@ -1,35 +1,31 @@
-// src/hooks/useDataSync.js
+// src/hooks/useDataSync.js (VERSIÓN PULIDA)
 
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth'; 
-import { collection, onSnapshot } from 'firebase/firestore'; 
-// Asegúrate de que las rutas a config.js sean correctas:
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'; // Añadir query, orderBy
 import { auth, db } from '../firebase/config'; 
 
 export const useDataSync = () => {
-  // Estados que controlan la aplicación a nivel global
+  
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  // Estados que almacenan los datos de Firestore
   const [sales, setSales] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [clientsDirectory, setClientsDirectory] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
 
-  // 1. AUTENTICACIÓN: Detecta cambios de sesión (login/logout)
+  // 1. AUTENTICACIÓN: Detecta cambios de sesión
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
     });
-    // Limpieza de la suscripción al desmontar el componente
     return () => unsubscribe();
   }, []); 
 
   // 2. CARGA DE DATOS: Sincroniza las colecciones cuando el usuario está autenticado
   useEffect(() => {
-    // Si no hay usuario, limpiamos los datos y salimos
     if (!user) {
       setSales([]); setCatalog([]); setClientsDirectory([]);
       return;
@@ -38,10 +34,13 @@ export const useDataSync = () => {
     setLoadingData(true);
     const userPath = `users/${user.uid}`;
 
-    // Suscripción a 'sales'
-    const salesUnsub = onSnapshot(collection(db, userPath, 'sales'), (s) => {
-      setSales(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
-      setLoadingData(false); 
+    // 💡 MEJORA: Ordenar las ventas en la consulta (backend) es más eficiente.
+    const salesQuery = query(collection(db, userPath, 'sales'), orderBy('createdAt', 'asc'));
+
+    const salesUnsub = onSnapshot(salesQuery, (s) => {
+      // Ordenamiento del lado del cliente ELIMINADO ya que se hace en la consulta
+      setSales(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoadingData(false); // Asumimos que la primera carga es suficiente
     });
     
     // Suscripción a 'catalog'
@@ -58,6 +57,6 @@ export const useDataSync = () => {
     return () => { salesUnsub(); catalogUnsub(); clientsUnsub(); };
   }, [user]); 
 
-  // El hook retorna todos los datos y estados de carga.
-  return { user, authLoading, sales, catalog, clientsDirectory, loadingData, db, auth };
+  // ✅ PULIDO FINAL: Eliminamos db y auth del retorno para desacoplar App.jsx
+  return { user, authLoading, sales, catalog, clientsDirectory, loadingData };
 };

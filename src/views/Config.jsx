@@ -1,4 +1,4 @@
-// src/views/Config.jsx (FINAL: GESTIÓN Y EDICIÓN DE CATÁLOGO)
+// src/views/Config.jsx (FINAL: GESTIÓN Y EDICIÓN DE CATÁLOGO LIMPIO)
 
 import React, { useState } from 'react';
 import { 
@@ -6,9 +6,7 @@ import {
     Edit2, Search, Settings, Users, Box, Zap, Download, Skull, AlertOctagon, X 
 } from 'lucide-react';
 
-// Importaciones para el borrado total (se mantienen)
-import { db, auth } from '../firebase/config';
-import { collection, getDocs, writeBatch } from 'firebase/firestore';
+// ELIMINADAS: Las importaciones de Firebase (db, auth, collection, etc.) ya no son necesarias.
 
 const Config = ({
     catalog,
@@ -16,7 +14,7 @@ const Config = ({
     packageForm, setPackageForm,
     handleAddServiceToCatalog,
     handleAddPackageToCatalog,
-    handleEditCatalogService, // <--- NUEVO PROP: Función para guardar edición
+    handleEditCatalogService, 
     handleImportCSV,
     importStatus,
     triggerDeleteService,
@@ -24,7 +22,7 @@ const Config = ({
     allClients, 
     triggerDeleteClient, 
     triggerEditClient,   
-    setNotification, 
+    setNotification, // NOTA: setNotification aún es útil para mostrar el estado de importación.
     formData, setFormData 
 }) => {
     
@@ -37,7 +35,7 @@ const Config = ({
     // 🔥 NUEVO ESTADO: Para el modal de edición del catálogo
     const [editingService, setEditingService] = useState(null);
     
-    // FILTRADO
+    // FILTRADO (PENDIENTE DE MOVER A UN HOOK)
     const filteredClients = allClients.filter(client => 
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         (client.phone && client.phone.includes(searchTerm))
@@ -49,8 +47,8 @@ const Config = ({
         const directoryEntry = clientsDirectory.find(d => d.name === client.name);
         
         setEditingTarget({ 
-            id: directoryEntry?.id || null, // Si es null, es un cliente de "Solo Ventas"
-            originalName: client.name,      // CLAVE: Guardamos el nombre original para encontrarlo
+            id: directoryEntry?.id || null, 
+            originalName: client.name,      
             name: client.name, 
             phone: client.phone || ''
         });
@@ -58,12 +56,11 @@ const Config = ({
     
     const handleSaveEdit = (e) => {
         e.preventDefault();
-        // Pasamos el originalName para poder actualizar las ventas antiguas
         triggerEditClient(editingTarget.id, editingTarget.name, editingTarget.phone, editingTarget.originalName);
         setEditingTarget(null); 
     };
 
-    // 🔥 NUEVA FUNCIÓN: Manejar el guardado del servicio de catálogo
+    // 🔥 FUNCIÓN: Manejar el guardado del servicio de catálogo
     const handleSaveServiceEdit = async (e) => {
         e.preventDefault();
         const success = await handleEditCatalogService(editingService.id, {
@@ -76,31 +73,8 @@ const Config = ({
             setEditingService(null); // Cerrar modal al guardar
         }
     };
-
-    const handleNukeDatabase = async () => {
-        if(!window.confirm("⚠️ ¿BORRAR TODA LA BASE DE DATOS? (Irreversible)")) return;
-        if(!window.confirm("Confirma una segunda vez: Se borrarán Ventas, Clientes y Catálogo.")) return;
-        
-        const user = auth.currentUser;
-        if (!user) return;
-        const userPath = `users/${user.uid}`;
-        setNotification({ show: true, message: '☢️ Borrando todo...', type: 'warning' });
-        
-        try {
-            const batch = writeBatch(db);
-            const salesSnap = await getDocs(collection(db, userPath, 'sales'));
-            salesSnap.forEach(d => batch.delete(d.ref));
-            const catSnap = await getDocs(collection(db, userPath, 'catalog'));
-            catSnap.forEach(d => batch.delete(d.ref));
-            const cliSnap = await getDocs(collection(db, userPath, 'clients'));
-            cliSnap.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-            setNotification({ show: true, message: '✅ Base de datos reiniciada.', type: 'success' });
-            setTimeout(() => window.location.reload(), 1500);
-        } catch (error) {
-            setNotification({ show: true, message: 'Error de cuota o permisos.', type: 'error' });
-        }
-    };
+    
+    // 🗑️ ELIMINADA: La función handleNukeDatabase ha sido removida.
 
     // CLASES
     const INPUT_STYLE = "w-full p-3 bg-slate-100/50 border border-slate-200/50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-slate-400";
@@ -191,7 +165,7 @@ const Config = ({
                                     <div className="flex items-center gap-2">
                                         <span className="font-mono font-bold text-slate-700">${s.cost}</span>
                                         
-                                        {/* 🔥 BOTÓN DE EDICIÓN (NUEVO) */}
+                                        {/* 🔥 BOTÓN DE EDICIÓN */}
                                         <button 
                                             onClick={() => setEditingService({ id: s.id, name: s.name, cost: s.cost, defaultSlots: s.defaultSlots, type: s.type })} 
                                             className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all"
@@ -212,7 +186,7 @@ const Config = ({
                         <div className="relative group cursor-pointer bg-white/50 hover:bg-white rounded-xl transition-all border border-emerald-100 border-dashed"><div className="relative p-6 text-center"><Upload size={24} className="mx-auto text-emerald-400 mb-2"/><p className="text-xs font-bold text-emerald-700">Toca para subir CSV</p><input type="file" accept=".csv" onChange={(e) => handleImportCSV(e, 'sales')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/></div></div>
                         {importStatus && (<div className="mt-3 p-3 bg-white/60 rounded-xl text-xs font-bold text-emerald-700 flex items-center gap-2"><Zap size={14}/> {importStatus}</div>)}
                     </div>
-                    <div className="mt-8 border-t border-slate-200 pt-8"><div className="bg-rose-50/50 border border-rose-100 rounded-[24px] p-6"><button onClick={handleNukeDatabase} className="w-full py-4 bg-white border-2 border-rose-100 text-rose-600 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all flex items-center justify-center gap-2"><Skull size={16}/> RESETEAR BASE DE DATOS</button></div></div>
+                    {/* 🗑️ ELIMINADA: La sección de RESETEAR BASE DE DATOS ha sido removida. */}
                 </div>
             )}
 

@@ -1,4 +1,4 @@
-// src/reducers/uiReducer.js
+// src/reducers/uiReducer.js (VERSIÓN PULIDA)
 
 // Estado inicial: Contiene todos los useState de UI que estaban en App.jsx
 export const initialUiState = {
@@ -37,20 +37,16 @@ export const uiReducer = (state, action) => {
         case uiActionTypes.SET_FILTER:
             return {
                 ...state,
-                // El payload debe ser un objeto: { key: 'filterClient', value: 'nuevo_valor' }
+                // El payload debe ser un objeto: { key: 'nombre_del_filtro', value: 'nuevo_valor' }
                 [action.payload.key]: action.payload.value,
             };
             
         case uiActionTypes.RESET_FILTERS:
-            // Conserva la vista actual, pero restablece los filtros y pestañas
+            // 💡 PULIDO: Mantenemos la vista y aplicamos solo los valores iniciales de los filtros.
             return {
-                ...state,
-                stockTab: initialUiState.stockTab,
-                filterClient: initialUiState.filterClient,
-                filterService: initialUiState.filterService,
-                filterStatus: initialUiState.filterStatus,
-                dateFrom: initialUiState.dateFrom,
-                dateTo: initialUiState.dateTo,
+                ...initialUiState,
+                // Sobrescribimos 'view' y cualquier propiedad que NO deba resetearse
+                view: state.view, 
             };
 
         default:

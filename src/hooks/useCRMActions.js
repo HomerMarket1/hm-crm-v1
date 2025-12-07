@@ -1,12 +1,23 @@
-// src/hooks/useCRMActions.js
 import { addDoc, collection, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { findIndividualServiceName } from '../utils/helpers'; 
+
+// Objeto de acciones "no-operacionales" para devolver si el usuario no está autenticado
+const NO_OP_ACTIONS = {
+    addCatalogService: async () => false,
+    addCatalogPackage: async () => false,
+    generateStock: async () => false,
+    executeConfirmAction: async () => false,
+};
 
 export const useCRMActions = (user, userPath, setNotification) => {
+    
+    // Devolver acciones no-operacionales si no hay usuario (protege contra errores de ejecución)
+    if (!user) return NO_OP_ACTIONS;
 
     // --- ACCIONES DE CATÁLOGO ---
     const addCatalogService = async (catalogForm) => {
-        if (!user || !catalogForm.name) return false;
+        if (!catalogForm.name) return false; 
         try {
             await addDoc(collection(db, userPath, 'catalog'), { 
                 name: catalogForm.name, 
@@ -24,7 +35,7 @@ export const useCRMActions = (user, userPath, setNotification) => {
     };
 
     const addCatalogPackage = async (packageForm) => {
-        if (!user || !packageForm.name || packageForm.slots <= 1) return false;
+        if (!packageForm.name || packageForm.slots <= 1) return false;
         const packageName = `${packageForm.name} Paquete ${packageForm.slots} Perfiles`;
         try {
             await addDoc(collection(db, userPath, 'catalog'), { 
@@ -43,7 +54,6 @@ export const useCRMActions = (user, userPath, setNotification) => {
 
     // --- ACCIONES DE STOCK ---
     const generateStock = async (stockForm) => {
-        if (!user) return false;
         try {
             const batch = writeBatch(db);
             for (let i = 0; i < stockForm.slots; i++) {
@@ -63,15 +73,15 @@ export const useCRMActions = (user, userPath, setNotification) => {
     };
 
     // --- ACCIONES GENERALES (ELIMINAR / LIBERAR) ---
-    // 🔥 MODIFICACIÓN: Acepta findIndividualServiceName como cuarto argumento
-    const executeConfirmAction = async (modalData, sales, catalog, findIndividualServiceName) => {
-        if (!user) return;
+    const executeConfirmAction = async (modalData, sales, catalog) => { 
         try {
             const batch = writeBatch(db);
+            let successMessage = null;
 
             if (modalData.type === 'delete_service') {
-                await deleteDoc(doc(db, userPath, 'catalog', modalData.id));
-                setNotification({ show: true, message: 'Servicio eliminado.', type: 'success' });
+                // ✅ CORRECCIÓN: Usar batch.delete en lugar de deleteDoc para uniformizar la operación.
+                batch.delete(doc(db, userPath, 'catalog', modalData.id));
+                successMessage = 'Servicio eliminado.';
             }
             else if (modalData.type === 'liberate') {
                 const currentSale = sales.find(s => s.id === modalData.id);
@@ -79,33 +89,30 @@ export const useCRMActions = (user, userPath, setNotification) => {
                 let newServiceName = 'LIBRE 1 Perfil (Error)';
                 
                 if (currentSale) {
-                    // 🔥 USAR LA FUNCIÓN UTILITARIA DE APP.JSX para obtener el nombre real del servicio individual
-                    newServiceName = findIndividualServiceName(currentSale.service, catalog);
+                    newServiceName = findIndividualServiceName(currentSale.service, catalog); 
                 }
 
                 batch.update(doc(db, userPath, 'sales', modalData.id), { 
                     client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '', 
                     service: newServiceName 
                 });
-                // Note: La notificación se moverá al final para asegurar el commit del batch
+                successMessage = `Perfil liberado (${newServiceName}).`;
             }
             else if (modalData.type === 'delete_account') {
                 modalData.data.forEach(id => { 
                     const docRef = doc(db, userPath, 'sales', id); 
                     batch.delete(docRef); 
                 });
-                // Note: La notificación se moverá al final para asegurar el commit del batch
+                successMessage = 'Cuenta completa eliminada.';
             }
             
             await batch.commit();
             
             // Notificaciones después del commit
-            if (modalData.type === 'liberate') {
-                setNotification({ show: true, message: `Perfil liberado (${newServiceName}).`, type: 'success' });
-            } else if (modalData.type === 'delete_account') {
-                 setNotification({ show: true, message: 'Cuenta completa eliminada.', type: 'warning' });
-            } else if (modalData.type === 'delete_service') {
-                 setNotification({ show: true, message: 'Servicio eliminado.', type: 'success' });
+            if (successMessage) {
+                // Las notificaciones de delete_account pueden ser 'warning'
+                const type = (modalData.type === 'delete_account') ? 'warning' : 'success';
+                setNotification({ show: true, message: successMessage, type: type });
             }
             
             return true;
