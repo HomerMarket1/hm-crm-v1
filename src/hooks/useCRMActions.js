@@ -63,40 +63,51 @@ export const useCRMActions = (user, userPath, setNotification) => {
     };
 
     // --- ACCIONES GENERALES (ELIMINAR / LIBERAR) ---
-    const executeConfirmAction = async (modalData, sales, catalog) => {
+    // 🔥 MODIFICACIÓN: Acepta findIndividualServiceName como cuarto argumento
+    const executeConfirmAction = async (modalData, sales, catalog, findIndividualServiceName) => {
         if (!user) return;
         try {
+            const batch = writeBatch(db);
+
             if (modalData.type === 'delete_service') {
                 await deleteDoc(doc(db, userPath, 'catalog', modalData.id));
                 setNotification({ show: true, message: 'Servicio eliminado.', type: 'success' });
             }
             else if (modalData.type === 'liberate') {
                 const currentSale = sales.find(s => s.id === modalData.id);
-                // Lógica inteligente para renombrar el servicio al liberar
-                let newServiceName = 'Netflix 1 Perfil'; 
-                if (currentSale?.service?.toLowerCase().includes('paquete')) {
-                    const baseName = currentSale.service.replace(/ Paquete \d+ Perfiles/i, '').trim();
-                    const individualService = catalog.find(c => c.name.toLowerCase().includes(`${baseName.toLowerCase()} 1 perfil`));
-                    newServiceName = individualService ? individualService.name : 'LIBRE 1 Perfil';
-                } else {
-                    newServiceName = 'LIBRE 1 Perfil';
+                
+                let newServiceName = 'LIBRE 1 Perfil (Error)';
+                
+                if (currentSale) {
+                    // 🔥 USAR LA FUNCIÓN UTILITARIA DE APP.JSX para obtener el nombre real del servicio individual
+                    newServiceName = findIndividualServiceName(currentSale.service, catalog);
                 }
 
-                await updateDoc(doc(db, userPath, 'sales', modalData.id), { 
+                batch.update(doc(db, userPath, 'sales', modalData.id), { 
                     client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '', 
                     service: newServiceName 
                 });
-                setNotification({ show: true, message: 'Perfil liberado y disponible.', type: 'success' });
+                // Note: La notificación se moverá al final para asegurar el commit del batch
             }
             else if (modalData.type === 'delete_account') {
-                const batch = writeBatch(db);
                 modalData.data.forEach(id => { 
                     const docRef = doc(db, userPath, 'sales', id); 
                     batch.delete(docRef); 
                 });
-                await batch.commit();
-                setNotification({ show: true, message: 'Cuenta completa eliminada.', type: 'warning' });
+                // Note: La notificación se moverá al final para asegurar el commit del batch
             }
+            
+            await batch.commit();
+            
+            // Notificaciones después del commit
+            if (modalData.type === 'liberate') {
+                setNotification({ show: true, message: `Perfil liberado (${newServiceName}).`, type: 'success' });
+            } else if (modalData.type === 'delete_account') {
+                 setNotification({ show: true, message: 'Cuenta completa eliminada.', type: 'warning' });
+            } else if (modalData.type === 'delete_service') {
+                 setNotification({ show: true, message: 'Servicio eliminado.', type: 'success' });
+            }
+            
             return true;
         } catch (error) {
             console.error(error);
@@ -110,7 +121,5 @@ export const useCRMActions = (user, userPath, setNotification) => {
         addCatalogPackage,
         generateStock,
         executeConfirmAction
-        // (Nota: handleSaveSale y handleImportCSV son muy complejos y dependen mucho del estado del formulario,
-        //  por seguridad los dejaremos en App.jsx por ahora, o los moveremos en un paso 3 avanzado).
     };
 };

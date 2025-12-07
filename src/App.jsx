@@ -1,4 +1,4 @@
-// src/App.jsx (VERSIÓN MAESTRA FINAL: CON EDICIÓN DE PERFIL CORREGIDA Y FUNCIÓN DE EDICIÓN DE CATÁLOGO)
+// src/App.jsx (VERSIÓN FINAL Y COMPILABLE: CORRECCIÓN DE DUPLICIDAD Y LÓGICA DE LIBERACIÓN)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -33,7 +33,7 @@ const App = () => {
     // 2. UI STATE
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
     const { view, stockTab, filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
-    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); 
+    const [notification, setNotification] = useState({ show: true, message: '', type: 'success' }); 
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
     const [openMenuId, setOpenMenuId] = useState(null);
 
@@ -62,8 +62,32 @@ const App = () => {
         getStatusIcon, getStatusColor, getDaysRemaining
     } = useSalesData(sales, catalog, clientsDirectory, uiState, formData);
 
-    // 🔥 Catálogo Ordenado Alfabéticamente (usado en props)
+    // Catálogo Ordenado Alfabéticamente (usado en props)
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
+    
+    // 🔥 FUNCIÓN UTILITARIA: Busca el nombre del servicio de 1 Perfil en el catálogo (Declarada SOLAMENTE aquí)
+    const findIndividualServiceName = (originalService, catalog) => {
+        if (!originalService || !catalog) return 'LIBRE 1 Perfil (Error)';
+        
+        const nameLower = originalService.toLowerCase();
+        let serviceBase;
+
+        if (nameLower.includes('netflix')) serviceBase = 'netflix';
+        else if (nameLower.includes('disney')) serviceBase = 'disney';
+        else if (nameLower.includes('prime')) serviceBase = 'prime';
+        else if (nameLower.includes('max')) serviceBase = 'max';
+        else if (nameLower.includes('star')) serviceBase = 'star';
+        else serviceBase = nameLower.split(' ')[0].replace('+', '');
+
+        const individualService = catalog.find(s => 
+            s.type === 'Perfil' && 
+            Number(s.defaultSlots) === 1 && 
+            s.name.toLowerCase().includes(serviceBase)
+        );
+
+        return individualService ? individualService.name : `${serviceBase.toUpperCase()} 1 Perfil (Error)`;
+    };
+
 
     // --- HANDLERS SIMPLIFICADOS ---
 
@@ -86,7 +110,6 @@ const App = () => {
         if (success) setPackageForm({ name: '', cost: '', slots: 2 });
     };
 
-    // 🔥 NUEVA FUNCIÓN: Editar un servicio existente del catálogo
     const handleEditCatalogService = async (serviceId, updatedData) => {
         if (!user || !serviceId) return;
         try {
@@ -110,7 +133,8 @@ const App = () => {
     };
 
     const handleConfirmActionWrapper = async () => {
-        const success = await crmActions.executeConfirmAction(confirmModal, sales, catalog);
+        // Pasa la función utilitaria findIndividualServiceName a crmActions
+        const success = await crmActions.executeConfirmAction(confirmModal, sales, catalog, findIndividualServiceName);
         if (success || !success) setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
@@ -140,15 +164,10 @@ const App = () => {
             if (originalSale && originalSale.type === 'Cuenta' && (formData.type === 'Perfil' || formData.client !== 'LIBRE')) {
                 if (window.confirm("⚠️ ESTÁS VENDIENDO UNA CUENTA COMPLETA.\n\n¿Deseas fragmentarla y generar los cupos libres automáticamente?")) {
                     
-                    // Nombrado Inteligente
-                    let targetServiceName = formData.service;
-                    if (targetServiceName.toLowerCase().includes('cuenta')) {
-                        const baseName = targetServiceName.replace(/cuenta\s*completa/gi, '').replace(/cuenta/gi, '').trim();
-                        const matchingService = catalog.find(c => c.name.toLowerCase().includes(baseName.toLowerCase()) && c.type === 'Perfil' && Number(c.defaultSlots) === 1);
-                        targetServiceName = matchingService ? matchingService.name : `${baseName} 1 Perfil`;
-                    }
+                    // 1. Determinar el nombre del servicio individual para todos los perfiles
+                    const targetServiceName = findIndividualServiceName(originalSale.service, catalog);
 
-                    // Seguro de Capacidad (Lógica de Slots Personalizada)
+                    // 2. Determinar total de slots (Lógica de Slots Personalizada)
                     const sName = originalSale.service.toLowerCase();
                     let totalSlots = 5; 
                     if (sName.includes('disney') || sName.includes('star')) totalSlots = 4;
@@ -199,11 +218,10 @@ const App = () => {
 
             if (totalSlots >= quantity) { 
                 if (window.confirm(`⚠️ Esta es una CUENTA COMPLETA.\n\n¿Fragmentar automáticamente en ${totalSlots} perfiles?`)) {
-                    let targetServiceName = accountCard.service;
-                    if (targetServiceName.toLowerCase().includes('cuenta')) {
-                        const baseName = targetServiceName.replace(/cuenta\s*completa/gi, '').replace(/cuenta/gi, '').trim();
-                        targetServiceName = `${baseName} 1 Perfil`;
-                    }
+                    
+                    // 1. Determinar el nombre del servicio individual para todos los perfiles
+                    const targetServiceName = findIndividualServiceName(accountCard.service, catalog);
+
                     const batch = writeBatch(db);
                     for (let i = 0; i < totalSlots - 1; i++) {
                         batch.set(doc(collection(db, userPath, 'sales')), {
@@ -390,7 +408,7 @@ const App = () => {
 
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
-    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/></>;
+    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={loginPass} loginError={loginError} handleLogin={handleLogin}/></>;
 
     return (
         <MainLayout view={view} setView={setView} handleLogout={handleLogout} notification={notification} setNotification={setNotification}>
@@ -398,7 +416,7 @@ const App = () => {
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
-            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} />
+            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={() => handleConfirmActionWrapper()} />
 
             {view === 'dashboard' && <Dashboard 
                 sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
