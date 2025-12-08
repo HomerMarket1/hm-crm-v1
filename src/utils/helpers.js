@@ -12,6 +12,17 @@ export const getDaysRemaining = (endDateString) => {
     return Math.round(diffTime / MS_PER_DAY);
 };
 
+// NUEVA FUNCIÓN: LIMPIEZA AGRESIVA DE NOMBRES
+export const cleanServiceName = (name) => {
+    if (!name) return 'Servicio';
+    // Elimina: "Paquete", "Cuenta", "Completa", "Perfiles", "Pantalla" y números asociados
+    return name
+        .replace(/(paquete|cuenta|completa|pantalla|perfil|perfiles|basic|standard|premium|\d+\s*perfiles)/gi, '')
+        .replace(/\d+/g, '') // Elimina números sueltos (ej "4")
+        .replace(/\+/g, '+ ') // Separa el + para que no quede pegado
+        .trim();
+};
+
 export const formatList = (items) => {
     if (!items || items.length === 0) return '';
     const formatter = new Intl.ListFormat('es', { style: 'long', type: 'conjunction' });
@@ -57,10 +68,8 @@ export const getServiceCategory = (serviceName) => {
     return lower.split(' ')[0].replace('+', '');
 };
 
-// --- ESTA ES LA FUNCIÓN QUE FALTABA Y ROMPÍA TODO ---
 export const findIndividualServiceName = (originalService, catalog) => {
     if (!originalService) return 'LIBRE 1 Perfil';
-    
     const nameLower = originalService.toLowerCase();
     let serviceBase = '';
     
@@ -92,7 +101,7 @@ export const sendWhatsApp = (sale, actionType) => {
     const type = actionType ? String(actionType).toLowerCase().trim() : 'default';
     const clientName = sale.client || 'Cliente';
     const serviceName = sale.service || sale.plataforma || 'servicio';
-    const isFullAccount = !sale.profile || sale.profile === 'General';
+    const isFullAccount = !sale.profile || sale.profile === 'General' || sale.profile === 'Cuenta Completa';
     let message = '';
     
     if (type.includes('today')) message = `❌ Hola, ¡Tu perfil de ${serviceName} vence HOY! Por favor, realiza tu pago para no perder tu cupo ❌`;

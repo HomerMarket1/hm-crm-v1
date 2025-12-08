@@ -23,18 +23,18 @@ export const useDataSync = () => {
   });
 
   // --- HELPER PARA SANITIZAR DATOS ---
-  // Convierte los Timestamps de Firebase a objetos Date de JS para evitar crashes
   const sanitizeData = (doc) => {
     const data = doc.data();
-    // Si hay fechas creadas con serverTimestamp, a veces vienen null latentes, 
-    // o como objeto Timestamp. Aquí lo normalizamos.
-    if (data.createdAt && data.createdAt.toDate) {
-      data.createdAt = data.createdAt.toDate();
-    }
-    if (data.updatedAt && data.updatedAt.toDate) {
-      data.updatedAt = data.updatedAt.toDate();
-    }
-    return { id: doc.id, ...data };
+    
+    // Normalización de fechas de Firebase Timestamp a objetos Date de JS
+    const sanitizedData = {
+        ...data,
+        id: doc.id,
+        createdAt: data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : null,
+        updatedAt: data.updatedAt && data.updatedAt.toDate ? data.updatedAt.toDate() : null,
+    };
+    
+    return sanitizedData;
   };
 
   // 1. DETECTOR DE AUTENTICACIÓN
@@ -61,13 +61,14 @@ export const useDataSync = () => {
     const userPath = `users/${user.uid}`;
     
     // Consultas
-    // Nota: Si la consola pide crear índice, sigue el link que te dé Firebase.
+    // Ordenamos por 'createdAt' para la lista de ventas
     const salesQuery = query(collection(db, userPath, 'sales'), orderBy('createdAt', 'desc'));
     const catalogRef = collection(db, userPath, 'catalog');
     const clientsRef = collection(db, userPath, 'clients');
 
     // A. Suscripción a VENTAS
     const salesUnsub = onSnapshot(salesQuery, (snapshot) => {
+      // ✅ Si el borrado sucede, onSnapshot detectará que el doc ha desaparecido.
       setSales(snapshot.docs.map(sanitizeData));
       setLoadingState(prev => ({ ...prev, sales: false }));
     }, (error) => {
@@ -98,7 +99,7 @@ export const useDataSync = () => {
   }, [user]); 
 
   // Calculamos si la app sigue cargando datos iniciales
-  const loadingData = loadingState.sales || loadingState.catalog || loadingState.clients;
+  const loadingData = authLoading || loadingState.sales || loadingState.catalog || loadingState.clients;
 
   return { user, authLoading, sales, catalog, clientsDirectory, loadingData };
 };

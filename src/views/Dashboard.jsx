@@ -4,18 +4,19 @@ import {
     X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy
 } from 'lucide-react';
 
-// IMPORTAMOS TUS NUEVOS HELPERS (Lógica Robusta)
+// IMPORTAMOS LOS HELPERS CON LA LÓGICA NUEVA
 import { 
     getDaysRemaining as getDaysStrict, 
     formatList, 
-    getWhatsAppUrl, 
-    sendWhatsApp, // Usamos este para compatibilidad en envíos masivos simples si se requiere
+    getWhatsAppUrl,
+    sendWhatsApp, 
     getStatusIcon,
-    getStatusColor
+    getStatusColor,
+    cleanServiceName // ✅ Usamos esto para limpiar el mensaje de WhatsApp
 } from '../utils/helpers';
 
 const Dashboard = ({
-    sales = [], // Recibimos la lista completa para poder recalcular
+    sales = [], 
     filteredSales,
     catalog, 
     filterClient, 
@@ -37,10 +38,11 @@ const Dashboard = ({
 
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
+
+    // ========================================================================
+    // 1. CÁLCULO DE BOTONES (Usando lógica estricta para que coincidan)
+    // ========================================================================
     
-    // ========================================================================
-    // 1. RE-CÁLCULO LOCAL DE ESTADÍSTICAS (Para que coincidan con la tabla)
-    // ========================================================================
     const calculatedOverdue = sales.filter(s => {
         const d = getDaysStrict(s.endDate);
         const isProblem = NON_BILLABLE_STATUSES?.includes(s.client) || s.client === 'LIBRE';
@@ -58,35 +60,43 @@ const Dashboard = ({
         const isProblem = NON_BILLABLE_STATUSES?.includes(s.client) || s.client === 'LIBRE';
         return !isProblem && d === 1;
     });
-
+    
     // ========================================================================
-    // 2. LÓGICA DE WHATSAPP UNIFICADA ("DIEGO")
+    // 2. WHATSAPP INTELIGENTE (Limpio y Agrupado)
     // ========================================================================
     const handleUnifiedWhatsApp = (sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = getDaysStrict(endDate);
 
-        // A. LÓGICA DE AGRUPAMIENTO
-        // Solo agrupamos si es recordatorio de pago/vencimiento. 
-        // Si son DATOS (candado), enviamos solo el actual para no mezclar claves.
         let useGrouping = actionType === 'reminder';
         let serviceNames = [];
 
         if (useGrouping) {
-            // Buscamos "hermanos" (mismo cliente, misma fecha)
+            // Buscar hermanos
             const siblings = sales.filter(item => 
                 item.client?.trim() === client?.trim() && 
                 getDaysStrict(item.endDate) === targetDays
             );
-            serviceNames = siblings.map(s => s.service || s.plataforma || 'Servicio');
+
+            // Contar y limpiar nombres (Evita "Netflix Paquete 3" -> Dice "Netflix")
+            const counts = {};
+            siblings.forEach(s => {
+                const name = cleanServiceName(s.service);
+                counts[name] = (counts[name] || 0) + 1;
+            });
+
+            // Generar texto: "3 perfiles de Netflix"
+            serviceNames = Object.entries(counts).map(([name, count]) => {
+                return count > 1 ? `${count} perfiles de ${name}` : `1 perfil de ${name}`;
+            });
         } else {
-            serviceNames = [sale.service || 'Servicio'];
+            // Si es candado, solo el actual limpio
+            serviceNames = [`un perfil de ${cleanServiceName(sale.service)}`];
         }
 
         const servicesString = formatList(serviceNames);
-        const serviceNameUpper = servicesString.toUpperCase();
+        const serviceNameUpper = cleanServiceName(sale.service).toUpperCase();
 
-        // Formato fecha bonita
         let readableDate = endDate || '---';
         if (endDate && endDate.includes('-')) {
             const [y, m, d] = endDate.split('-');
@@ -96,16 +106,15 @@ const Dashboard = ({
         const isFullAccount = !sale.profile || sale.profile === 'General' || sale.profile === 'Cuenta Completa';
         let message = '';
 
-        // B. CONSTRUCCIÓN DEL MENSAJE (TUS TEXTOS)
         if (actionType === 'reminder') {
             if (targetDays === 0) {
-                message = `❌ Hola, ¡Tu perfil de ${servicesString} vence HOY! Por favor, realiza tu pago para no perder tu cupo ❌`;
+                message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
             } else if (targetDays === 1) {
-                message = `⚠️ Buen Día ${client}⚠️\nMañana vence su servicio de ${servicesString}.\n¿Renuevas un mes más?  Confirma cuando puedas.\n¡Gracias!`;
+                message = `⚠️ Buen Día ${client}⚠️\nMañana vencen: ${servicesString}.\n¿Renuevas un mes más?  Confirma cuando puedas.\n¡Gracias!`;
             } else if (targetDays < 0) {
-                message = `🔴 Hola, queremos informarle que aún queda un pago pendiente. Si no se realiza en breve, nos veremos obligados a suspender el servicio. *Gracias por su atención.* 🔴`;
+                message = `🔴 Hola, recordatorio de pago pendiente por: ${servicesString}.`;
             } else {
-                message = `Hola ${client}, recordatorio: tus servicios de ${servicesString} vencen en ${targetDays} días.`;
+                message = `Hola ${client}, recordatorio: ${servicesString} vencen en ${targetDays} días.`;
             }
         } else if (actionType === 'data') {
             if (isFullAccount) {
@@ -119,7 +128,6 @@ const Dashboard = ({
         window.open(url, '_blank');
     };
 
-    // Copiar credenciales (UI Original)
     const handleCopyCredentials = (e, email, pass) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${email}:${pass}`);
@@ -135,7 +143,6 @@ const Dashboard = ({
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
-    // --- ALERTAS MASIVAS (Usando listas recalculadas) ---
     const openBulkModal = (type) => {
         let list;
         let title;
@@ -160,9 +167,7 @@ const Dashboard = ({
     };
 
     const handleBulkSend = (sale) => {
-        // AHORA USA LA LÓGICA INTELIGENTE EN EL MODAL TAMBIÉN
         handleUnifiedWhatsApp(sale, 'reminder');
-        
         const clientName = sale.client;
         const clientPhone = sale.phone;
         const allClientIdsInQueue = bulkModal.list
@@ -187,13 +192,12 @@ const Dashboard = ({
         setView('form');
     };
 
-    // --- TARJETA DE VENTA (TU DISEÑO ORIGINAL INTACTO) ---
+    // --- DISEÑO TARJETA (Exactamente tu código original) ---
     const SaleCard = ({ sale }) => {
         const isFree = sale.client === 'LIBRE';
         const isProblem = NON_BILLABLE_STATUSES && NON_BILLABLE_STATUSES.includes(sale.client);
         const isAdmin = sale.client === 'Admin';
         
-        // Usamos el nuevo helper de fecha estricta
         const days = getDaysStrict(sale.endDate);
         const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
 
@@ -303,7 +307,7 @@ const Dashboard = ({
                                 <div className="flex items-center gap-1 w-full justify-end">
                                     <div className="flex gap-1">
                                         
-                                        {/* 1. Botón de Vencimiento (USANDO NUEVA LÓGICA) */}
+                                        {/* Botón WhatsApp Cobro (UNIFICADO) */}
                                         {!isProblem && days <= 3 && (
                                             <button 
                                                 onClick={() => handleUnifiedWhatsApp(sale, 'reminder')} 
@@ -313,7 +317,7 @@ const Dashboard = ({
                                             </button>
                                         )}
                                         
-                                        {/* 2. Botón de Enviar Datos (USANDO NUEVA LÓGICA) */}
+                                        {/* Botón WhatsApp Datos (UNIFICADO) */}
                                         {!isProblem && (
                                             <button 
                                                 onClick={() => handleUnifiedWhatsApp(sale, 'data')} 
@@ -383,7 +387,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* BOTONES DE ALERTA RAPIDA (USAN TUS CALCULOS LOCALES) */}
+            {/* BOTONES DE ALERTA RAPIDA */}
             {(calculatedToday?.length > 0 || calculatedTomorrow?.length > 0 || calculatedOverdue?.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     {calculatedOverdue.length > 0 && (<button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Ban size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Vencidas</p><p className="text-xs font-black">{calculatedOverdue.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
@@ -392,7 +396,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* FILTROS (TU DISEÑO) */}
+            {/* FILTROS */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar cliente, correo..." className="block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-transparent border-none text-slate-800 placeholder-slate-400 focus:ring-0 text-sm md:text-base font-medium rounded-2xl transition-all" value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>

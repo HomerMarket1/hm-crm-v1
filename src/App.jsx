@@ -1,4 +1,4 @@
-// src/App.jsx (VERSIÓN FINAL MAESTRA - CONEXIÓN DE FRAGMENTACIÓN)
+// src/App.jsx (CÓDIGO COMPLETO Y DEFINITIVO)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -40,7 +40,7 @@ const App = () => {
     // 3. ACTION HOOKS
     const crmActions = useCRMActions(user, setNotification);
     
-    // ✅ IMPORTANTE: Extraemos handleSave para usarlo en el botón de guardar
+    // ✅ IMPORTANTE: Extraemos handleSave para la lógica de fragmentación
     const { 
         addCatalogService, 
         addCatalogPackage, 
@@ -133,7 +133,7 @@ const App = () => {
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // --- LÓGICA DE VENTAS (AQUÍ ESTABA EL CAMBIO CLAVE) ---
+    // --- LÓGICA DE VENTAS (AQUÍ ESTÁ LA CORRECCIÓN) ---
 
     const handleSaveSale = async (e) => {
         e.preventDefault(); 
@@ -148,9 +148,10 @@ const App = () => {
         
         // Calcular costo
         const totalCost = Number(formData.cost) || 0;
-        const costPerProfile = (quantity > 1) ? (totalCost / quantity).toFixed(2) : totalCost;
+        // ✅ CORRECCIÓN: Quitamos la división para que el precio guardado sea el precio TOTAL ($350)
+        const costToSaveInDB = totalCost; 
 
-        // Calcular vencimiento por defecto (30 días)
+        // Calcular vencimiento por defecto
         let finalEndDate = formData.endDate;
         if (!finalEndDate && formData.client !== 'LIBRE') {
             const d = new Date();
@@ -158,37 +159,25 @@ const App = () => {
             finalEndDate = d.toISOString().split('T')[0];
         }
 
-        // --- A. MODO EDICIÓN / VENTA INDIVIDUAL (FRAGMENTACIÓN) ---
-        const isSingleEdit = formData.id && quantity === 1;
-
-        // También entramos aquí si estamos editando una tarjeta específica aunque quantity > 1 (Paquete sobre Madre)
-        // La condición de 'quantity === 1' a veces bloqueaba la venta de paquetes sobre madres.
-        // MEJOR: Si hay un ID, usamos el hook inteligente.
+        // --- A. MODO EDICIÓN / VENTA ESPECÍFICA (FRAGMENTACIÓN) ---
         if (formData.id) {
-            // Buscamos la venta original para compararla
             const originalSale = sales.find(s => s.id === formData.id);
             if (!originalSale) return;
 
-            // Preparamos los datos limpios para enviar al hook
             const dataToSave = {
                 ...formData,
-                cost: Number(costPerProfile),
+                cost: costToSaveInDB, // ENVIAMOS EL PRECIO TOTAL ($350)
                 endDate: finalEndDate
             };
 
-            // 🔥 LLAMADA AL MOTOR NUEVO 🔥
-            // Le pasamos 'quantity' para que sepa si es 1 perfil o un paquete de 3
+            // Llamamos a la función inteligente (El hook se encarga de dividir el precio para los clones)
             const success = await handleSave(dataToSave, originalSale, catalog, quantity);
 
-            if (success) {
-                setView('dashboard'); 
-                resetForm(); 
-            }
+            if (success) { setView('dashboard'); resetForm(); }
             return; 
         }
 
         // --- B. MODO VENTA MASIVA (Desde Stock LIBRE) ---
-        // Esto busca múltiples tarjetas libres. Solo se usa si NO seleccionaste una tarjeta específica.
         let freeRows = sales.filter(s => 
             s.email === formData.email && 
             s.service === formData.service && 
@@ -204,6 +193,8 @@ const App = () => {
 
         try {
             const batch = writeBatch(db);
+            // Calculamos el costo individual para actualizar cada fila de stock
+            const individualCostForStock = (quantity > 1) ? (totalCost / quantity).toFixed(2) : totalCost;
 
             profilesToSell.forEach((docSnap, index) => {
                 const docRef = doc(db, userPath, 'sales', docSnap.id);
@@ -220,7 +211,7 @@ const App = () => {
                     client: formData.client,
                     phone: formData.phone || '',
                     endDate: finalEndDate,
-                    cost: Number(costPerProfile),
+                    cost: Number(individualCostForStock), // Usamos costo individual en stock
                     type: formData.type,
                     profile: assignedProfile,
                     pin: assignedPin,
@@ -240,18 +231,24 @@ const App = () => {
         }
     };
 
+    // --- RENOVACIÓN RÁPIDA (LÓGICA EXACTA DE MES) ---
     const handleQuickRenew = async (id) => {
         const sale = sales.find(s => s.id === id);
         if (sale && sale.endDate) {
              try {
-                const currentEnd = new Date(sale.endDate);
-                const newEnd = new Date(currentEnd);
-                newEnd.setDate(newEnd.getDate() + 30);
-                
+                const [y, m, d] = sale.endDate.split('-').map(Number);
+                const currentDate = new Date(y, m - 1, d);
+                const nextDate = new Date(currentDate);
+                nextDate.setMonth(nextDate.getMonth() + 1);
+
+                if (currentDate.getDate() !== nextDate.getDate()) {
+                    nextDate.setDate(0); // Retrocede al último día del mes
+                }
+
                 await updateDoc(doc(db, userPath, 'sales', id), {
-                    endDate: newEnd.toISOString().split('T')[0]
+                    endDate: nextDate.toISOString().split('T')[0]
                 });
-                setNotification({ show: true, message: 'Renovado +30 días.', type: 'success' });
+                setNotification({ show: true, message: 'Renovado +1 mes exacto.', type: 'success' });
             } catch (error) { setNotification({ show: true, message: 'Error al renovar.', type: 'error' }); }
         }
     };
@@ -301,7 +298,7 @@ const App = () => {
 
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
-    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/></>;
+    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={loginPass} loginError={loginError} handleLogin={handleLogin}/></>;
 
     return (
         <MainLayout view={view} setView={setView} handleLogout={handleLogout} notification={notification} setNotification={setNotification}>
