@@ -1,4 +1,4 @@
-// src/App.jsx (CÓDIGO COMPLETO Y DEFINITIVO)
+// src/App.jsx (CÓDIGO CONEXIÓN FINAL)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -148,7 +148,6 @@ const App = () => {
         
         // Calcular costo
         const totalCost = Number(formData.cost) || 0;
-        // ✅ CORRECCIÓN: Quitamos la división para que el precio guardado sea el precio TOTAL ($350)
         const costToSaveInDB = totalCost; 
 
         // Calcular vencimiento por defecto
@@ -166,12 +165,12 @@ const App = () => {
 
             const dataToSave = {
                 ...formData,
-                cost: costToSaveInDB, // ENVIAMOS EL PRECIO TOTAL ($350)
+                cost: costToSaveInDB, // ENVIAMOS EL PRECIO TOTAL
                 endDate: finalEndDate
             };
 
-            // Llamamos a la función inteligente (El hook se encarga de dividir el precio para los clones)
-            const success = await handleSave(dataToSave, originalSale, catalog, quantity);
+            // ✅ CORRECCIÓN CRÍTICA: AGREGAMOS EL ARGUMENTO 'sales'
+            const success = await handleSave(dataToSave, originalSale, catalog, sales, quantity);
 
             if (success) { setView('dashboard'); resetForm(); }
             return; 
@@ -193,7 +192,6 @@ const App = () => {
 
         try {
             const batch = writeBatch(db);
-            // Calculamos el costo individual para actualizar cada fila de stock
             const individualCostForStock = (quantity > 1) ? (totalCost / quantity).toFixed(2) : totalCost;
 
             profilesToSell.forEach((docSnap, index) => {
@@ -211,7 +209,7 @@ const App = () => {
                     client: formData.client,
                     phone: formData.phone || '',
                     endDate: finalEndDate,
-                    cost: Number(individualCostForStock), // Usamos costo individual en stock
+                    cost: Number(individualCostForStock), 
                     type: formData.type,
                     profile: assignedProfile,
                     pin: assignedPin,
