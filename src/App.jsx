@@ -1,4 +1,4 @@
-// src/App.jsx (CÓDIGO CONEXIÓN FINAL Y SIN ERRORES DE SINTAXIS)
+// src/App.jsx (CÓDIGO CONEXIÓN FINAL Y SIN ERRORES DE VITE)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -189,9 +189,22 @@ const App = () => {
 
         const profilesToSell = freeRows.slice(0, quantity);
 
+        // ✅ CORRECCIÓN CRÍTICA: Determinar el costo por unidad
+        const selectedService = catalog.find(c => c.name === formData.service);
+        const isSelectedServicePackage = selectedService && selectedService.type === 'Paquete';
+        
+        let individualCostForStock;
+
+        if (quantity > 1 && isSelectedServicePackage) {
+            // SCENARIO PAQUETE: Dividir el total. (Ej: $400 / 4 = $100)
+            individualCostForStock = (totalCost / quantity).toFixed(2);
+        } else {
+            // SCENARIO INDIVIDUAL: Usar el total como costo unitario. (Ej: $270/perfil. Costo unitario = $270)
+            individualCostForStock = totalCost; 
+        }
+
         try {
             const batch = writeBatch(db);
-            const individualCostForStock = (quantity > 1) ? (totalCost / quantity).toFixed(2) : totalCost;
 
             profilesToSell.forEach((docSnap, index) => {
                 const docRef = doc(db, userPath, 'sales', docSnap.id);
@@ -208,6 +221,7 @@ const App = () => {
                     client: formData.client,
                     phone: formData.phone || '',
                     endDate: finalEndDate,
+                    // ✅ APLICA LA REGLA: Si no es paquete, el costo es el valor completo del formulario.
                     cost: Number(individualCostForStock), 
                     type: formData.type,
                     profile: assignedProfile,

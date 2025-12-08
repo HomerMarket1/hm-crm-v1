@@ -25,45 +25,48 @@ export const useCRMActions = (user, setNotification) => {
             const batch = writeBatch(db);
             const saleRef = doc(db, userPath, 'sales', originalSale.id);
 
-            // 1. INVESTIGACIÓN DE CAPACIDAD
+            // 1. INVESTIGACIÓN DE CAPACIDAD Y TIPO DE SERVICIO
+            const totalCost = Number(formData.cost) || 0; 
+            
             let totalSlots = 1;
-            const exactMatch = catalog.find(c => c.name === originalSale.service);
-            if (exactMatch && Number(exactMatch.defaultSlots) > 1) { totalSlots = Number(exactMatch.defaultSlots); }
+            const currentServiceInCatalog = catalog.find(c => c.name === originalSale.service);
+            const serviceInFormCatalog = catalog.find(c => c.name === formData.service);
+            const isFormServicePackage = serviceInFormCatalog && serviceInFormCatalog.type === 'Paquete';
+
+            if (currentServiceInCatalog && Number(currentServiceInCatalog.defaultSlots) > 1) { totalSlots = Number(currentServiceInCatalog.defaultSlots); }
             if (totalSlots === 1) {
                 const baseName = originalSale.service.split(' ')[0];
                 const candidates = catalog.filter(c => c.name.includes(baseName) && Number(c.defaultSlots) > 1);
-                // Aquí se corrige un error de sintaxis en el código que me enviaste (a.s no existe)
                 if (candidates.length > 0) { candidates.sort((a, b) => Number(b.defaultSlots) - Number(a.defaultSlots)); totalSlots = Number(candidates[0].defaultSlots); }
             }
 
-            // 2. CÁLCULO Y CONDICIÓN
-            const totalCost = Number(formData.cost) || 0;
-            const individualCost = profilesToSell > 0 ? (totalCost / profilesToSell) : 0; 
-            
+            // 2. CONDICIONES GLOBALES
             const wasFree = originalSale.client === 'LIBRE'; 
             const isSellingNow = formData.client !== 'LIBRE';
             const isPartialSale = profilesToSell < totalSlots; 
+            const isMotherType = currentServiceInCatalog && 
+                                 (currentServiceInCatalog.type.toLowerCase() === 'cuenta' || 
+                                  currentServiceInCatalog.type.toLowerCase() === 'paquete');
             
-            // ✅ CONDICIÓN CRÍTICA: Solo fragmentar si es la tarjeta madre virgen
-            const isMotherType = originalSale.type && 
-                                 (originalSale.type.toLowerCase() === 'cuenta' || 
-                                  originalSale.type.toLowerCase() === 'paquete');
-            
+            // Detección de escenarios
             const shouldFragment = (totalSlots > 1) && wasFree && isSellingNow && isPartialSale && isMotherType;
-            const isSellingPackage = isSellingNow && profilesToSell > 1 && !isMotherType; 
+            const isMultiProfileSale = isSellingNow && profilesToSell > 1; // 👈 NUEVO: Bandera para cualquier venta > 1
 
 
             if (shouldFragment) {
                 // SCENARIO 1: FRAGMENTACIÓN DE CUENTA MADRE VIRGEN
                 if (totalCost <= 0) { notify('Advertencia: Asigna un costo para fragmentar.', 'warning'); return false; }
                 
+                // COSTO: Si es fragmentación, se DIVIDE el total del formulario
+                const individualCostFragment = profilesToSell > 0 ? (totalCost / profilesToSell) : 0; 
                 const individualServiceName = findIndividualServiceName(originalSale.service, catalog);
 
                 batch.update(saleRef, {
                     ...formData, service: originalSale.service, 
                     type: 'Perfil', 
                     profile: profilesToSell > 1 ? `Perfil 1-${profilesToSell}` : (formData.profile || 'Perfil 1'),
-                    cost: individualCost, updatedAt: serverTimestamp()
+                    cost: individualCostFragment, 
+                    updatedAt: serverTimestamp()
                 });
 
                 const salesCollection = collection(db, userPath, 'sales');
@@ -72,16 +75,16 @@ export const useCRMActions = (user, setNotification) => {
                     const creationDate = new Date(Date.now() + i * 50);
                     const isPartOfSale = i < profilesToSell; 
                     
-                    if (isPartOfSale) { batch.set(newDocRef, { ...formData, service: individualServiceName, type: 'Perfil', profile: `Perfil ${i + 1}`, cost: individualCost, pin: '', soldAt: new Date(), createdAt: creationDate }); } 
-                    else { batch.set(newDocRef, { client: 'LIBRE', phone: '', service: individualServiceName, type: 'Perfil', cost: individualCost, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '', createdAt: creationDate }); }
+                    if (isPartOfSale) { batch.set(newDocRef, { ...formData, service: individualServiceName, type: 'Perfil', profile: `Perfil ${i + 1}`, cost: individualCostFragment, pin: '', soldAt: new Date(), createdAt: creationDate }); } 
+                    else { batch.set(newDocRef, { client: 'LIBRE', phone: '', service: individualServiceName, type: 'Perfil', cost: individualCostFragment, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '', createdAt: creationDate }); }
                 }
                 const libres = totalSlots - profilesToSell;
                 notify(`Venta parcial: ${profilesToSell} ocupados, ${libres} libres generados.`, 'success');
 
-            } else if (isSellingPackage) {
-                // SCENARIO 2: VENTA DE PAQUETE EN POOL DE CLONES LIBERADOS
+            } else if (isMultiProfileSale) {
+                // ✅ SCENARIO 2/3 CONSOLIDADO: VENTA MULTI-PERFIL (Paquete o Individual)
                 
-                if (originalSale.client !== 'LIBRE') { notify('Error: El perfil inicial seleccionado no está libre para una venta de paquete.', 'error'); return false; }
+                if (originalSale.client !== 'LIBRE') { notify('Error: El perfil inicial seleccionado no está libre para una venta múltiple.', 'error'); return false; }
                 
                 const otherFreeSlots = sales.filter(sale => sale.client === 'LIBRE' && sale.email === originalSale.email && sale.pass === originalSale.pass && sale.id !== originalSale.id).slice(0, profilesToSell - 1); 
 
@@ -91,30 +94,37 @@ export const useCRMActions = (user, setNotification) => {
                 if (availableSlots < neededSlots) { notify(`Error: Solo se encontraron ${availableSlots} perfiles libres para esta venta de ${neededSlots}.`, 'error'); return false; }
 
                 const slotsToUpdate = [originalSale, ...otherFreeSlots];
-                const individualCostPackage = (totalCost) / neededSlots; 
+                
+                // 🔥 REGLA DE PRECIO CONDICIONAL 🔥
+                let finalUnitCost;
+                if (isFormServicePackage) {
+                    // Si es PAQUETE, dividimos el costo total ingresado. (Ej: $400 / 4 = $100)
+                    finalUnitCost = totalCost / neededSlots; 
+                } else {
+                    // Si es INDIVIDUAL, usamos el costo total del form (porque es el precio unitario). (Ej: $270)
+                    finalUnitCost = totalCost; 
+                }
 
                 slotsToUpdate.forEach((slot) => {
                     const updateRef = doc(db, userPath, 'sales', slot.id);
                     batch.update(updateRef, { 
                         ...formData,
-                        cost: individualCostPackage,
+                        cost: finalUnitCost, // Costo unitario (mantiene $270 para individual)
                         updatedAt: serverTimestamp() 
                     });
                 });
                 
-                notify(`Venta de paquete de ${neededSlots} perfiles registrada.`, 'success');
+                notify(`Venta de ${neededSlots} perfiles registrada.`, 'success');
 
             } else {
-                // SCENARIO 3: EDICIÓN SIMPLE / VENTA INDIVIDUAL DE CLON LIBRE (El botón 'Asignar' llega aquí)
+                // SCENARIO 4: EDICIÓN SIMPLE / VENTA DE 1 PERFIL
                 
-                let finalCost = totalCost;
-                if (!wasFree) { 
-                    finalCost = Number(formData.cost); 
-                }
+                // Si profilesToSell es 1, el costo guardado es el costo total del formulario (precio unitario).
+                const finalCostToSave = totalCost; 
 
                 batch.update(saleRef, { 
                     ...formData, 
-                    cost: finalCost,
+                    cost: finalCostToSave, 
                     updatedAt: serverTimestamp() 
                 });
                 
