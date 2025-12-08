@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
 import { 
     Search, Smartphone, Key, Lock, Edit2, Ban, XCircle, RotateCcw, 
-    X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Eye,
+    X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy
 } from 'lucide-react';
 
+// IMPORTAMOS TUS NUEVOS HELPERS (Lógica Robusta)
+import { 
+    getDaysRemaining as getDaysStrict, 
+    formatList, 
+    getWhatsAppUrl, 
+    sendWhatsApp, // Usamos este para compatibilidad en envíos masivos simples si se requiere
+    getStatusIcon,
+    getStatusColor
+} from '../utils/helpers';
+
 const Dashboard = ({
-    sales, 
+    sales = [], // Recibimos la lista completa para poder recalcular
     filteredSales,
     catalog, 
     filterClient, 
@@ -16,38 +26,108 @@ const Dashboard = ({
     setFilter, 
     totalItems, 
     totalFilteredMoney, 
-    getStatusIcon, 
-    getStatusColor,
-    getDaysRemaining, 
-    sendWhatsApp, 
     handleQuickRenew, 
     triggerLiberate, 
     setFormData, 
     setView, 
     setBulkProfiles,
     NON_BILLABLE_STATUSES, 
-    loadingData,
-    // ✅ PROPS MEMORIZADAS (Calculadas ahora en useSalesData.js)
-    expiringToday, 
-    expiringTomorrow, 
-    overdueSales 
+    loadingData
 }) => {
 
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
     
-    // FUNCIÓN: Copia de Credenciales 
+    // ========================================================================
+    // 1. RE-CÁLCULO LOCAL DE ESTADÍSTICAS (Para que coincidan con la tabla)
+    // ========================================================================
+    const calculatedOverdue = sales.filter(s => {
+        const d = getDaysStrict(s.endDate);
+        const isProblem = NON_BILLABLE_STATUSES?.includes(s.client) || s.client === 'LIBRE';
+        return !isProblem && d < 0;
+    });
+
+    const calculatedToday = sales.filter(s => {
+        const d = getDaysStrict(s.endDate);
+        const isProblem = NON_BILLABLE_STATUSES?.includes(s.client) || s.client === 'LIBRE';
+        return !isProblem && d === 0;
+    });
+
+    const calculatedTomorrow = sales.filter(s => {
+        const d = getDaysStrict(s.endDate);
+        const isProblem = NON_BILLABLE_STATUSES?.includes(s.client) || s.client === 'LIBRE';
+        return !isProblem && d === 1;
+    });
+
+    // ========================================================================
+    // 2. LÓGICA DE WHATSAPP UNIFICADA ("DIEGO")
+    // ========================================================================
+    const handleUnifiedWhatsApp = (sale, actionType) => {
+        const { client, phone, endDate } = sale;
+        const targetDays = getDaysStrict(endDate);
+
+        // A. LÓGICA DE AGRUPAMIENTO
+        // Solo agrupamos si es recordatorio de pago/vencimiento. 
+        // Si son DATOS (candado), enviamos solo el actual para no mezclar claves.
+        let useGrouping = actionType === 'reminder';
+        let serviceNames = [];
+
+        if (useGrouping) {
+            // Buscamos "hermanos" (mismo cliente, misma fecha)
+            const siblings = sales.filter(item => 
+                item.client?.trim() === client?.trim() && 
+                getDaysStrict(item.endDate) === targetDays
+            );
+            serviceNames = siblings.map(s => s.service || s.plataforma || 'Servicio');
+        } else {
+            serviceNames = [sale.service || 'Servicio'];
+        }
+
+        const servicesString = formatList(serviceNames);
+        const serviceNameUpper = servicesString.toUpperCase();
+
+        // Formato fecha bonita
+        let readableDate = endDate || '---';
+        if (endDate && endDate.includes('-')) {
+            const [y, m, d] = endDate.split('-');
+            readableDate = `${d}/${m}/${y}`;
+        }
+
+        const isFullAccount = !sale.profile || sale.profile === 'General' || sale.profile === 'Cuenta Completa';
+        let message = '';
+
+        // B. CONSTRUCCIÓN DEL MENSAJE (TUS TEXTOS)
+        if (actionType === 'reminder') {
+            if (targetDays === 0) {
+                message = `❌ Hola, ¡Tu perfil de ${servicesString} vence HOY! Por favor, realiza tu pago para no perder tu cupo ❌`;
+            } else if (targetDays === 1) {
+                message = `⚠️ Buen Día ${client}⚠️\nMañana vence su servicio de ${servicesString}.\n¿Renuevas un mes más?  Confirma cuando puedas.\n¡Gracias!`;
+            } else if (targetDays < 0) {
+                message = `🔴 Hola, queremos informarle que aún queda un pago pendiente. Si no se realiza en breve, nos veremos obligados a suspender el servicio. *Gracias por su atención.* 🔴`;
+            } else {
+                message = `Hola ${client}, recordatorio: tus servicios de ${servicesString} vencen en ${targetDays} días.`;
+            }
+        } else if (actionType === 'data') {
+            if (isFullAccount) {
+                message = `*${serviceNameUpper}*\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n\n☑️Su Servicio Vence el día ${readableDate}☑️`;
+            } else {
+                message = `*${serviceNameUpper} 1 PERFIL*\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile || "Asignado"}\nPIN:\n${sale.pin || "Sin PIN"}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
+            }
+        }
+
+        const url = getWhatsAppUrl(phone, message);
+        window.open(url, '_blank');
+    };
+
+    // Copiar credenciales (UI Original)
     const handleCopyCredentials = (e, email, pass) => {
         e.preventDefault();
         navigator.clipboard.writeText(`${email}:${pass}`);
         const btn = e.currentTarget;
         const originalContent = btn.innerHTML;
-        // Icono de confirmación SVG simplificado para evitar errores de renderizado
         btn.innerHTML = `<span class="text-emerald-600 flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copiado</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
     };
-
-    // 🗑️ ELIMINADO: La lógica de cálculo de ventas críticas. Ahora se usan las props.
 
     const sortedSales = filteredSales.slice().sort((a, b) => {
         const clientA = a.client ? a.client.toUpperCase() : '';
@@ -55,24 +135,24 @@ const Dashboard = ({
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
 
-    // Función limpia para abrir el modal de alertas
+    // --- ALERTAS MASIVAS (Usando listas recalculadas) ---
     const openBulkModal = (type) => {
         let list;
         let title;
         let msgType;
 
         if (type === 'today') {
-            list = expiringToday;
+            list = calculatedToday;
             title = 'Vencen Hoy';
-            msgType = 'expired_today';
+            msgType = 'renew_today'; 
         } else if (type === 'tomorrow') {
-            list = expiringTomorrow;
+            list = calculatedTomorrow;
             title = 'Vencen Mañana';
-            msgType = 'warning_tomorrow';
+            msgType = 'renew_tomorrow'; 
         } else if (type === 'overdue') { 
-            list = overdueSales;
+            list = calculatedOverdue;
             title = 'Vencidas (Pago)';
-            msgType = 'overdue_payment';
+            msgType = 'overdue'; 
         }
         
         if (list.length === 0) return;
@@ -80,7 +160,9 @@ const Dashboard = ({
     };
 
     const handleBulkSend = (sale) => {
-        sendWhatsApp(sale, bulkModal.msgType);
+        // AHORA USA LA LÓGICA INTELIGENTE EN EL MODAL TAMBIÉN
+        handleUnifiedWhatsApp(sale, 'reminder');
+        
         const clientName = sale.client;
         const clientPhone = sale.phone;
         const allClientIdsInQueue = bulkModal.list
@@ -99,20 +181,20 @@ const Dashboard = ({
         setSentIds(prev => [...new Set([...prev, ...allClientIdsInQueue])]); 
     };
 
-    // Función para iniciar la edición (Mejora la legibilidad del JSX)
     const handleStartEditSale = (sale) => {
         setFormData({...sale, profilesToBuy: 1}); 
         setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); 
         setView('form');
     };
 
-
-    // --- COMPONENTE TARJETA UNIFICADO ---
+    // --- TARJETA DE VENTA (TU DISEÑO ORIGINAL INTACTO) ---
     const SaleCard = ({ sale }) => {
         const isFree = sale.client === 'LIBRE';
         const isProblem = NON_BILLABLE_STATUSES && NON_BILLABLE_STATUSES.includes(sale.client);
         const isAdmin = sale.client === 'Admin';
-        const days = getDaysRemaining(sale.endDate);
+        
+        // Usamos el nuevo helper de fecha estricta
+        const days = getDaysStrict(sale.endDate);
         const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
 
         let containerStyle = "bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60";
@@ -143,7 +225,7 @@ const Dashboard = ({
             <div className={`p-2.5 md:p-5 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${containerStyle}`}>
                 <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
                     
-                    {/* 1. CABECERA (CLIENTE/SERVICIO) */}
+                    {/* CABECERA */}
                     <div className="col-span-12 md:col-span-4 w-full flex items-start gap-2.5">
                         <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 ${getStatusColor(sale.client)}`}>
                             {getStatusIcon(sale.client)}
@@ -152,11 +234,9 @@ const Dashboard = ({
                             <div className="flex justify-between items-start">
                                 <div className='pr-1'>
                                     <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${textPrimary} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
-                                    
                                     <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>
                                         {sale.service}
                                     </div>
-                                    
                                 </div>
                                 {!isFree && !isProblem && (
                                     <div className="text-right md:hidden flex flex-col items-end leading-none">
@@ -173,37 +253,19 @@ const Dashboard = ({
                         </div>
                     </div>
 
-                    {/* 2. INFO DE CUENTA (CORREO, CONTRASEÑA, PIN) */}
+                    {/* DATOS */}
                     <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
                         <div className="flex flex-col justify-center bg-white/40 md:bg-transparent rounded-lg px-2 py-1.5 md:p-0 border border-white/20 md:border-none">
-                            
-                            {/* LÍNEA 1: Email y Botón Copiar */}
                             <div className={`flex items-start justify-between gap-1 mb-1 ${textSecondary}`}>
                                 <div className="flex items-start gap-1 min-w-0">
-                                    <div className="text-[10px] md:text-[11px] font-medium truncate select-all" title="Email">
-                                        {sale.email}
-                                    </div>
+                                    <div className="text-[10px] md:text-[11px] font-medium truncate select-all">{sale.email}</div>
                                 </div>
-                                <button 
-                                    onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)}
-                                    className="text-slate-400 hover:text-indigo-600 p-0.5 rounded-full transition-colors active:scale-90 flex-shrink-0 -mt-0.5"
-                                    title="Copiar Correo y Contraseña"
-                                >
-                                    <Copy size={12}/>
-                                </button>
+                                <button onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)} className="text-slate-400 hover:text-indigo-600 p-0.5 rounded-full transition-colors active:scale-90 flex-shrink-0 -mt-0.5"><Copy size={12}/></button>
                             </div>
-                            
-                            {/* LÍNEA 2: Contraseña y PIN */}
                             <div className="flex items-center justify-between gap-2 pt-1 border-t border-black/5 md:border-none md:pt-0">
-                                
-                                {/* Contraseña visible */}
                                 <div className="flex items-center gap-1">
-                                    <div className="text-[10px] md:text-xs font-mono font-bold text-slate-600 truncate select-all" title="Contraseña">
-                                        {sale.pass}
-                                    </div>
+                                    <div className="text-[10px] md:text-xs font-mono font-bold text-slate-600 truncate select-all">{sale.pass}</div>
                                 </div>
-                                
-                                {/* Badge de Estado o PIN */}
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                     {!isFree && (
                                         <>
@@ -213,11 +275,10 @@ const Dashboard = ({
                                     )}
                                 </div>
                             </div>
-
                         </div>
                     </div>
 
-                    {/* 3. ESTADO PC (COLUMNA 3: DÍAS/PRECIO) */}
+                    {/* ESTADO PC */}
                     <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                         {!isFree && !isProblem ? (
                             <div className="text-center">
@@ -232,7 +293,7 @@ const Dashboard = ({
                         {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
                     </div>
 
-                    {/* 4. ACCIONES (COLUMNA 4: BOTONES) */}
+                    {/* ACCIONES */}
                     <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t border-black/5 md:border-none">
                         
                         <div className="flex justify-end gap-1 w-full md:w-auto">
@@ -241,24 +302,32 @@ const Dashboard = ({
                             ) : (
                                 <div className="flex items-center gap-1 w-full justify-end">
                                     <div className="flex gap-1">
-                                        {/* 1. Advertencia/Expiración */}
-                                        {!isProblem && days <= 3 && <button onClick={() => sendWhatsApp(sale, days <= 0 ? 'expired_today' : 'warning_tomorrow')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}><XCircle size={12}/></button>}
                                         
-                                        {/* 2. ENVIAR PERFIL (Candado/Lock) */}
-                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'profile_details')} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-indigo-100 hover:text-indigo-600"><Lock size={12}/></button>}
+                                        {/* 1. Botón de Vencimiento (USANDO NUEVA LÓGICA) */}
+                                        {!isProblem && days <= 3 && (
+                                            <button 
+                                                onClick={() => handleUnifiedWhatsApp(sale, 'reminder')} 
+                                                className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}
+                                            >
+                                                <XCircle size={12}/>
+                                            </button>
+                                        )}
                                         
-                                        {/* 3. ENVIAR CUENTA (Llave/Key) */}
-                                        {!isProblem && <button onClick={() => sendWhatsApp(sale, 'account_details')} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-blue-100 hover:text-blue-600"><Key size={12}/></button>}
+                                        {/* 2. Botón de Enviar Datos (USANDO NUEVA LÓGICA) */}
+                                        {!isProblem && (
+                                            <button 
+                                                onClick={() => handleUnifiedWhatsApp(sale, 'data')} 
+                                                className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-indigo-100 hover:text-indigo-600"
+                                            >
+                                                <Lock size={12}/>
+                                            </button>
+                                        )}
                                         
-                                        {/* 4. Editar (USA LA FUNCIÓN LIMPIA) */}
                                         <button onClick={() => handleStartEditSale(sale)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Edit2 size={12}/></button>
                                     </div>
                                     
                                     <div className="flex gap-1 pl-1 border-l border-slate-200 ml-1">
-                                        {/* 5. Renovación Rápida */}
                                         {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-500 hover:text-white shadow-sm"><CalendarPlus size={12}/></button>}
-                                        
-                                        {/* 6. Liberar */}
                                         <button onClick={() => triggerLiberate(sale.id)} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-white border border-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 shadow-sm"><RotateCcw size={12}/></button>
                                     </div>
                                 </div>
@@ -275,7 +344,7 @@ const Dashboard = ({
     return (
         <div className="w-full pb-32 space-y-3 md:space-y-8">
             
-            {/* --- MODAL DE ENVÍO MASIVO (Sin cambios) --- */}
+            {/* MODAL DE ENVÍO MASIVO */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm animate-in fade-in duration-300 p-0 md:p-4">
                     <div className="w-full md:max-w-md bg-white rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh]">
@@ -302,18 +371,8 @@ const Dashboard = ({
                                             <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl"><CheckCircle2 size={14}/> Procesado</span>
                                         ) : (
                                             <div className="flex gap-2">
-                                                {/* NUEVO BOTÓN: Renovar */}
-                                                <button 
-                                                    onClick={() => handleModalRenew(sale)} 
-                                                    className="px-3 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center"
-                                                >
-                                                    Renovar
-                                                </button>
-                                                
-                                                {/* Botón existente: Enviar WhatsApp */}
-                                                <button onClick={() => handleBulkSend(sale)} className="px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center">
-                                                    Enviar <Send size={12}/>
-                                                </button>
+                                                <button onClick={() => handleModalRenew(sale)} className="px-3 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center">Renovar</button>
+                                                <button onClick={() => handleBulkSend(sale)} className="px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center">Enviar <Send size={12}/></button>
                                             </div>
                                         )}
                                     </div>
@@ -324,52 +383,16 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* ALERTAS - FILTROS VENCIDAS, HOY, MAÑANA (USANDO PROPS CORREGIDAS) */}
-            {/* Si el error de pantalla en blanco persiste, es porque estas listas no están llegando bien. */}
-            {(expiringToday?.length > 0 || expiringTomorrow?.length > 0 || overdueSales?.length > 0) && ( 
+            {/* BOTONES DE ALERTA RAPIDA (USAN TUS CALCULOS LOCALES) */}
+            {(calculatedToday?.length > 0 || calculatedTomorrow?.length > 0 || calculatedOverdue?.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
-                    
-                    {/* Botón: Vencidas (Días < 0) */}
-                    {overdueSales.length > 0 && (
-                        <button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group">
-                            <div className="flex items-center gap-2">
-                                <div className="p-1 bg-white/20 rounded-lg"><Ban size={14} className="fill-white"/></div>
-                                <div className="text-left leading-none">
-                                    <p className="text-[9px] font-bold opacity-80 uppercase">Vencidas</p>
-                                    <p className="text-xs font-black">{overdueSales.length} Clientes</p>
-                                </div>
-                            </div>
-                            <ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
-                        </button>
-                    )}
-
-                    {/* Botón: Vencen Hoy (Días = 0) */}
-                    {expiringToday.length > 0 && (<button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-2 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group">
-                        <div className="flex items-center gap-2">
-                            <div className="p-1 bg-white/20 rounded-lg"><Bell size={14} className="fill-white"/></div>
-                            <div className="text-left leading-none">
-                                <p className="text-[9px] font-bold opacity-80 uppercase">Hoy</p>
-                                <p className="text-xs font-black">{expiringToday.length} Clientes</p>
-                            </div>
-                        </div>
-                        <ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
-                    </button>)}
-                    
-                    {/* Botón: Vencen Mañana (Días = 1) */}
-                    {expiringTomorrow.length > 0 && (<button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-2 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group">
-                        <div className="flex items-center gap-2">
-                            <div className="p-1 bg-white/20 rounded-lg"><Calendar size={14} className="fill-white"/></div>
-                            <div className="text-left leading-none">
-                                <p className="text-[9px] font-bold opacity-80 uppercase">Mañana</p>
-                                <p className="text-xs font-black">{expiringTomorrow.length} Clientes</p>
-                            </div>
-                        </div>
-                        <ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/>
-                    </button>)}
+                    {calculatedOverdue.length > 0 && (<button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Ban size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Vencidas</p><p className="text-xs font-black">{calculatedOverdue.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
+                    {calculatedToday.length > 0 && (<button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-2 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Bell size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Hoy</p><p className="text-xs font-black">{calculatedToday.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
+                    {calculatedTomorrow.length > 0 && (<button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-2 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Calendar size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Mañana</p><p className="text-xs font-black">{calculatedTomorrow.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
                 </div>
             )}
 
-            {/* SECCIÓN DE FILTROS (Sin cambios) */}
+            {/* FILTROS (TU DISEÑO) */}
             <div className="sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 bg-[#F2F2F7]/80 backdrop-blur-xl transition-all">
                 <div className="bg-white/60 backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg shadow-indigo-500/5 border border-white/50 flex flex-col gap-2">
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar cliente, correo..." className="block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-transparent border-none text-slate-800 placeholder-slate-400 focus:ring-0 text-sm md:text-base font-medium rounded-2xl transition-all" value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
@@ -380,8 +403,10 @@ const Dashboard = ({
                 </div>
             </div>
 
+            {/* ESTADÍSTICAS */}
             <div className="flex items-end justify-between px-2 md:px-4"><div><h1 className="text-3xl md:text-6xl font-black text-slate-900 tracking-tighter mb-1"><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest pl-1">Ingresos Mensuales</p></div><div className="text-right pb-1 md:pb-2"><div className="text-xl md:text-2xl font-black text-slate-800">{totalItems}</div><div className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Activos</div></div></div>
 
+            {/* LISTA DE TARJETAS */}
             <div className="grid grid-cols-1 gap-2 md:gap-4">
                 {sortedSales.length > 0 ? (
                     sortedSales.map(sale => <SaleCard key={sale.id} sale={sale} />)

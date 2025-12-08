@@ -1,62 +1,104 @@
-// src/hooks/useDataSync.js (VERSIÓN PULIDA)
-
+// src/hooks/useDataSync.js
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth'; 
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'; // Añadir query, orderBy
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config'; 
 
+// 🚨 IMPORTANTE: Debe decir 'export const', NO 'export default'
 export const useDataSync = () => {
   
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
+  // Estados de datos
   const [sales, setSales] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [clientsDirectory, setClientsDirectory] = useState([]);
-  const [loadingData, setLoadingData] = useState(false);
+  
+  // Estado de carga granular para evitar parpadeos
+  const [loadingState, setLoadingState] = useState({
+    sales: true,
+    catalog: true,
+    clients: true
+  });
 
-  // 1. AUTENTICACIÓN: Detecta cambios de sesión
+  // --- HELPER PARA SANITIZAR DATOS ---
+  // Convierte los Timestamps de Firebase a objetos Date de JS para evitar crashes
+  const sanitizeData = (doc) => {
+    const data = doc.data();
+    // Si hay fechas creadas con serverTimestamp, a veces vienen null latentes, 
+    // o como objeto Timestamp. Aquí lo normalizamos.
+    if (data.createdAt && data.createdAt.toDate) {
+      data.createdAt = data.createdAt.toDate();
+    }
+    if (data.updatedAt && data.updatedAt.toDate) {
+      data.updatedAt = data.updatedAt.toDate();
+    }
+    return { id: doc.id, ...data };
+  };
+
+  // 1. DETECTOR DE AUTENTICACIÓN
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
+      
+      // Si el usuario hace logout, limpiamos todo inmediatamente
+      if (!currentUser) {
+        setSales([]);
+        setCatalog([]);
+        setClientsDirectory([]);
+        setLoadingState({ sales: false, catalog: false, clients: false });
+      }
     });
     return () => unsubscribe();
   }, []); 
 
-  // 2. CARGA DE DATOS: Sincroniza las colecciones cuando el usuario está autenticado
+  // 2. SINCRONIZACIÓN DE DATOS (Real-time)
   useEffect(() => {
-    if (!user) {
-      setSales([]); setCatalog([]); setClientsDirectory([]);
-      return;
-    }
-    
-    setLoadingData(true);
+    if (!user) return;
+
     const userPath = `users/${user.uid}`;
+    
+    // Consultas
+    // Nota: Si la consola pide crear índice, sigue el link que te dé Firebase.
+    const salesQuery = query(collection(db, userPath, 'sales'), orderBy('createdAt', 'desc'));
+    const catalogRef = collection(db, userPath, 'catalog');
+    const clientsRef = collection(db, userPath, 'clients');
 
-    // 💡 MEJORA: Ordenar las ventas en la consulta (backend) es más eficiente.
-    const salesQuery = query(collection(db, userPath, 'sales'), orderBy('createdAt', 'asc'));
-
-    const salesUnsub = onSnapshot(salesQuery, (s) => {
-      // Ordenamiento del lado del cliente ELIMINADO ya que se hace en la consulta
-      setSales(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoadingData(false); // Asumimos que la primera carga es suficiente
+    // A. Suscripción a VENTAS
+    const salesUnsub = onSnapshot(salesQuery, (snapshot) => {
+      setSales(snapshot.docs.map(sanitizeData));
+      setLoadingState(prev => ({ ...prev, sales: false }));
+    }, (error) => {
+      console.error("Error sincronizando ventas:", error);
+      setLoadingState(prev => ({ ...prev, sales: false }));
     });
     
-    // Suscripción a 'catalog'
-    const catalogUnsub = onSnapshot(collection(db, userPath, 'catalog'), (s) => {
-      setCatalog(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    // B. Suscripción a CATÁLOGO
+    const catalogUnsub = onSnapshot(catalogRef, (snapshot) => {
+      setCatalog(snapshot.docs.map(sanitizeData));
+      setLoadingState(prev => ({ ...prev, catalog: false }));
+    }, (error) => {
+        console.error("Error sincronizando catálogo:", error);
+        setLoadingState(prev => ({ ...prev, catalog: false }));
     });
     
-    // Suscripción a 'clients'
-    const clientsUnsub = onSnapshot(collection(db, userPath, 'clients'), (s) => {
-      setClientsDirectory(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    // C. Suscripción a CLIENTES
+    const clientsUnsub = onSnapshot(clientsRef, (snapshot) => {
+      setClientsDirectory(snapshot.docs.map(sanitizeData));
+      setLoadingState(prev => ({ ...prev, clients: false }));
+    }, (error) => {
+        console.error("Error sincronizando clientes:", error);
+        setLoadingState(prev => ({ ...prev, clients: false }));
     });
     
-    // Función de limpieza para desuscribirse de todos los listeners de Firestore
+    // Limpieza al desmontar
     return () => { salesUnsub(); catalogUnsub(); clientsUnsub(); };
   }, [user]); 
 
-  // ✅ PULIDO FINAL: Eliminamos db y auth del retorno para desacoplar App.jsx
+  // Calculamos si la app sigue cargando datos iniciales
+  const loadingData = loadingState.sales || loadingState.catalog || loadingState.clients;
+
   return { user, authLoading, sales, catalog, clientsDirectory, loadingData };
 };

@@ -1,29 +1,28 @@
-// =========================================================================
-// FUNCIONES DE UTILIDAD GENERALES Y PÚBLICAS
-// =========================================================================
-
-// --- UTILIDADES DE FECHAS (Versión Estricta y Final) ---
+// src/utils/helpers.js
 
 export const getDaysRemaining = (endDateString) => {
     if (!endDateString) return null;
-
     const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
     const today = new Date();
     today.setHours(0, 0, 0, 0); 
-
-    const [year, month, day] = endDateString.split('-').map(Number);
+    const [year, month, day] = endDateString.replace(/\//g, '-').split('-').map(Number);
     const endDate = new Date(year, month - 1, day); 
     endDate.setHours(0, 0, 0, 0); 
-
     const diffTime = endDate.getTime() - today.getTime();
-    const diffDays = Math.round(diffTime / MS_PER_DAY);
-    
-    return diffDays;
+    return Math.round(diffTime / MS_PER_DAY);
 };
 
+export const formatList = (items) => {
+    if (!items || items.length === 0) return '';
+    const formatter = new Intl.ListFormat('es', { style: 'long', type: 'conjunction' });
+    return formatter.format(items);
+};
 
-// --- UTILIDADES DE UI Y ESTADO ---
+export const getWhatsAppUrl = (phone, message) => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const baseUrl = isMobile ? "https://api.whatsapp.com/send" : "https://web.whatsapp.com/send";
+    return `${baseUrl}?phone=${phone}&text=${encodeURIComponent(message)}`;
+};
 
 export const getStatusIcon = (clientName) => {
     if (clientName === 'LIBRE') return '✅';
@@ -45,78 +44,66 @@ export const getStatusColor = (clientName) => {
     return 'bg-[#007AFF] text-white'; 
 };
 
-// --- UTILIDAD DE NEGOCIO (Categorización de Plataforma) ---
-
-/**
- * Obtiene la categoría base (plataforma) de un servicio.
- * Mantiene la lógica robusta movida del SaleForm.
- */
 export const getServiceCategory = (serviceName) => {
     if (!serviceName) return 'UNKNOWN';
-    const lowerName = serviceName.toLowerCase();
-    
-    if (lowerName.includes('disney') || lowerName.includes('star')) return 'Disney';
-    if (lowerName.includes('netflix')) return 'Netflix';
-    if (lowerName.includes('prime')) return 'Prime';
-    if (lowerName.includes('max')) return 'Max';
-    if (lowerName.includes('crunchyroll')) return 'Crunchyroll';
-    if (lowerName.includes('vix')) return 'Vix';
-    if (lowerName.includes('paramount')) return 'Paramount';
-    
-    // Fallback: usar la primera palabra
-    const base = lowerName.split(' ')[0].replace('+', '');
-    return base;
+    const lower = serviceName.toLowerCase();
+    if (lower.includes('disney') || lower.includes('star')) return 'Disney';
+    if (lower.includes('netflix')) return 'Netflix';
+    if (lower.includes('prime')) return 'Prime';
+    if (lower.includes('max')) return 'Max';
+    if (lower.includes('crunchyroll')) return 'Crunchyroll';
+    if (lower.includes('vix')) return 'Vix';
+    if (lower.includes('paramount')) return 'Paramount';
+    return lower.split(' ')[0].replace('+', '');
 };
 
-// --- UTILIDAD DE NEGOCIO (Fragmentación) ---
-
+// --- ESTA ES LA FUNCIÓN QUE FALTABA Y ROMPÍA TODO ---
 export const findIndividualServiceName = (originalService, catalog) => {
-    if (!originalService || !catalog) return 'LIBRE 1 Perfil (Error)';
+    if (!originalService) return 'LIBRE 1 Perfil';
     
     const nameLower = originalService.toLowerCase();
-    let serviceBase;
-
+    let serviceBase = '';
+    
     if (nameLower.includes('netflix')) serviceBase = 'netflix';
     else if (nameLower.includes('disney')) serviceBase = 'disney';
     else if (nameLower.includes('prime')) serviceBase = 'prime';
     else if (nameLower.includes('max')) serviceBase = 'max';
     else if (nameLower.includes('star')) serviceBase = 'star';
-    else serviceBase = nameLower.split(' ')[0].replace('+', '');
+    else if (nameLower.includes('paramount')) serviceBase = 'paramount';
+    else if (nameLower.includes('crunchyroll')) serviceBase = 'crunchyroll';
+    else if (nameLower.includes('vix')) serviceBase = 'vix';
+    else serviceBase = nameLower.split(' ')[0].replace('+', '').trim();
+    
+    if (!Array.isArray(catalog) || catalog.length === 0) {
+        return `${serviceBase.charAt(0).toUpperCase() + serviceBase.slice(1)} 1 Perfil`;
+    }
 
     const individualService = catalog.find(s => 
         s.type === 'Perfil' && 
         Number(s.defaultSlots) === 1 && 
         s.name.toLowerCase().includes(serviceBase)
     );
-
-    return individualService ? individualService.name : `${serviceBase.toUpperCase()} 1 Perfil (Error)`;
+    
+    return individualService ? individualService.name : `${serviceBase.charAt(0).toUpperCase() + serviceBase.slice(1)} 1 Perfil`;
 };
 
-
-// --- UTILIDAD DE COMUNICACIÓN ---
-
-export const sendWhatsApp = (sale, catalog, sales, actionType) => {
-    if (!sale.phone) return;
+export const sendWhatsApp = (sale, actionType) => {
+    if (!sale || !sale.phone) return;
+    const type = actionType ? String(actionType).toLowerCase().trim() : 'default';
+    const clientName = sale.client || 'Cliente';
+    const serviceName = sale.service || sale.plataforma || 'servicio';
+    const isFullAccount = !sale.profile || sale.profile === 'General';
+    let message = '';
     
-    let message = "Hola, ";
-    
-    if (actionType === 'renew') {
-        message += `te recuerdo que tu perfil de ${sale.service} vence pronto. ¿Deseas renovar?`;
-    } else if (actionType === 'send_info') {
-        message += `aquí están tus datos de acceso para ${sale.service}:\n\nEmail: ${sale.email}\nContraseña: ${sale.pass}\nPerfil: ${sale.profile}`;
-    } else if (actionType === 'expired_today') {
-        message += `¡Tu perfil de ${sale.service} vence HOY! Por favor, realiza tu pago para no perder tu cupo.`;
-    } else if (actionType === 'warning_tomorrow') {
-        message += `¡Alerta! Tu perfil de ${sale.service} vence MAÑANA. ¡Evita interrupciones y renueva hoy!`;
-    } else if (actionType === 'overdue_payment') {
-        message += `Hemos notado que tu pago por ${sale.service} está vencido. ¡Contáctanos para reactivar tu servicio!`;
-    } else if (actionType === 'profile_details') {
-        message += `Tus datos de perfil para ${sale.service}:\nEmail: ${sale.email}\nPerfil: ${sale.profile || 'General'}\nPIN: ${sale.pin || 'N/A'}`;
-    } else if (actionType === 'account_details') {
-         message += `Los datos de acceso general de tu cuenta son:\nEmail: ${sale.email}\nContraseña: ${sale.pass}`;
+    if (type.includes('today')) message = `❌ Hola, ¡Tu perfil de ${serviceName} vence HOY! Por favor, realiza tu pago para no perder tu cupo ❌`;
+    else if (type.includes('tomorrow')) message = `⚠️ Buen Día ${clientName}⚠️\nMañana vence su servicio de ${serviceName}.\n¿Renuevas un mes más?`;
+    else if (type.includes('overdue')) message = `🔴 Hola, pago pendiente para ${serviceName}.`;
+    else if (type.includes('sale') || type.includes('data')) {
+        message = isFullAccount 
+            ? `*${serviceName.toUpperCase()}*\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}`
+            : `*${serviceName.toUpperCase()} 1 PERFIL*\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}`;
+    } else {
+        message = `Hola, te escribo por tu servicio de ${serviceName}.`;
     }
-
-
-    const encodedMessage = encodeURIComponent(message);
-    window.open(`https://wa.me/${sale.phone}?text=${encodedMessage}`, '_blank');
+    window.open(getWhatsAppUrl(sale.phone, message), '_blank');
 };

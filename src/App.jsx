@@ -1,3 +1,5 @@
+// src/App.jsx (VERSIÓN FINAL MAESTRA - CONEXIÓN DE FRAGMENTACIÓN)
+
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
 
@@ -10,9 +12,9 @@ import { useClientManagement } from './hooks/useClientManagement';
 
 // Firebase y Utils
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'; 
-import { doc, updateDoc } from 'firebase/firestore'; 
+import { doc, updateDoc, writeBatch } from 'firebase/firestore'; 
 import { auth, db } from './firebase/config'; 
-import { sendWhatsApp, findIndividualServiceName } from './utils/helpers'; 
+import { sendWhatsApp } from './utils/helpers'; 
 
 // Layout y Componentes
 import MainLayout from './layouts/MainLayout';
@@ -27,7 +29,6 @@ import Toast from './components/Toast';
 const App = () => {
     // 1. DATA & AUTH
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData } = useDataSync();
-    const userPath = user ? `users/${user.uid}` : '';
     
     // 2. UI STATE
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
@@ -36,8 +37,19 @@ const App = () => {
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
     const [openMenuId, setOpenMenuId] = useState(null);
 
-    // 3. ACTION HOOKS Y CLIENT MANAGEMENT
-    const crmActions = useCRMActions(user, userPath, setNotification);
+    // 3. ACTION HOOKS
+    const crmActions = useCRMActions(user, setNotification);
+    
+    // ✅ IMPORTANTE: Extraemos handleSave para usarlo en el botón de guardar
+    const { 
+        addCatalogService, 
+        addCatalogPackage, 
+        generateStock, 
+        executeConfirmAction,
+        handleSave 
+    } = crmActions;
+    
+    const userPath = user ? `users/${user.uid}` : ''; 
     const clientManagement = useClientManagement(user, userPath, sales, clientsDirectory, setNotification);
 
     const { 
@@ -46,13 +58,6 @@ const App = () => {
         triggerDeleteClient, 
         triggerEditClient 
     } = clientManagement;
-
-    const { 
-        addCatalogService, 
-        addCatalogPackage, 
-        generateStock,
-        executeConfirmAction
-    } = crmActions;
 
     // 4. FORM STATES
     const [loginEmail, setLoginEmail] = useState('');
@@ -64,6 +69,7 @@ const App = () => {
     const [formData, setFormData] = useState({
         id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1,
     });
+    
     const [stockForm, setStockForm] = useState({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
     const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
     const [packageForm, setPackageForm] = useState({ name: '', cost: '', slots: 2 });
@@ -74,16 +80,12 @@ const App = () => {
         getClientPreviousProfiles, maxAvailableSlots, 
         accountsInventory, packageCatalog,
         getStatusIcon, getStatusColor, getDaysRemaining,
-        // ✅ PASO 2: IMPORTAMOS LAS NUEVAS LISTAS DE useSalesData
-        expiringToday, 
-        expiringTomorrow,
-        overdueSales
+        expiringToday, expiringTomorrow, overdueSales
     } = useSalesData(sales, catalog, allClients, uiState, formData); 
 
-    // Catálogo Ordenado Alfabéticamente (usado en props)
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
     
-    // --- HANDLERS SIMPLIFICADOS ---
+    // --- HANDLERS BÁSICOS ---
 
     const handleLogin = async (e) => {
         e.preventDefault(); setLoginError('');
@@ -108,18 +110,18 @@ const App = () => {
         if (!user || !serviceId) return;
         try {
             await updateDoc(doc(db, userPath, 'catalog', serviceId), updatedData);
-            setNotification({ show: true, message: 'Servicio de catálogo actualizado.', type: 'success' });
+            setNotification({ show: true, message: 'Servicio actualizado.', type: 'success' });
             return true;
         } catch (error) {
-            setNotification({ show: true, message: 'Error al actualizar servicio.', type: 'error' });
+            setNotification({ show: true, message: 'Error al actualizar.', type: 'error' });
             console.error(error);
             return false;
         }
     };
     
-    const handleGenerateStock = async (e) => {
-        e.preventDefault();
-        const success = await generateStock(stockForm);
+    const handleGenerateStock = async (dataFromChild) => {
+        const dataToSubmit = (dataFromChild && dataFromChild.service) ? dataFromChild : stockForm;
+        const success = await generateStock(dataToSubmit);
         if (success) {
             setStockTab('manage');
             setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
@@ -128,93 +130,138 @@ const App = () => {
 
     const handleConfirmActionWrapper = async () => {
         const success = await executeConfirmAction(confirmModal, sales, catalog);
-        if (success || !success) setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
+        setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // --- ACCIONES COMPLEJAS CON LÓGICA DE NEGOCIO ---
+    // --- LÓGICA DE VENTAS (AQUÍ ESTABA EL CAMBIO CLAVE) ---
 
     const handleSaveSale = async (e) => {
-        e.preventDefault(); if (!user) return;
+        e.preventDefault(); 
+        if (!user) return;
         
+        // 1. Guardar cliente si es nuevo
         if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
             await saveClientIfNew(formData.client, formData.phone); 
         }
 
-        const isSingleEdit = formData.client !== 'LIBRE' && formData.id && (!formData.profilesToBuy || formData.profilesToBuy === 1);
         const quantity = parseInt(formData.profilesToBuy || 1);
-        const costPerProfile = (quantity > 1) ? Number(formData.cost / quantity).toFixed(2) : Number(formData.cost).toFixed(2);
         
-        // --- A. EDICIÓN / FRAGMENTACIÓN SIMPLE ---
-        if (isSingleEdit) {
+        // Calcular costo
+        const totalCost = Number(formData.cost) || 0;
+        const costPerProfile = (quantity > 1) ? (totalCost / quantity).toFixed(2) : totalCost;
+
+        // Calcular vencimiento por defecto (30 días)
+        let finalEndDate = formData.endDate;
+        if (!finalEndDate && formData.client !== 'LIBRE') {
+            const d = new Date();
+            d.setDate(d.getDate() + 30);
+            finalEndDate = d.toISOString().split('T')[0];
+        }
+
+        // --- A. MODO EDICIÓN / VENTA INDIVIDUAL (FRAGMENTACIÓN) ---
+        const isSingleEdit = formData.id && quantity === 1;
+
+        // También entramos aquí si estamos editando una tarjeta específica aunque quantity > 1 (Paquete sobre Madre)
+        // La condición de 'quantity === 1' a veces bloqueaba la venta de paquetes sobre madres.
+        // MEJOR: Si hay un ID, usamos el hook inteligente.
+        if (formData.id) {
+            // Buscamos la venta original para compararla
             const originalSale = sales.find(s => s.id === formData.id);
-            
-            if (originalSale && originalSale.type === 'Cuenta' && (formData.type === 'Perfil' || formData.client !== 'LIBRE')) {
-                if (window.confirm("⚠️ ESTÁS VENDIENDO UNA CUENTA COMPLETA.\n\n¿Deseas fragmentarla y generar los cupos libres automáticamente?")) {
-                    
-                    const targetServiceName = findIndividualServiceName(originalSale.service, catalog);
-                    // ... (Lógica de fragmentación y commit del batch) ...
+            if (!originalSale) return;
 
-                    setNotification({ show: true, message: `Cuenta fragmentada.`, type: 'success' }); 
-                    setView('dashboard'); resetForm(); return;
-                }
+            // Preparamos los datos limpios para enviar al hook
+            const dataToSave = {
+                ...formData,
+                cost: Number(costPerProfile),
+                endDate: finalEndDate
+            };
+
+            // 🔥 LLAMADA AL MOTOR NUEVO 🔥
+            // Le pasamos 'quantity' para que sepa si es 1 perfil o un paquete de 3
+            const success = await handleSave(dataToSave, originalSale, catalog, quantity);
+
+            if (success) {
+                setView('dashboard'); 
+                resetForm(); 
             }
-            await updateDoc(doc(db, userPath, 'sales', formData.id), { 
-                ...formData, 
-                cost: costPerProfile
-            }); 
-            setNotification({ show: true, message: 'Venta actualizada.', type: 'success' });
-            setView('dashboard'); resetForm(); return;
-        }
-
-        // --- B. VENTA MÚLTIPLE (FRAGMENTACIÓN AUTOMÁTICA) ---
-        let freeRows = sales.filter(s => s.email === formData.email && s.client === 'LIBRE'); 
-        
-        if (freeRows.length === 1 && freeRows[0].type === 'Cuenta' && quantity > 1) {
-            const accountCard = freeRows[0];
-            const totalSlots = catalog.find(c => c.name === accountCard.service)?.defaultSlots || 4; 
-            
-            if (totalSlots >= quantity) { 
-                if (window.confirm(`⚠️ Esta es una CUENTA COMPLETA.\n\n¿Fragmentar automáticamente en ${totalSlots} perfiles?`)) {
-                    const targetServiceName = findIndividualServiceName(accountCard.service, catalog);
-
-                    // ... (Lógica de creación de perfiles y commit del batch) ...
-
-                    setNotification({ show: true, message: 'Cuenta fragmentada. Confirma la venta de nuevo.', type: 'success' });
-                    return; 
-                 } else { return; } 
-            }
-        }
-
-        if (quantity > freeRows.length) { 
-            setNotification({ show: true, message: `Error: Solo quedan ${freeRows.length} perfiles libres.`, type: 'error' });
             return; 
         }
 
-        // ... (Lógica de venta múltiple final y commit del batch) ...
-        setNotification({ show: true, message: `¡Venta de ${quantity} perfiles guardada!`, type: 'success' });
-        setView('dashboard'); resetForm();
+        // --- B. MODO VENTA MASIVA (Desde Stock LIBRE) ---
+        // Esto busca múltiples tarjetas libres. Solo se usa si NO seleccionaste una tarjeta específica.
+        let freeRows = sales.filter(s => 
+            s.email === formData.email && 
+            s.service === formData.service && 
+            s.client === 'LIBRE'
+        ); 
+        
+        if (quantity > freeRows.length) { 
+            setNotification({ show: true, message: `Stock insuficiente. Solo quedan ${freeRows.length} libres.`, type: 'error' });
+            return; 
+        }
+
+        const profilesToSell = freeRows.slice(0, quantity);
+
+        try {
+            const batch = writeBatch(db);
+
+            profilesToSell.forEach((docSnap, index) => {
+                const docRef = doc(db, userPath, 'sales', docSnap.id);
+                
+                let assignedProfile = formData.profile;
+                let assignedPin = formData.pin;
+
+                if (quantity > 1 && bulkProfiles[index]) {
+                    assignedProfile = bulkProfiles[index].profile || '';
+                    assignedPin = bulkProfiles[index].pin || '';
+                }
+
+                batch.update(docRef, {
+                    client: formData.client,
+                    phone: formData.phone || '',
+                    endDate: finalEndDate,
+                    cost: Number(costPerProfile),
+                    type: formData.type,
+                    profile: assignedProfile,
+                    pin: assignedPin,
+                    soldAt: new Date()
+                });
+            });
+
+            await batch.commit();
+            
+            setNotification({ show: true, message: `¡Venta de ${quantity} perfiles exitosa!`, type: 'success' });
+            setView('dashboard'); 
+            resetForm();
+
+        } catch (error) {
+            console.error("Error batch venta:", error);
+            setNotification({ show: true, message: 'Error al procesar la venta.', type: 'error' });
+        }
     };
 
     const handleQuickRenew = async (id) => {
         const sale = sales.find(s => s.id === id);
         if (sale && sale.endDate) {
-            try {
-                // ... (Lógica de manipulación de fechas y updateDoc) ...
-                setNotification({ show: true, message: 'Renovado (30 días).', type: 'success' });
+             try {
+                const currentEnd = new Date(sale.endDate);
+                const newEnd = new Date(currentEnd);
+                newEnd.setDate(newEnd.getDate() + 30);
+                
+                await updateDoc(doc(db, userPath, 'sales', id), {
+                    endDate: newEnd.toISOString().split('T')[0]
+                });
+                setNotification({ show: true, message: 'Renovado +30 días.', type: 'success' });
             } catch (error) { setNotification({ show: true, message: 'Error al renovar.', type: 'error' }); }
         }
     };
 
-    const handleImportCSV = (event, type) => {
-        console.log("Lógica de importación CSV ejecutada.");
-    };
+    const handleImportCSV = (event) => console.log("Import CSV Logic Placeholder");
 
-    // --- TRIGGERS DEL MODAL ---
     const triggerDeleteService = (id) => { setConfirmModal({ show: true, id: id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá del catálogo.' }); };
     const triggerLiberate = (id) => { setConfirmModal({ show: true, id: id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' }); };
     const triggerDeleteAccount = (accountData) => { setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${accountData.email}.`, data: accountData.ids }); };
     
-    // --- MANEJO DEL FORMULARIO ---
     const handleClientNameChange = (e) => {
         const nameInput = e.target.value; let newPhone = formData.phone;
         const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
@@ -252,8 +299,6 @@ const App = () => {
     const setView = (newView) => dispatch({ type: uiActionTypes.SET_VIEW, payload: newView });
     const setStockTab = (newTab) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: newTab });
 
-    // --- RENDERIZADO ---
-
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
     if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/></>;
@@ -272,13 +317,12 @@ const App = () => {
                 totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
                 getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
                 NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} 
-                sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, catalog, sales, actionType)}
+                sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, actionType)}
                 handleQuickRenew={handleQuickRenew}
                 triggerLiberate={triggerLiberate}
                 setFormData={setFormData} setView={setView}
                 openMenuId={openMenuId} setOpenMenuId={setOpenMenuId}
                 setBulkProfiles={setBulkProfiles} loadingData={loadingData}
-                // ✅ PASO 3: PASAMOS LAS LISTAS MEMORIZADAS AL DASHBOARD
                 expiringToday={expiringToday}
                 expiringTomorrow={expiringTomorrow}
                 overdueSales={overdueSales}

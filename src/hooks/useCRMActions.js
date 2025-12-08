@@ -1,132 +1,144 @@
-import { addDoc, collection, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
+// src/hooks/useCRMActions.js (VERSIÓN SOPORTE PAQUETES)
+import { addDoc, collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 import { findIndividualServiceName } from '../utils/helpers'; 
 
-// Objeto de acciones "no-operacionales" para devolver si el usuario no está autenticado
 const NO_OP_ACTIONS = {
     addCatalogService: async () => false,
     addCatalogPackage: async () => false,
     generateStock: async () => false,
     executeConfirmAction: async () => false,
+    handleSave: async () => false,
 };
 
-export const useCRMActions = (user, userPath, setNotification) => {
+export const useCRMActions = (user, setNotification) => {
     
-    // Devolver acciones no-operacionales si no hay usuario (protege contra errores de ejecución)
     if (!user) return NO_OP_ACTIONS;
+    const userPath = `users/${user.uid}`;
 
-    // --- ACCIONES DE CATÁLOGO ---
-    const addCatalogService = async (catalogForm) => {
-        if (!catalogForm.name) return false; 
-        try {
-            await addDoc(collection(db, userPath, 'catalog'), { 
-                name: catalogForm.name, 
-                cost: Number(catalogForm.cost), 
-                type: catalogForm.type, 
-                defaultSlots: Number(catalogForm.defaultSlots) 
-            });
-            setNotification({ show: true, message: `Servicio agregado correctamente.`, type: 'success' });
-            return true;
-        } catch (error) {
-            console.error(error);
-            setNotification({ show: true, message: 'Error al agregar servicio.', type: 'error' });
-            return false;
-        }
+    const notify = (msg, type = 'success') => {
+        setNotification({ show: true, message: msg, type });
     };
 
-    const addCatalogPackage = async (packageForm) => {
-        if (!packageForm.name || packageForm.slots <= 1) return false;
-        const packageName = `${packageForm.name} Paquete ${packageForm.slots} Perfiles`;
-        try {
-            await addDoc(collection(db, userPath, 'catalog'), { 
-                name: packageName, 
-                cost: Number(packageForm.cost), 
-                type: 'Paquete', 
-                defaultSlots: Number(packageForm.slots) 
-            });
-            setNotification({ show: true, message: `Paquete creado exitosamente.`, type: 'success' });
-            return true;
-        } catch (error) {
-            setNotification({ show: true, message: 'Error al crear paquete.', type: 'error' });
-            return false;
-        }
-    };
-
-    // --- ACCIONES DE STOCK ---
-    const generateStock = async (stockForm) => {
+    // =========================================================
+    // 1. FUNCIÓN DE GUARDADO (FRAGMENTACIÓN + PAQUETES)
+    // =========================================================
+    // Aceptamos un nuevo argumento: profilesToSell (Cantidad a vender)
+    const handleSave = async (formData, originalSale, catalog, profilesToSell = 1) => {
         try {
             const batch = writeBatch(db);
-            for (let i = 0; i < stockForm.slots; i++) {
-                const newDocRef = doc(collection(db, userPath, 'sales'));
-                batch.set(newDocRef, {
-                    client: 'LIBRE', phone: '', service: stockForm.service, endDate: '', email: stockForm.email,
-                    pass: stockForm.pass, profile: '', pin: '', cost: stockForm.cost, type: stockForm.type, createdAt: Date.now() + i
-                });
-            }
-            await batch.commit();
-            setNotification({ show: true, message: `${stockForm.slots} cupos generados.`, type: 'success' });
-            return true;
-        } catch (error) {
-            setNotification({ show: true, message: 'Error al generar stock.', type: 'error' });
-            return false;
-        }
-    };
+            const saleRef = doc(db, userPath, 'sales', originalSale.id);
 
-    // --- ACCIONES GENERALES (ELIMINAR / LIBERAR) ---
-    const executeConfirmAction = async (modalData, sales, catalog) => { 
-        try {
-            const batch = writeBatch(db);
-            let successMessage = null;
-
-            if (modalData.type === 'delete_service') {
-                // ✅ CORRECCIÓN: Usar batch.delete en lugar de deleteDoc para uniformizar la operación.
-                batch.delete(doc(db, userPath, 'catalog', modalData.id));
-                successMessage = 'Servicio eliminado.';
+            // --- DETECCIÓN DE MADRE ---
+            let totalSlots = 1;
+            
+            // 1. Buscar coincidencia exacta
+            const exactMatch = catalog.find(c => c.name === originalSale.service);
+            if (exactMatch && Number(exactMatch.defaultSlots) > 1) {
+                totalSlots = Number(exactMatch.defaultSlots);
             }
-            else if (modalData.type === 'liberate') {
-                const currentSale = sales.find(s => s.id === modalData.id);
-                
-                let newServiceName = 'LIBRE 1 Perfil (Error)';
-                
-                if (currentSale) {
-                    newServiceName = findIndividualServiceName(currentSale.service, catalog); 
+
+            // 2. Si no, buscar "Madre" por nombre base
+            if (totalSlots === 1) {
+                const baseName = originalSale.service.split(' ')[0]; 
+                const candidates = catalog.filter(c => 
+                    c.name.includes(baseName) && Number(c.defaultSlots) > 1
+                );
+                if (candidates.length > 0) {
+                    candidates.sort((a, b) => Number(b.defaultSlots) - Number(a.defaultSlots));
+                    totalSlots = Number(candidates[0].defaultSlots);
                 }
+            }
 
-                batch.update(doc(db, userPath, 'sales', modalData.id), { 
-                    client: 'LIBRE', phone: '', endDate: '', profile: '', pin: '', 
-                    service: newServiceName 
+            // --- CONDICIÓN: ¿FRAGMENTAMOS? ---
+            // Si es cuenta madre Y (se está vendiendo O se están pidiendo más de 1 perfil)
+            const isSelling = originalSale.client === 'LIBRE' && formData.client !== 'LIBRE';
+            const isFragmentation = (totalSlots > 1) && (isSelling || profilesToSell > 1);
+
+            if (isFragmentation) {
+                console.log(`⚡ FRAGMENTANDO: Madre de ${totalSlots} slots. Vendiendo ${profilesToSell}.`);
+
+                const individualServiceName = findIndividualServiceName(originalSale.service, catalog);
+
+                // A. ACTUALIZAR LA MADRE (Perfil #1 Vendido)
+                batch.update(saleRef, {
+                    ...formData,
+                    service: individualServiceName, 
+                    type: 'Perfil',
+                    profile: formData.profile || 'Perfil 1', // Asegurar nombre si es paquete
+                    updatedAt: serverTimestamp()
                 });
-                successMessage = `Perfil liberado (${newServiceName}).`;
+
+                // B. CREAR LOS RESTANTES (Bucle Inteligente)
+                const salesCollection = collection(db, userPath, 'sales');
+                
+                // Iteramos desde el slot 1 hasta el final (0 es la madre)
+                for (let i = 1; i < totalSlots; i++) {
+                    const newDocRef = doc(salesCollection);
+                    const creationDate = new Date(Date.now() + i * 50);
+
+                    // ¿Este clon también es parte de la venta?
+                    // Si profilesToSell es 3:
+                    // i=0 (Madre) -> Vendido
+                    // i=1 -> Vendido (1 < 3)
+                    // i=2 -> Vendido (2 < 3)
+                    // i=3 -> LIBRE
+                    const isSoldClone = i < profilesToSell;
+
+                    if (isSoldClone) {
+                        // CLON VENDIDO (Parte del paquete)
+                        batch.set(newDocRef, {
+                            ...formData, // Copia todos los datos del cliente
+                            service: individualServiceName,
+                            type: 'Perfil',
+                            profile: `Perfil ${i + 1}`, // Autoincremental
+                            pin: '', // Sin PIN por defecto en clones (o podrías pasar un array)
+                            soldAt: new Date(),
+                            createdAt: creationDate
+                        });
+                    } else {
+                        // CLON LIBRE (Stock restante)
+                        batch.set(newDocRef, {
+                            client: 'LIBRE',
+                            phone: '',
+                            service: individualServiceName,
+                            type: 'Perfil',
+                            cost: Number(formData.cost),
+                            email: formData.email,
+                            pass: formData.pass,
+                            profile: `Perfil ${i + 1}`,
+                            pin: '',
+                            endDate: '',
+                            createdAt: creationDate
+                        });
+                    }
+                }
+                
+                const libres = totalSlots - profilesToSell;
+                notify(`Venta procesada: ${profilesToSell} perfiles entregados + ${libres > 0 ? libres : 0} libres creados.`, 'success');
+
+            } else {
+                // GUARDADO NORMAL
+                batch.update(saleRef, { ...formData, updatedAt: serverTimestamp() });
+                if (formData.client === 'LIBRE') notify('Servicio liberado.', 'success');
+                else notify('Cambios guardados.', 'success');
             }
-            else if (modalData.type === 'delete_account') {
-                modalData.data.forEach(id => { 
-                    const docRef = doc(db, userPath, 'sales', id); 
-                    batch.delete(docRef); 
-                });
-                successMessage = 'Cuenta completa eliminada.';
-            }
-            
+
             await batch.commit();
-            
-            // Notificaciones después del commit
-            if (successMessage) {
-                // Las notificaciones de delete_account pueden ser 'warning'
-                const type = (modalData.type === 'delete_account') ? 'warning' : 'success';
-                setNotification({ show: true, message: successMessage, type: type });
-            }
-            
             return true;
+
         } catch (error) {
-            console.error(error);
-            setNotification({ show: true, message: 'Error al ejecutar la acción.', type: 'error' });
+            console.error("Error handleSave:", error);
+            notify('Error al guardar.', 'error');
             return false;
         }
     };
 
-    return {
-        addCatalogService,
-        addCatalogPackage,
-        generateStock,
-        executeConfirmAction
-    };
+    // --- DEMÁS FUNCIONES IGUALES ---
+    const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio agregado.'); return true; } catch (e) { return false; } };
+    const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch (e) { return false; } };
+    const generateStock = async (f) => { try { const b = writeBatch(db); const r = collection(db, userPath, 'sales'); for(let i=0; i<f.slots; i++) b.set(doc(r), {client:'LIBRE', phone:'', service:f.service, email:f.email, pass:f.pass, profile:'', pin:'', cost:Number(f.cost), type:f.type, createdAt:new Date(Date.now()+i)}); await b.commit(); notify('Stock generado.'); return true; } catch(e){ return false; } };
+    const executeConfirmAction = async (d, s, c) => { try { const b = writeBatch(db); if(d.type==='delete_service') b.delete(doc(db, userPath, 'catalog', d.id)); else if(d.type==='liberate') { const cur = s.find(i=>i.id===d.id); let n='LIBRE'; if(cur) n=findIndividualServiceName(cur.service, c); b.update(doc(db, userPath, 'sales', d.id), {client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service:n, updatedAt:serverTimestamp()}); } else if(d.type==='delete_account') d.data.forEach(id=>b.delete(doc(db, userPath, 'sales', id))); await b.commit(); notify('Éxito.'); return true; } catch(e){ return false; } };
+
+    return { addCatalogService, addCatalogPackage, generateStock, executeConfirmAction, handleSave };
 };
