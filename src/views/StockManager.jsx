@@ -14,7 +14,8 @@ const StockManager = ({
     catalog,
     handleStockServiceChange, // Función que rellena costo/tipo al elegir servicio
     handleGenerateStock,      // La función del hook useCRMActions
-    triggerDeleteAccount      // Función para abrir el modal de borrar
+    triggerDeleteAccount,     // Función para abrir el modal de borrar TODO
+    triggerDeleteFreeStock    // ✅ NUEVO: Función para borrar SOLO LIBRES
 }) => {
     
     // 1. ESTADOS LOCALES DE UI
@@ -22,7 +23,6 @@ const StockManager = ({
     const [copiedId, setCopiedId] = useState(null); 
 
     // 2. FILTRADO INTELIGENTE (Apple Performance 🚀)
-    // Solo se recalcula cuando cambia el inventario o lo que escribes, no cuando te mueves por la UI.
     const filteredAccounts = useMemo(() => {
         if (!searchInventory) return accountsInventory;
         
@@ -64,13 +64,29 @@ const StockManager = ({
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cuenta Madre</span>
                         </div>
                     </div>
-                    <button 
-                        onClick={() => triggerDeleteAccount(acc)} 
-                        className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500 flex items-center justify-center transition-colors"
-                        title="Eliminar cuenta completa"
-                    >
-                        <Trash2 size={14} />
-                    </button>
+                    
+                    {/* ACCIONES DE BORRADO Y LIMPIEZA */}
+                    <div className="flex gap-1 items-center">
+                        {acc.free > 0 && (
+                            // ✅ NUEVO BOTÓN: LIMPIAR STOCK LIBRE (Solo se muestra si hay stock libre)
+                            <button 
+                                onClick={() => triggerDeleteFreeStock(acc.email, acc.pass)} 
+                                className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-500 hover:text-white flex items-center justify-center transition-colors"
+                                title={`Eliminar ${acc.free} perfiles libres`}
+                            >
+                                <Trash2 size={14} /> 
+                            </button>
+                        )}
+
+                        {/* BOTÓN ORIGINAL: Eliminar Cuenta Completa */}
+                        <button 
+                            onClick={() => triggerDeleteAccount(acc)} 
+                            className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500 flex items-center justify-center transition-colors"
+                            title="Eliminar cuenta completa"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Datos Copiables */}

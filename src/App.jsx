@@ -1,4 +1,4 @@
-// src/App.jsx (CÓDIGO CONEXIÓN FINAL)
+// src/App.jsx (CÓDIGO CONEXIÓN FINAL Y SIN ERRORES DE SINTAXIS)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -40,7 +40,6 @@ const App = () => {
     // 3. ACTION HOOKS
     const crmActions = useCRMActions(user, setNotification);
     
-    // ✅ IMPORTANTE: Extraemos handleSave para la lógica de fragmentación
     const { 
         addCatalogService, 
         addCatalogPackage, 
@@ -169,7 +168,7 @@ const App = () => {
                 endDate: finalEndDate
             };
 
-            // ✅ CORRECCIÓN CRÍTICA: AGREGAMOS EL ARGUMENTO 'sales'
+            // ✅ CONEXIÓN FINAL: Pasamos la lista 'sales' para la búsqueda de clones
             const success = await handleSave(dataToSave, originalSale, catalog, sales, quantity);
 
             if (success) { setView('dashboard'); resetForm(); }
@@ -257,6 +256,28 @@ const App = () => {
     const triggerLiberate = (id) => { setConfirmModal({ show: true, id: id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' }); };
     const triggerDeleteAccount = (accountData) => { setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${accountData.email}.`, data: accountData.ids }); };
     
+    // ✅ NUEVO TRIGGER PARA ELIMINAR SOLO STOCK LIBRE
+    const triggerDeleteFreeStock = (accountEmail, accountPass) => {
+        const freeProfilesToDelete = sales.filter(s => 
+            s.email === accountEmail && 
+            s.pass === accountPass && 
+            s.client === 'LIBRE' 
+        ).map(s => s.id);
+        
+        if (freeProfilesToDelete.length === 0) {
+             setNotification({ show: true, message: 'No se encontró stock libre para eliminar en esta cuenta.', type: 'info' });
+             return;
+        }
+
+        setConfirmModal({ 
+            show: true, 
+            type: 'delete_free_stock', 
+            title: 'Limpiar Stock Libre', 
+            msg: `Se eliminarán ${freeProfilesToDelete.length} perfiles LIBRES de ${accountEmail}.`, 
+            data: freeProfilesToDelete 
+        });
+    };
+    
     const handleClientNameChange = (e) => {
         const nameInput = e.target.value; let newPhone = formData.phone;
         const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
@@ -329,7 +350,6 @@ const App = () => {
                 handleAddServiceToCatalog={handleAddServiceToCatalog}
                 handleAddPackageToCatalog={handleAddPackageToCatalog}
                 handleEditCatalogService={handleEditCatalogService}
-                handleImportCSV={handleImportCSV} importStatus={importStatus}
                 triggerDeleteService={triggerDeleteService}
                 clientsDirectory={clientsDirectory} allClients={allClients} 
                 triggerDeleteClient={triggerDeleteClient} 
@@ -343,6 +363,7 @@ const App = () => {
                 handleStockServiceChange={handleStockServiceChange}
                 handleGenerateStock={handleGenerateStock}
                 triggerDeleteAccount={triggerDeleteAccount}
+                triggerDeleteFreeStock={triggerDeleteFreeStock}
             />}
 
             {view === 'form' && <SaleForm
