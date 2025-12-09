@@ -15,7 +15,7 @@ export const useCRMActions = (user, setNotification) => {
     const userPath = `users/${user.uid}`;
     const notify = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
 
-    const handleSave = async (formData, originalSale, catalog, sales, profilesToSell = 1) => {
+    const handleSave = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
             if (!originalSale || !originalSale.id) {
                 notify('Error: No se encontró la ID de la venta original.', 'error');
@@ -58,9 +58,8 @@ export const useCRMActions = (user, setNotification) => {
             const saleRef = doc(db, userPath, 'sales', originalSale.id);
             const isMergeAttempt = originalSale.type === 'Perfil' && formData.service.toLowerCase().includes('cuenta completa');
 
-            // ✅ FIX DEL BUG DE REFERENCIA
             if (shouldFragment && profilesToSell <= 1) {
-                shouldFragment = false; // Forzamos SCENARIO 4
+                shouldFragment = false; 
             }
 
 
@@ -99,10 +98,16 @@ export const useCRMActions = (user, setNotification) => {
                 
                 const individualServiceName = findIndividualServiceName(originalSale.service, catalog);
 
+                const firstProfile = bulkProfiles[0] || {};
+                const profileName1 = firstProfile.profile || formData.profile || '';
+                const profilePin1 = firstProfile.pin || formData.pin || '';
+
+
                 batch.update(saleRef, {
                     ...formData, service: originalSale.service, 
                     type: 'Perfil', 
-                    profile: profilesToSell > 1 ? `Perfil 1-${profilesToSell}` : (formData.profile || 'Perfil 1'),
+                    profile: profilesToSell > 1 ? profileName1 : profileName1,
+                    pin: profilesToSell > 1 ? profilePin1 : profilePin1,
                     cost: individualCostFragment, 
                     updatedAt: serverTimestamp()
                 });
@@ -113,8 +118,17 @@ export const useCRMActions = (user, setNotification) => {
                     const creationDate = new Date(Date.now() + i * 50);
                     const isPartOfSale = i < profilesToSell; 
                     
-                    if (isPartOfSale) { batch.set(newDocRef, { ...formData, service: individualServiceName, type: 'Perfil', profile: `Perfil ${i + 1}`, cost: individualCostFragment, pin: '', soldAt: new Date(), createdAt: creationDate }); } 
-                    else { batch.set(newDocRef, { client: 'LIBRE', phone: '', service: individualServiceName, type: 'Perfil', cost: individualCostFragment, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '', createdAt: creationDate }); }
+                    const bulkIndex = i; 
+                    const currentCloneProfile = bulkProfiles[bulkIndex] || {};
+                    const cloneName = currentCloneProfile.profile || `Perfil ${i + 1}`;
+                    const clonePin = currentCloneProfile.pin || '';
+
+
+                    if (isPartOfSale) { 
+                        batch.set(newDocRef, { ...formData, service: individualServiceName, type: 'Perfil', profile: cloneName, cost: individualCostFragment, pin: clonePin, soldAt: new Date(), createdAt: creationDate }); 
+                    } else { 
+                        batch.set(newDocRef, { client: 'LIBRE', phone: '', service: individualServiceName, type: 'Perfil', cost: individualCostFragment, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '', createdAt: creationDate }); 
+                    }
                 }
                 const libres = totalSlots - profilesToSell;
                 notify(`Venta parcial: ${profilesToSell} ocupados, ${libres} libres generados.`, 'success');
@@ -147,8 +161,16 @@ export const useCRMActions = (user, setNotification) => {
                 
                 const assignedClient = isUpgradeSale ? originalSale.client : formData.client;
 
-                slotsToUpdate.forEach((slot) => {
+                slotsToUpdate.forEach((slot, index) => { 
                     const updateRef = doc(db, userPath, 'sales', slot.id);
+                    
+                    // LECTURA DEL NOMBRE Y PIN ASIGNADO
+                    const currentBulkProfile = bulkProfiles[index] || {};
+                    
+                    // ✅ FIX DE PRIORIDAD: Usamos el dato de bulkProfiles si existe, si no, usamos el dato existente en la tarjeta (slot.profile).
+                    // Si el usuario ingresó un valor (aunque sea una cadena vacía en bulkProfiles), el dato debe ser ese.
+                    const profileName = currentBulkProfile.profile !== undefined ? currentBulkProfile.profile : slot.profile || ''; 
+                    const profilePin = currentBulkProfile.pin !== undefined ? currentBulkProfile.pin : slot.pin || ''; 
                     
                     if (slot.id === originalSale.id || slot.client === 'LIBRE') {
                          batch.update(updateRef, { 
@@ -156,8 +178,8 @@ export const useCRMActions = (user, setNotification) => {
                             phone: formData.phone,
                             endDate: formData.endDate,
                             cost: finalUnitCost,
-                            profile: slot.profile || formData.profile, 
-                            pin: slot.pin || formData.pin,
+                            profile: profileName, 
+                            pin: profilePin,     
                             service: formData.service,
                             updatedAt: serverTimestamp() 
                         });

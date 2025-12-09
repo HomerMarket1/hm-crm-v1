@@ -1,4 +1,4 @@
-// src/App.jsx (CÓDIGO CONEXIÓN FINAL Y SIN ERRORES DE VITE)
+// src/App.jsx (CÓDIGO CONSOLIDADO FINAL)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
@@ -132,8 +132,32 @@ const App = () => {
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // --- LÓGICA DE VENTAS (AQUÍ ESTÁ LA CORRECCIÓN) ---
+    // -----------------------------------------------------------
+    // ✅ HANDLER PARA WHATSAPP: Agrupa todos los perfiles de la venta
+    // -----------------------------------------------------------
+    const handleWhatsAppShare = (sale, actionType) => {
+        if (sale.client === 'LIBRE') return; 
+        
+        // 1. Filtrar todos los perfiles que pertenecen a este mismo cliente, email, y contraseña
+        const relatedProfiles = sales.filter(s => 
+            s.email === sale.email && 
+            s.pass === sale.pass && 
+            s.client === sale.client &&
+            s.client !== 'LIBRE' // Aseguramos que solo sean perfiles vendidos
+        );
 
+        // 2. Si es una venta de grupo, enviar el array completo.
+        if (relatedProfiles.length > 1) {
+            sendWhatsApp(relatedProfiles, actionType);
+        } else {
+            // Si es una venta individual, enviar solo el perfil actual.
+            sendWhatsApp([sale], actionType);
+        }
+    };
+    // -----------------------------------------------------------
+
+
+    // --- LÓGICA DE VENTAS ---
     const handleSaveSale = async (e) => {
         e.preventDefault(); 
         if (!user) return;
@@ -157,7 +181,7 @@ const App = () => {
             finalEndDate = d.toISOString().split('T')[0];
         }
 
-        // --- A. MODO EDICIÓN / VENTA ESPECÍFICA (FRAGMENTACIÓN) ---
+        // --- A. MODO EDICIÓN / VENTA ESPECÍFICA (Con ID) ---
         if (formData.id) {
             const originalSale = sales.find(s => s.id === formData.id);
             if (!originalSale) return;
@@ -168,14 +192,14 @@ const App = () => {
                 endDate: finalEndDate
             };
 
-            // ✅ CONEXIÓN FINAL: Pasamos la lista 'sales' para la búsqueda de clones
-            const success = await handleSave(dataToSave, originalSale, catalog, sales, quantity);
+            // ✅ CONEXIÓN FINAL: Pasamos bulkProfiles al hook
+            const success = await handleSave(dataToSave, originalSale, catalog, sales, quantity, bulkProfiles);
 
             if (success) { setView('dashboard'); resetForm(); }
             return; 
         }
 
-        // --- B. MODO VENTA MASIVA (Desde Stock LIBRE) ---
+        // --- B. MODO VENTA MASIVA (Desde Stock LIBRE, sin ID) ---
         let freeRows = sales.filter(s => 
             s.email === formData.email && 
             s.service === formData.service && 
@@ -189,17 +213,15 @@ const App = () => {
 
         const profilesToSell = freeRows.slice(0, quantity);
 
-        // ✅ CORRECCIÓN CRÍTICA: Determinar el costo por unidad
+        // Determinación del costo unitario para el batch
         const selectedService = catalog.find(c => c.name === formData.service);
         const isSelectedServicePackage = selectedService && selectedService.type === 'Paquete';
         
         let individualCostForStock;
 
         if (quantity > 1 && isSelectedServicePackage) {
-            // SCENARIO PAQUETE: Dividir el total. (Ej: $400 / 4 = $100)
             individualCostForStock = (totalCost / quantity).toFixed(2);
         } else {
-            // SCENARIO INDIVIDUAL: Usar el total como costo unitario. (Ej: $270/perfil. Costo unitario = $270)
             individualCostForStock = totalCost; 
         }
 
@@ -209,23 +231,22 @@ const App = () => {
             profilesToSell.forEach((docSnap, index) => {
                 const docRef = doc(db, userPath, 'sales', docSnap.id);
                 
-                let assignedProfile = formData.profile;
-                let assignedPin = formData.pin;
+                // ✅ FIX: Asignamos perfil y PIN directamente desde bulkProfiles para todas las unidades
+                const currentBulkProfile = bulkProfiles[index] || {};
+                
+                // Prioridad: bulkProfiles > docSnap.profile (el nombre de la tarjeta libre) > default
+                const assignedProfile = currentBulkProfile.profile || docSnap.profile || '';
+                const assignedPin = currentBulkProfile.pin || docSnap.pin || '';
 
-                if (quantity > 1 && bulkProfiles[index]) {
-                    assignedProfile = bulkProfiles[index].profile || '';
-                    assignedPin = bulkProfiles[index].pin || '';
-                }
 
                 batch.update(docRef, {
                     client: formData.client,
                     phone: formData.phone || '',
                     endDate: finalEndDate,
-                    // ✅ APLICA LA REGLA: Si no es paquete, el costo es el valor completo del formulario.
                     cost: Number(individualCostForStock), 
                     type: formData.type,
-                    profile: assignedProfile,
-                    pin: assignedPin,
+                    profile: assignedProfile, // ✅ Asignado
+                    pin: assignedPin,         // ✅ Asignado
                     soldAt: new Date()
                 });
             });
@@ -347,7 +368,7 @@ const App = () => {
                 totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
                 getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
                 NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} 
-                sendWhatsApp={(sale, actionType) => sendWhatsApp(sale, actionType)}
+                sendWhatsApp={handleWhatsAppShare} // ✅ Llama al handler que agrupa
                 handleQuickRenew={handleQuickRenew}
                 triggerLiberate={triggerLiberate}
                 setFormData={setFormData} setView={setView}
