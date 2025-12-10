@@ -60,7 +60,7 @@ const App = () => {
 
     // 4. FORM STATES
     const [loginEmail, setLoginEmail] = useState('');
-    const [loginPass, setLoginPass] = useState('');
+    const [loginPass, setLoginPass] = useState(''); // Estado de la Contraseña
     const [loginError, setLoginError] = useState(''); 
     const [importStatus, setImportStatus] = useState(''); 
     
@@ -88,8 +88,15 @@ const App = () => {
 
     const handleLogin = async (e) => {
         e.preventDefault(); setLoginError('');
-        try { await signInWithEmailAndPassword(auth, loginEmail, loginPass); setNotification({ show: true, message: '¡Bienvenido!', type: 'success' }); } 
-        catch (error) { setLoginError('Error credenciales.'); }
+        try { 
+            // Usa los estados loginEmail y loginPass
+            await signInWithEmailAndPassword(auth, loginEmail, loginPass); 
+            setNotification({ show: true, message: '¡Bienvenido!', type: 'success' }); 
+        } 
+        catch (error) { 
+            console.error("Login Error:", error);
+            setLoginError('Error credenciales. Verifica Email y Contraseña.'); 
+        }
     };
     const handleLogout = () => signOut(auth);
 
@@ -352,7 +359,7 @@ const App = () => {
 
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
 
-    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={loginPass} loginError={loginError} handleLogin={handleLogin}/></>;
+    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/></>;
 
     return (
         <MainLayout view={view} setView={setView} handleLogout={handleLogout} notification={notification} setNotification={setNotification}>
