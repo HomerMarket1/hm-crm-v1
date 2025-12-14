@@ -1,7 +1,9 @@
-// src/App.jsx (CÓDIGO CONSOLIDADO FINAL)
+// src/App.jsx (CÓDIGO CONSOLIDADO FINAL CON EDICIÓN DE CUENTAS)
 
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
+// Importar ThemeProvider si lo usas
+// import { ThemeProvider } from './contexts/ThemeContext'; 
 
 // Reducers y Hooks
 import { initialUiState, uiReducer, uiActionTypes } from './reducers/uiReducer'; 
@@ -19,6 +21,7 @@ import { sendWhatsApp } from './utils/helpers';
 // Layout y Componentes
 import MainLayout from './layouts/MainLayout';
 import ConfirmModal from './components/ConfirmModal';
+import EditAccountModal from './components/EditAccountModal'; // ✅ NUEVA IMPORTACIÓN
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './views/Dashboard';
 import StockManager from './views/StockManager';
@@ -34,8 +37,16 @@ const App = () => {
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
     const { view, stockTab, filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
     const [notification, setNotification] = useState({ show: true, message: '', type: 'success' }); 
-    const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '' });
+    const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '', data: null }); // Asegurar 'data'
     const [openMenuId, setOpenMenuId] = useState(null);
+
+    // ✅ NUEVO ESTADO: Modal de Edición de Cuentas
+    const [editAccountModal, setEditAccountModal] = useState({ 
+        show: false, 
+        email: '', 
+        oldPass: '', 
+        newPass: '' 
+    });
 
     // 3. ACTION HOOKS
     const crmActions = useCRMActions(user, setNotification);
@@ -45,7 +56,8 @@ const App = () => {
         addCatalogPackage, 
         generateStock, 
         executeConfirmAction,
-        handleSave 
+        handleSave,
+        editAccountCredentials // ✅ FUNCIÓN DE EDICIÓN DEL HOOK
     } = crmActions;
     
     const userPath = user ? `users/${user.uid}` : ''; 
@@ -86,10 +98,12 @@ const App = () => {
     
     // --- HANDLERS BÁSICOS ---
 
+    // ... (handleLogin, handleLogout, handleAddServiceToCatalog, handleAddPackageToCatalog, handleEditCatalogService, handleGenerateStock, handleWhatsAppShare, handleQuickRenew, handleImportCSV están aquí) ...
+    // *** Se omiten para brevedad, pero mantenlos en tu archivo ***
+
     const handleLogin = async (e) => {
         e.preventDefault(); setLoginError('');
         try { 
-            // Usa los estados loginEmail y loginPass
             await signInWithEmailAndPassword(auth, loginEmail, loginPass); 
             setNotification({ show: true, message: '¡Bienvenido!', type: 'success' }); 
         } 
@@ -139,32 +153,66 @@ const App = () => {
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // -----------------------------------------------------------
-    // ✅ HANDLER PARA WHATSAPP: Agrupa todos los perfiles de la venta
-    // -----------------------------------------------------------
     const handleWhatsAppShare = (sale, actionType) => {
         if (sale.client === 'LIBRE') return; 
         
-        // 1. Filtrar todos los perfiles que pertenecen a este mismo cliente, email, y contraseña
         const relatedProfiles = sales.filter(s => 
             s.email === sale.email && 
             s.pass === sale.pass && 
             s.client === sale.client &&
-            s.client !== 'LIBRE' // Aseguramos que solo sean perfiles vendidos
+            s.client !== 'LIBRE' 
         );
 
-        // 2. Si es una venta de grupo, enviar el array completo.
         if (relatedProfiles.length > 1) {
             sendWhatsApp(relatedProfiles, actionType);
         } else {
-            // Si es una venta individual, enviar solo el perfil actual.
             sendWhatsApp([sale], actionType);
         }
+    };
+
+
+    // --- LÓGICA DE EDICIÓN DE CUENTAS (Nueva Sección) ---
+
+    // ✅ HANDLER: Ejecuta la acción de edición en el hook
+    const handleEditAccountCredentials = async () => {
+        if (!editAccountModal.newPass) {
+            setNotification({ show: true, message: 'La nueva contraseña no puede estar vacía.', type: 'error' });
+            return;
+        }
+        
+        // Llamada a la función del hook useCRMActions
+        const success = await editAccountCredentials(
+            editAccountModal.email,
+            editAccountModal.oldPass,
+            editAccountModal.newPass,
+            sales // Pasamos sales para la búsqueda de IDs
+        );
+
+        if (success) {
+            setNotification({ show: true, message: `Contraseña de ${editAccountModal.email} actualizada.`, type: 'success' });
+            setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
+        } else {
+             // Si el hook ya notifica el error, solo cerramos
+            setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
+        }
+    };
+
+
+    // ✅ TRIGGER: Abre el modal de edición de cuentas
+    const triggerEditAccount = (accountData) => {
+        setEditAccountModal({
+            show: true,
+            email: accountData.email,
+            oldPass: accountData.pass,
+            newPass: accountData.pass // Inicialmente, la nueva es la misma que la vieja
+        });
     };
     // -----------------------------------------------------------
 
 
-    // --- LÓGICA DE VENTAS ---
+    // ... (handleSaveSale, handleQuickRenew, handleImportCSV están aquí) ...
+    // *** Se omiten para brevedad, pero mantenlos en tu archivo ***
+
     const handleSaveSale = async (e) => {
         e.preventDefault(); 
         if (!user) return;
@@ -298,7 +346,7 @@ const App = () => {
     const triggerLiberate = (id) => { setConfirmModal({ show: true, id: id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' }); };
     const triggerDeleteAccount = (accountData) => { setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${accountData.email}.`, data: accountData.ids }); };
     
-    // ✅ NUEVO TRIGGER PARA ELIMINAR SOLO STOCK LIBRE
+    // ✅ TRIGGER PARA ELIMINAR SOLO STOCK LIBRE
     const triggerDeleteFreeStock = (accountEmail, accountPass) => {
         const freeProfilesToDelete = sales.filter(s => 
             s.email === accountEmail && 
@@ -368,6 +416,15 @@ const App = () => {
             <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
             <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={() => handleConfirmActionWrapper()} />
+            
+            {/* ✅ RENDERIZADO DEL MODAL DE EDICIÓN DE CUENTA */}
+            {editAccountModal.show && (
+                <EditAccountModal 
+                    modal={editAccountModal}
+                    setModal={setEditAccountModal}
+                    onConfirm={handleEditAccountCredentials}
+                />
+            )}
 
             {view === 'dashboard' && <Dashboard 
                 sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
@@ -375,7 +432,7 @@ const App = () => {
                 totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
                 getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
                 NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} 
-                sendWhatsApp={handleWhatsAppShare} // ✅ Llama al handler que agrupa
+                sendWhatsApp={handleWhatsAppShare} 
                 handleQuickRenew={handleQuickRenew}
                 triggerLiberate={triggerLiberate}
                 setFormData={setFormData} setView={setView}
@@ -406,6 +463,7 @@ const App = () => {
                 handleGenerateStock={handleGenerateStock}
                 triggerDeleteAccount={triggerDeleteAccount}
                 triggerDeleteFreeStock={triggerDeleteFreeStock}
+                triggerEditAccount={triggerEditAccount} // ✅ PASAR EL NUEVO TRIGGER AL STOCKMANAGER
             />}
 
             {view === 'form' && <SaleForm
@@ -424,3 +482,12 @@ const App = () => {
 };
 
 export default App;
+// Si usas ThemeProvider, ajusta el export:
+/*
+const AppWrapper = () => (
+    <ThemeProvider> 
+        <App />
+    </ThemeProvider>
+);
+export default AppWrapper;
+*/

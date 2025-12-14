@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'; 
+import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 import { findIndividualServiceName } from '../utils/helpers'; 
 
@@ -8,12 +8,74 @@ const NO_OP_ACTIONS = {
     generateStock: async () => false,
     executeConfirmAction: async () => false,
     handleSave: async () => false,
+    editAccountCredentials: async () => false, // ✅ Añadido para entorno sin usuario
 };
 
 export const useCRMActions = (user, setNotification) => {
     if (!user) return NO_OP_ACTIONS;
     const userPath = `users/${user.uid}`;
     const notify = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
+
+    // -------------------------------------------------------------------
+    // ✅ NUEVA FUNCIÓN: EDICIÓN MASIVA DE CONTRASEÑA DE CUENTA
+    // -------------------------------------------------------------------
+    const editAccountCredentials = async (email, oldPass, newPass, sales) => {
+        try {
+            if (newPass === oldPass) {
+                notify('La nueva contraseña es la misma que la anterior.', 'info');
+                return true; 
+            }
+            
+            const batch = writeBatch(db);
+
+            // 1. Encontrar todas las ventas (clones/perfiles) asociadas a esta cuenta (email + pass antiguo)
+            const salesToUpdate = sales.filter(sale => 
+                sale.email === email && 
+                sale.pass === oldPass // Usamos el pass antiguo para la búsqueda precisa
+            );
+
+            if (salesToUpdate.length === 0) {
+                notify(`Advertencia: No se encontraron ${salesToUpdate.length} ventas con la contraseña antigua, solo la cuenta madre.`, 'warning');
+                
+                // Si solo existe la cuenta madre (no hay perfiles listados en ventas), actualizamos solo la cuenta madre
+                // Asumiendo que las cuentas madre están en 'accounts_inventory' o tienen un tipo especial en 'sales'.
+                // Ya que tu inventario se basa en 'sales', actualizaremos el stock libre si existe:
+                const freeStockRef = sales.find(s => s.email === email && s.pass === oldPass && s.client === 'LIBRE');
+
+                if (freeStockRef) {
+                     batch.update(doc(db, userPath, 'sales', freeStockRef.id), {
+                        pass: newPass,
+                        updatedAt: serverTimestamp()
+                    });
+                    await batch.commit();
+                    return true;
+                }
+                
+                // Si no se encuentra ni un solo registro, devolvemos éxito para evitar bloqueo.
+                notify('No se encontraron registros de ventas asociados a esta cuenta para actualizar.', 'error');
+                return false;
+            }
+
+            // 2. Actualizar las credenciales en cada venta encontrada
+            salesToUpdate.forEach(sale => {
+                const saleRef = doc(db, userPath, 'sales', sale.id);
+                batch.update(saleRef, { 
+                    pass: newPass, // Aplica la nueva contraseña
+                    updatedAt: serverTimestamp()
+                });
+            });
+
+            await batch.commit();
+            notify(`Contraseña de ${email} actualizada en ${salesToUpdate.length} registros.`, 'success');
+            return true;
+            
+        } catch (error) {
+            console.error("Error al editar las credenciales de la cuenta:", error);
+            notify('Fallo al editar credenciales. Revisa la consola.', 'error');
+            return false;
+        }
+    };
+    // -------------------------------------------------------------------
 
     const handleSave = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
@@ -242,5 +304,12 @@ export const useCRMActions = (user, setNotification) => {
         } 
     };
 
-    return { addCatalogService, addCatalogPackage, generateStock, executeConfirmAction, handleSave };
+    return { 
+        addCatalogService, 
+        addCatalogPackage, 
+        generateStock, 
+        executeConfirmAction, 
+        handleSave,
+        editAccountCredentials // ✅ EXPORTACIÓN DE LA NUEVA FUNCIÓN
+    };
 };

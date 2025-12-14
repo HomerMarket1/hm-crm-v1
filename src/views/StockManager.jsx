@@ -1,8 +1,8 @@
-// src/views/StockManager.jsx (FINAL Y OPTIMIZADO)
+// src/views/StockManager.jsx (FINAL Y OPTIMIZADO con Edición)
 import React, { useState, useMemo } from 'react';
 import { 
     Plus, Trash2, Search, Copy, Check, Shield, Zap, Box, 
-    Layers, Mail, Lock 
+    Layers, Mail, Lock, Settings // ✅ Settings importado para el botón de edición
 } from 'lucide-react';
 
 const StockManager = ({
@@ -15,7 +15,8 @@ const StockManager = ({
     handleStockServiceChange, // Función que rellena costo/tipo al elegir servicio
     handleGenerateStock,      // La función del hook useCRMActions
     triggerDeleteAccount,     // Función para abrir el modal de borrar TODO
-    triggerDeleteFreeStock    // ✅ NUEVO: Función para borrar SOLO LIBRES
+    triggerDeleteFreeStock,   // Función para borrar SOLO LIBRES
+    triggerEditAccount        // ✅ NUEVO: Función para abrir el modal de edición de contraseña
 }) => {
     
     // 1. ESTADOS LOCALES DE UI
@@ -65,10 +66,20 @@ const StockManager = ({
                         </div>
                     </div>
                     
-                    {/* ACCIONES DE BORRADO Y LIMPIEZA */}
+                    {/* ACCIONES DE EDICIÓN Y BORRADO */}
                     <div className="flex gap-1 items-center">
+                        
+                        {/* ✅ BOTÓN DE EDICIÓN DE CONTRASEÑA */}
+                        <button 
+                            onClick={() => triggerEditAccount(acc)} // Llama al trigger con los datos de la cuenta
+                            className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-500 hover:text-white flex items-center justify-center transition-colors"
+                            title="Editar Contraseña"
+                        >
+                            <Settings size={14} /> 
+                        </button>
+
                         {acc.free > 0 && (
-                            // ✅ NUEVO BOTÓN: LIMPIAR STOCK LIBRE (Solo se muestra si hay stock libre)
+                            // BOTÓN: LIMPIAR STOCK LIBRE 
                             <button 
                                 onClick={() => triggerDeleteFreeStock(acc.email, acc.pass)} 
                                 className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-500 hover:text-white flex items-center justify-center transition-colors"
