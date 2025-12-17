@@ -1,315 +1,224 @@
+// src/hooks/useCRMActions.js
 import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
-import { findIndividualServiceName } from '../utils/helpers'; 
 
-const NO_OP_ACTIONS = {
-    addCatalogService: async () => false,
-    addCatalogPackage: async () => false,
-    generateStock: async () => false,
-    executeConfirmAction: async () => false,
-    handleSave: async () => false,
-    editAccountCredentials: async () => false, // ✅ Añadido para entorno sin usuario
+const findIndividualServiceName = (currentServiceName, catalog) => {
+    const baseName = currentServiceName.split(' ')[0]; 
+    const individual = catalog.find(c => c.name.includes(baseName) && c.type === 'Perfil');
+    return individual ? individual.name : currentServiceName;
 };
 
 export const useCRMActions = (user, setNotification) => {
-    if (!user) return NO_OP_ACTIONS;
+    if (!user) return {
+        addCatalogService: async () => false,
+        addCatalogPackage: async () => false,
+        generateStock: async () => false,
+        executeConfirmAction: async () => false,
+        processSale: async () => false,
+        processBatchSale: async () => false,
+        quickRenew: async () => false,
+        editAccountCredentials: async () => false,
+        updateCatalogService: async () => false,
+    };
+
     const userPath = `users/${user.uid}`;
     const notify = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
 
-    // -------------------------------------------------------------------
-    // ✅ NUEVA FUNCIÓN: EDICIÓN MASIVA DE CONTRASEÑA DE CUENTA
-    // -------------------------------------------------------------------
+    // --- 1. ACCIONES DE CUENTA ---
     const editAccountCredentials = async (email, oldPass, newPass, sales) => {
         try {
-            if (newPass === oldPass) {
-                notify('La nueva contraseña es la misma que la anterior.', 'info');
-                return true; 
-            }
-            
+            if (newPass === oldPass) { notify('La contraseña es la misma.', 'info'); return true; }
             const batch = writeBatch(db);
-
-            // 1. Encontrar todas las ventas (clones/perfiles) asociadas a esta cuenta (email + pass antiguo)
-            const salesToUpdate = sales.filter(sale => 
-                sale.email === email && 
-                sale.pass === oldPass // Usamos el pass antiguo para la búsqueda precisa
-            );
+            const salesToUpdate = sales.filter(sale => sale.email === email && sale.pass === oldPass);
 
             if (salesToUpdate.length === 0) {
-                notify(`Advertencia: No se encontraron ${salesToUpdate.length} ventas con la contraseña antigua, solo la cuenta madre.`, 'warning');
-                
-                // Si solo existe la cuenta madre (no hay perfiles listados en ventas), actualizamos solo la cuenta madre
-                // Asumiendo que las cuentas madre están en 'accounts_inventory' o tienen un tipo especial en 'sales'.
-                // Ya que tu inventario se basa en 'sales', actualizaremos el stock libre si existe:
                 const freeStockRef = sales.find(s => s.email === email && s.pass === oldPass && s.client === 'LIBRE');
-
                 if (freeStockRef) {
-                     batch.update(doc(db, userPath, 'sales', freeStockRef.id), {
-                        pass: newPass,
-                        updatedAt: serverTimestamp()
-                    });
-                    await batch.commit();
-                    return true;
+                     batch.update(doc(db, userPath, 'sales', freeStockRef.id), { pass: newPass, updatedAt: serverTimestamp() });
+                    await batch.commit(); return true;
                 }
-                
-                // Si no se encuentra ni un solo registro, devolvemos éxito para evitar bloqueo.
-                notify('No se encontraron registros de ventas asociados a esta cuenta para actualizar.', 'error');
-                return false;
+                notify('No se encontraron registros.', 'error'); return false;
             }
 
-            // 2. Actualizar las credenciales en cada venta encontrada
             salesToUpdate.forEach(sale => {
-                const saleRef = doc(db, userPath, 'sales', sale.id);
-                batch.update(saleRef, { 
-                    pass: newPass, // Aplica la nueva contraseña
-                    updatedAt: serverTimestamp()
-                });
+                batch.update(doc(db, userPath, 'sales', sale.id), { pass: newPass, updatedAt: serverTimestamp() });
             });
-
             await batch.commit();
-            notify(`Contraseña de ${email} actualizada en ${salesToUpdate.length} registros.`, 'success');
+            notify(`Contraseña actualizada en ${salesToUpdate.length} registros.`, 'success');
             return true;
-            
         } catch (error) {
-            console.error("Error al editar las credenciales de la cuenta:", error);
-            notify('Fallo al editar credenciales. Revisa la consola.', 'error');
-            return false;
+            console.error(error); notify('Fallo al editar credenciales.', 'error'); return false;
         }
     };
-    // -------------------------------------------------------------------
 
-    const handleSave = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
+    // --- 2. LÓGICA MAESTRA DE VENTA ---
+    const processSale = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
-            if (!originalSale || !originalSale.id) {
-                notify('Error: No se encontró la ID de la venta original.', 'error');
-                return false;
-            }
+            if (!originalSale || !originalSale.id) { notify('Error: Venta original no encontrada.', 'error'); return false; }
             
             const batch = writeBatch(db);
             const totalCost = Number(formData.cost) || 0; 
-            
-            // 1. INVESTIGACIÓN DE CAPACIDAD Y TIPO DE SERVICIO
-            let totalSlots = 1;
-            const currentServiceInCatalog = catalog.find(c => c.name === originalSale.service);
-            const serviceInFormCatalog = catalog.find(c => c.name === formData.service);
-            const isFormServicePackage = serviceInFormCatalog && serviceInFormCatalog.type === 'Paquete'; 
 
-            if (currentServiceInCatalog && Number(currentServiceInCatalog.defaultSlots) > 1) { totalSlots = Number(currentServiceInCatalog.defaultSlots); }
-            if (totalSlots === 1) {
-                const baseName = originalSale.service.split(' ')[0];
-                const candidates = catalog.filter(c => c.name.includes(baseName) && Number(c.defaultSlots) > 1);
-                if (candidates.length > 0) { 
-                    const maxSlotsCandidate = candidates.reduce((max, current) => 
-                        (Number(current.defaultSlots) > Number(max.defaultSlots) ? current : max), candidates[0]
-                    );
-                    totalSlots = Number(maxSlotsCandidate.defaultSlots); 
-                }
-            }
+            // Datos de destino y origen
+            const targetCatalogItem = catalog.find(c => c.name === formData.service);
+            const targetType = targetCatalogItem ? targetCatalogItem.type : 'Perfil'; 
+            const originalType = originalSale.type || 'Perfil';
 
-            // 2. CONDICIONES GLOBALES DE VENTA
-            const wasFree = originalSale.client === 'LIBRE'; 
-            const isSellingNow = formData.client !== 'LIBRE';
-            const isPartialSale = profilesToSell < totalSlots; 
-            const isMotherType = currentServiceInCatalog && 
-                                 (currentServiceInCatalog.type.toLowerCase() === 'cuenta' || 
-                                  currentServiceInCatalog.type.toLowerCase() === 'paquete');
-            
-            let shouldFragment = isMotherType && isPartialSale && isSellingNow; 
-            const isMultiProfileSale = isSellingNow && profilesToSell > 1; 
-            const isUpgradeSale = !wasFree && isMultiProfileSale;
-
-            const saleRef = doc(db, userPath, 'sales', originalSale.id);
-            const isMergeAttempt = originalSale.type === 'Perfil' && formData.service.toLowerCase().includes('cuenta completa');
-
-            if (shouldFragment && profilesToSell <= 1) {
-                shouldFragment = false; 
-            }
-
-
-            if (isMergeAttempt) {
-                // SCENARIO 5: FUSIÓN DE CLONES EN UNA CUENTA MADRE NUEVA
+            // =======================================================================
+            // ESCENARIO 1: UNIFICACIÓN (Solo si el destino es explícitamente CUENTA)
+            // =======================================================================
+            // CORRECCIÓN: Quitamos 'Paquete' de aquí. Los paquetes se tratan como fragmentación.
+            if (targetType === 'Cuenta') {
                 
-                const allRelatedIds = sales.filter(s => s.email === originalSale.email && s.pass === originalSale.pass).map(s => s.id);
-                allRelatedIds.forEach(id => batch.delete(doc(db, userPath, 'sales', id)));
+                const siblings = sales.filter(s => 
+                    s.email === originalSale.email && 
+                    s.pass === originalSale.pass && 
+                    s.id !== originalSale.id && 
+                    (s.client === 'LIBRE' || s.client === originalSale.client || s.client === formData.client)
+                );
 
-                const newMotherRef = doc(collection(db, userPath, 'sales'));
-                const motherCatalogEntry = catalog.find(c => c.name === formData.service);
-                
-                batch.set(newMotherRef, {
-                    client: formData.client, phone: formData.phone, service: formData.service,
-                    email: formData.email, pass: formData.pass, endDate: formData.endDate,
-                    cost: motherCatalogEntry ? Number(motherCatalogEntry.cost) : totalCost, 
-                    type: motherCatalogEntry ? motherCatalogEntry.type : 'Cuenta',
-                    profile: '', pin: '', createdAt: serverTimestamp()
+                siblings.forEach(sib => {
+                    batch.delete(doc(db, userPath, 'sales', sib.id));
                 });
-                
-                notify(`Cuentas fusionadas exitosamente. Nuevo registro madre creado.`, 'success');
+
+                const survivorRef = doc(db, userPath, 'sales', originalSale.id);
+                batch.update(survivorRef, {
+                    ...formData,
+                    type: 'Cuenta', 
+                    profile: 'General', 
+                    pin: '',
+                    cost: totalCost,
+                    updatedAt: serverTimestamp()
+                });
+
+                notify(`¡Cuenta Unificada! ${siblings.length + 1} perfiles fusionados.`, 'success');
                 await batch.commit();
                 return true;
             }
 
-            if (shouldFragment) {
-                // SCENARIO 1: FRAGMENTACIÓN 
-                if (totalCost <= 0) { notify('Advertencia: Asigna un costo para fragmentar.', 'warning'); return false; }
+            // =======================================================================
+            // ESCENARIO 2: FRAGMENTACIÓN (Cuenta -> Paquete o Perfiles)
+            // =======================================================================
+            // Si el origen es Cuenta y el destino es Perfil O Paquete... DIVIDIMOS.
+            if (originalType === 'Cuenta' && (targetType === 'Perfil' || targetType === 'Paquete')) {
                 
-                let individualCostFragment;
-                if (isFormServicePackage) {
-                    individualCostFragment = profilesToSell > 0 ? (totalCost / profilesToSell) : 0;
-                } else {
-                    individualCostFragment = totalCost; 
+                if (totalCost <= 0) { notify('Asigna un costo para fragmentar.', 'warning'); return false; }
+
+                // 1. OBTENER LOS CUPOS TOTALES DE LA CUENTA ORIGINAL (IMPORTANTE)
+                // Buscamos en el catálogo cuántos cupos tiene la "Netflix Cuenta Completa" (origen)
+                // NO cuántos tiene el paquete que estoy vendiendo.
+                let totalSlotsOfMotherAccount = 5; // Default seguro
+                const originCatalogItem = catalog.find(c => c.name === originalSale.service); // Buscamos por el servicio ORIGINAL
+                
+                if (originCatalogItem && originCatalogItem.defaultSlots) {
+                    totalSlotsOfMotherAccount = Number(originCatalogItem.defaultSlots);
                 }
+
+                // 2. Calcular costo unitario para la venta
+                const unitCostForSold = totalCost / profilesToSell;
                 
-                const individualServiceName = findIndividualServiceName(originalSale.service, catalog);
-
-                const firstProfile = bulkProfiles[0] || {};
-                const profileName1 = firstProfile.profile || formData.profile || '';
-                const profilePin1 = firstProfile.pin || formData.pin || '';
-
-
-                batch.update(saleRef, {
-                    ...formData, service: originalSale.service, 
-                    type: 'Perfil', 
-                    profile: profilesToSell > 1 ? profileName1 : profileName1,
-                    pin: profilesToSell > 1 ? profilePin1 : profilePin1,
-                    cost: individualCostFragment, 
-                    updatedAt: serverTimestamp()
-                });
+                // 3. Nombre para los perfiles que queden LIBRES
+                const freeServiceName = findIndividualServiceName(originalSale.service, catalog);
 
                 const salesCollection = collection(db, userPath, 'sales');
-                for (let i = 1; i < totalSlots; i++) {
-                    const newDocRef = doc(salesCollection);
-                    const creationDate = new Date(Date.now() + i * 50);
-                    const isPartOfSale = i < profilesToSell; 
+
+                // 4. BUCLE MAESTRO: Crear/Actualizar las 5 tarjetas
+                for (let i = 0; i < totalSlotsOfMotherAccount; i++) {
+                    const isSoldSlot = i < profilesToSell; // ¿Este índice es parte de la venta?
+                    const currentProfileData = bulkProfiles[i] || {};
                     
-                    const bulkIndex = i; 
-                    const currentCloneProfile = bulkProfiles[bulkIndex] || {};
-                    const cloneName = currentCloneProfile.profile || `Perfil ${i + 1}`;
-                    const clonePin = currentCloneProfile.pin || '';
+                    // Datos comunes para LIBRES
+                    const freeData = {
+                        client: 'LIBRE', 
+                        phone: '', 
+                        service: freeServiceName, 
+                        type: 'Perfil', 
+                        cost: 0, // Los libres no tienen costo asignado aun
+                        email: formData.email, 
+                        pass: formData.pass, 
+                        profile: `Perfil ${i + 1}`, 
+                        pin: '', 
+                        endDate: '',
+                    };
 
+                    // Datos comunes para VENDIDOS
+                    const soldData = {
+                        ...formData,
+                        type: 'Perfil', // Aunque sea paquete, se comporta como perfil individual visualmente
+                        service: formData.service, // Mantiene nombre "Paquete 2..." para saber qué se vendió
+                        cost: unitCostForSold,
+                        profile: currentProfileData.profile || `Perfil ${i + 1}`,
+                        pin: currentProfileData.pin || '',
+                    };
 
-                    if (isPartOfSale) { 
-                        batch.set(newDocRef, { ...formData, service: individualServiceName, type: 'Perfil', profile: cloneName, cost: individualCostFragment, pin: clonePin, soldAt: new Date(), createdAt: creationDate }); 
-                    } else { 
-                        batch.set(newDocRef, { client: 'LIBRE', phone: '', service: individualServiceName, type: 'Perfil', cost: individualCostFragment, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '', createdAt: creationDate }); 
-                    }
-                }
-                const libres = totalSlots - profilesToSell;
-                notify(`Venta parcial: ${profilesToSell} ocupados, ${libres} libres generados.`, 'success');
-
-            } else if (isMultiProfileSale) {
-                // SCENARIO 2/3 CONSOLIDADO: VENTA MULTI-PERFIL (Paquete, Individual de Clones, o UPGRADE)
-                
-                if (originalSale.client !== 'LIBRE' && !isUpgradeSale) { 
-                    notify('Error: El perfil inicial seleccionado no está libre para una venta múltiple.', 'error'); 
-                    return false; 
-                }
-                
-                const otherFreeSlots = sales.filter(s => s.client === 'LIBRE' && s.email === originalSale.email && s.pass === originalSale.pass && s.id !== originalSale.id).slice(0, profilesToSell - 1); 
-                const neededSlots = profilesToSell;
-                const availableSlots = 1 + otherFreeSlots.length;
-
-                if (availableSlots < neededSlots) { 
-                    notify(`Error: Solo se encontraron ${availableSlots} perfiles disponibles para esta venta de ${neededSlots}.`, 'error'); 
-                    return false; 
-                }
-
-                const slotsToUpdate = [originalSale, ...otherFreeSlots];
-                
-                let finalUnitCost;
-                if (isFormServicePackage) {
-                    finalUnitCost = totalCost / neededSlots; 
-                } else {
-                    finalUnitCost = totalCost; 
-                }
-                
-                const assignedClient = isUpgradeSale ? originalSale.client : formData.client;
-
-                slotsToUpdate.forEach((slot, index) => { 
-                    const updateRef = doc(db, userPath, 'sales', slot.id);
-                    
-                    // LECTURA DEL NOMBRE Y PIN ASIGNADO
-                    const currentBulkProfile = bulkProfiles[index] || {};
-                    
-                    // ✅ FIX DE PRIORIDAD: Usamos el dato de bulkProfiles si existe, si no, usamos el dato existente en la tarjeta (slot.profile).
-                    // Si el usuario ingresó un valor (aunque sea una cadena vacía en bulkProfiles), el dato debe ser ese.
-                    const profileName = currentBulkProfile.profile !== undefined ? currentBulkProfile.profile : slot.profile || ''; 
-                    const profilePin = currentBulkProfile.pin !== undefined ? currentBulkProfile.pin : slot.pin || ''; 
-                    
-                    if (slot.id === originalSale.id || slot.client === 'LIBRE') {
-                         batch.update(updateRef, { 
-                            client: assignedClient,
-                            phone: formData.phone,
-                            endDate: formData.endDate,
-                            cost: finalUnitCost,
-                            profile: profileName, 
-                            pin: profilePin,     
-                            service: formData.service,
-                            updatedAt: serverTimestamp() 
+                    if (i === 0) {
+                        // LA TARJETA SOBREVIVIENTE (Actualizamos la original)
+                        const survivorRef = doc(db, userPath, 'sales', originalSale.id);
+                        batch.update(survivorRef, {
+                            ...(isSoldSlot ? soldData : freeData),
+                            updatedAt: serverTimestamp()
+                        });
+                    } else {
+                        // TARJETAS NUEVAS (Clones)
+                        const newDocRef = doc(salesCollection);
+                        const creationDate = new Date(Date.now() + i * 50);
+                        batch.set(newDocRef, {
+                            ...(isSoldSlot ? soldData : freeData),
+                            createdAt: creationDate
                         });
                     }
-                });
-                
-                notify(`Venta de ${neededSlots} perfiles registrada.`, 'success');
+                }
 
-            } else {
-                // SCENARIO 4: EDICIÓN SIMPLE / VENTA DE 1 PERFIL
-                
-                const finalCostToSave = totalCost; 
-
-                batch.update(saleRef, { 
-                    ...formData, 
-                    cost: finalCostToSave, 
-                    updatedAt: serverTimestamp() 
-                });
-                
-                if (formData.client === 'LIBRE') notify('Servicio liberado.', 'success');
-                else notify('Venta registrada/editada.', 'success');
+                notify(`Cuenta dividida: ${profilesToSell} vendidos, ${totalSlotsOfMotherAccount - profilesToSell} libres.`, 'success');
+                await batch.commit();
+                return true;
             }
 
-            await batch.commit();
-            return true;
+            // =======================================================================
+            // ESCENARIO 3: VENTA NORMAL
+            // =======================================================================
+            // Lógica existente para ventas simples o múltiples desde libres ya fragmentados
+            const saleRef = doc(db, userPath, 'sales', originalSale.id);
+            
+            if (profilesToSell > 1 && originalSale.client === 'LIBRE') {
+                const otherFreeSlots = sales.filter(s => s.client === 'LIBRE' && s.email === originalSale.email && s.pass === originalSale.pass && s.id !== originalSale.id).slice(0, profilesToSell - 1); 
+                
+                if ((1 + otherFreeSlots.length) < profilesToSell) { notify(`Stock insuficiente.`, 'error'); return false; }
+
+                const slotsToUpdate = [originalSale, ...otherFreeSlots];
+                const finalUnitCost = targetType === 'Paquete' ? totalCost / profilesToSell : totalCost;
+
+                slotsToUpdate.forEach((slot, index) => { 
+                    const currentBulkProfile = bulkProfiles[index] || {};
+                    batch.update(doc(db, userPath, 'sales', slot.id), { 
+                        client: formData.client, phone: formData.phone, endDate: formData.endDate, cost: finalUnitCost,
+                        profile: currentBulkProfile.profile || slot.profile || '', pin: currentBulkProfile.pin || slot.pin || '',     
+                        service: formData.service, updatedAt: serverTimestamp() 
+                    });
+                });
+                notify(`Venta de ${profilesToSell} perfiles registrada.`, 'success');
+
+            } else {
+                batch.update(saleRef, { ...formData, cost: totalCost, updatedAt: serverTimestamp() });
+                if (formData.client === 'LIBRE') notify('Servicio liberado.', 'success');
+                else notify('Venta registrada.', 'success');
+            }
+
+            await batch.commit(); return true;
 
         } catch (error) {
-            console.error("CRITICAL ERROR IN handleSave:", error);
-            notify('Error CRÍTICO al guardar. Revisa la consola para más detalles.', 'error');
-            return false;
+            console.error("Error processSale:", error); notify('Error al procesar venta.', 'error'); return false;
         }
     };
 
-    // Funciones auxiliares
+    // --- MANTENER RESTO DE FUNCIONES IGUALES ---
+    const processBatchSale = async (f, q, r, b, c) => { try { if (q > r.length) { notify(`Stock insuficiente. Solo quedan ${r.length}.`, 'error'); return false; } const batch = writeBatch(db); const profilesToSell = r.slice(0, q); const totalCost = Number(f.cost) || 0; const selectedService = c.find(cat => cat.name === f.service); const isPackage = selectedService && selectedService.type === 'Paquete'; const unitCost = (q > 1 && isPackage) ? (totalCost / q).toFixed(2) : totalCost; profilesToSell.forEach((docSnap, index) => { const currentBulkProfile = b[index] || {}; batch.update(doc(db, userPath, 'sales', docSnap.id), { client: f.client, phone: f.phone || '', endDate: f.endDate, cost: Number(unitCost), type: f.type, soldAt: new Date(), profile: currentBulkProfile.profile || docSnap.profile || '', pin: currentBulkProfile.pin || docSnap.pin || '' }); }); await batch.commit(); notify(`¡Venta de ${q} perfiles exitosa!`, 'success'); return true; } catch (error) { console.error(error); notify('Error venta masiva.', 'error'); return false; } };
+    const quickRenew = async (saleId, currentEndDate) => { if (!saleId || !currentEndDate) return false; try { const [y, m, d] = currentEndDate.split('-').map(Number); const currentDate = new Date(y, m - 1, d); const nextDate = new Date(currentDate); nextDate.setMonth(nextDate.getMonth() + 1); if (currentDate.getDate() !== nextDate.getDate()) { nextDate.setDate(0); } await updateDoc(doc(db, userPath, 'sales', saleId), { endDate: nextDate.toISOString().split('T')[0] }); notify('Renovado +1 mes exacto.', 'success'); return true; } catch (error) { notify('Error al renovar.', 'error'); return false; } };
     const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio agregado.'); return true; } catch (e) { return false; } };
     const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch (e) { return false; } };
+    const updateCatalogService = async (id, data) => { try { await updateDoc(doc(db, userPath, 'catalog', id), data); notify('Servicio actualizado.'); return true; } catch (e) { return false; } };
     const generateStock = async (f) => { try { const b = writeBatch(db); const r = collection(db, userPath, 'sales'); for(let i=0; i<f.slots; i++) b.set(doc(r), {client:'LIBRE', phone:'', service:f.service, email:f.email, pass:f.pass, profile:'', pin:'', cost:Number(f.cost), type:f.type, createdAt:new Date(Date.now()+i)}); await b.commit(); notify('Stock generado.'); return true; } catch(e){ return false; } };
-    const executeConfirmAction = async (d, s, c) => { 
-        try { 
-            const batch = writeBatch(db);
-            if(d.type==='delete_service') { batch.delete(doc(db, userPath, 'catalog', d.id)); } 
-            else if(d.type==='liberate') { 
-                const cur = s.find(i=>i.id===d.id); 
-                
-                let serviceToSave = cur.service;
-                if (cur.type && cur.type.toLowerCase() === 'perfil') {
-                    serviceToSave = findIndividualServiceName(cur.service, c); 
-                } 
-                
-                batch.update(doc(db, userPath, 'sales', d.id), {client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service: serviceToSave, updatedAt:serverTimestamp()}); 
-            } else if (d.type === 'delete_account') {
-                d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id)));
-            } else if (d.type === 'delete_free_stock') {
-                 d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id)));
-            }
-            await batch.commit(); notify('Éxito.', 'success'); return true; 
-        } catch(e){ 
-            console.error("CRITICAL ERROR IN executeConfirmAction:", e);
-            notify('Error al borrar. Revisa la consola para más detalles.', 'error'); return false; 
-        } 
-    };
+    const executeConfirmAction = async (d, s, c) => { try { const batch = writeBatch(db); if(d.type==='delete_service') batch.delete(doc(db, userPath, 'catalog', d.id)); else if(d.type==='liberate') { const cur = s.find(i=>i.id===d.id); const svc = (cur.type?.toLowerCase() === 'perfil') ? findIndividualServiceName(cur.service, c) : cur.service; batch.update(doc(db, userPath, 'sales', d.id), {client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service: svc, updatedAt:serverTimestamp()}); } else if (d.type === 'delete_account' || d.type === 'delete_free_stock') d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id))); await batch.commit(); notify('Éxito.', 'success'); return true; } catch(e){ notify('Error al borrar.', 'error'); return false; } };
 
-    return { 
-        addCatalogService, 
-        addCatalogPackage, 
-        generateStock, 
-        executeConfirmAction, 
-        handleSave,
-        editAccountCredentials // ✅ EXPORTACIÓN DE LA NUEVA FUNCIÓN
-    };
+    return { addCatalogService, addCatalogPackage, generateStock, executeConfirmAction, editAccountCredentials, processSale, processBatchSale, quickRenew, updateCatalogService };
 };

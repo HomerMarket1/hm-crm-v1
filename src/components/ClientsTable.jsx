@@ -1,7 +1,7 @@
 import React from 'react';
 import { getDaysRemaining } from '../utils/helpers'; // Importa tu helper
 
-const TablaClientes = ({ data }) => { 
+const ClientsTable = ({ data }) => { 
   // 'data' es tu array con TODOS los clientes y servicios (Netflix, Disney, etc.)
 
   const enviarRecordatorioUnificado = (servicioActual) => {
@@ -65,4 +65,4 @@ const TablaClientes = ({ data }) => {
   );
 };
 
-export default TablaClientes;
+export default ClientsTable;

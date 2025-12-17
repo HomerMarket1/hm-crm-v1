@@ -1,9 +1,6 @@
-// src/App.jsx (CÓDIGO CONSOLIDADO FINAL CON EDICIÓN DE CUENTAS)
-
+// src/App.jsx
 import React, { useState, useReducer, useEffect } from 'react';
 import { Loader } from 'lucide-react'; 
-// Importar ThemeProvider si lo usas
-// import { ThemeProvider } from './contexts/ThemeContext'; 
 
 // Reducers y Hooks
 import { initialUiState, uiReducer, uiActionTypes } from './reducers/uiReducer'; 
@@ -14,480 +11,236 @@ import { useClientManagement } from './hooks/useClientManagement';
 
 // Firebase y Utils
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'; 
-import { doc, updateDoc, writeBatch } from 'firebase/firestore'; 
-import { auth, db } from './firebase/config'; 
+import { auth } from './firebase/config'; 
 import { sendWhatsApp } from './utils/helpers'; 
 
-// Layout y Componentes
+// Layout y Vistas
 import MainLayout from './layouts/MainLayout';
 import ConfirmModal from './components/ConfirmModal';
-import EditAccountModal from './components/EditAccountModal'; // ✅ NUEVA IMPORTACIÓN
-import LoginScreen from './components/LoginScreen';
+import EditAccountModal from './components/EditAccountModal';
+import LoginScreen from './views/LoginScreen';
 import Dashboard from './views/Dashboard';
 import StockManager from './views/StockManager';
 import Config from './views/Config';
 import SaleForm from './views/SaleForm';
 import Toast from './components/Toast'; 
 
+// Intentamos importar constantes, si falla usamos un fallback seguro
+let NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía'];
+try {
+    const constants = require('./config/constants');
+    if (constants.NON_BILLABLE_STATUSES) NON_BILLABLE_STATUSES = constants.NON_BILLABLE_STATUSES;
+} catch (e) {
+    // Si no existe el archivo, usamos el array por defecto definido arriba
+}
+
 const App = () => {
     // 1. DATA & AUTH
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData } = useDataSync();
     
-    // 2. UI STATE
+    // 2. UI STATE & HELPERS
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
     const { view, stockTab, filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
     const [notification, setNotification] = useState({ show: true, message: '', type: 'success' }); 
-    const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '', data: null }); // Asegurar 'data'
+    const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '', data: null });
     const [openMenuId, setOpenMenuId] = useState(null);
+    const [editAccountModal, setEditAccountModal] = useState({ show: false, email: '', oldPass: '', newPass: '' });
 
-    // ✅ NUEVO ESTADO: Modal de Edición de Cuentas
-    const [editAccountModal, setEditAccountModal] = useState({ 
-        show: false, 
-        email: '', 
-        oldPass: '', 
-        newPass: '' 
-    });
-
-    // 3. ACTION HOOKS
+    // 3. LOGIC HOOKS (El Cerebro)
     const crmActions = useCRMActions(user, setNotification);
-    
-    const { 
-        addCatalogService, 
-        addCatalogPackage, 
-        generateStock, 
-        executeConfirmAction,
-        handleSave,
-        editAccountCredentials // ✅ FUNCIÓN DE EDICIÓN DEL HOOK
-    } = crmActions;
-    
-    const userPath = user ? `users/${user.uid}` : ''; 
-    const clientManagement = useClientManagement(user, userPath, sales, clientsDirectory, setNotification);
-
-    const { 
-        allClients, 
-        saveClientIfNew, 
-        triggerDeleteClient, 
-        triggerEditClient 
-    } = clientManagement;
+    const clientManagement = useClientManagement(user, user ? `users/${user.uid}` : '', sales, clientsDirectory, setNotification);
 
     // 4. FORM STATES
     const [loginEmail, setLoginEmail] = useState('');
-    const [loginPass, setLoginPass] = useState(''); // Estado de la Contraseña
+    const [loginPass, setLoginPass] = useState('');
     const [loginError, setLoginError] = useState(''); 
-    const [importStatus, setImportStatus] = useState(''); 
-    
     const [bulkProfiles, setBulkProfiles] = useState([{ profile: '', pin: '' }]);
-    const [formData, setFormData] = useState({
-        id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1,
-    });
-    
+    const [formData, setFormData] = useState({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1 });
     const [stockForm, setStockForm] = useState({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
     const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
     const [packageForm, setPackageForm] = useState({ name: '', cost: '', slots: 2 });
     
     // 5. COMPUTED DATA
     const {
-        filteredSales, totalFilteredMoney, totalItems, NON_BILLABLE_STATUSES,
-        getClientPreviousProfiles, maxAvailableSlots, 
-        accountsInventory, packageCatalog,
+        filteredSales, totalFilteredMoney, totalItems,
+        getClientPreviousProfiles, maxAvailableSlots, accountsInventory, packageCatalog,
         getStatusIcon, getStatusColor, getDaysRemaining,
         expiringToday, expiringTomorrow, overdueSales
-    } = useSalesData(sales, catalog, allClients, uiState, formData); 
-
+    } = useSalesData(sales, catalog, clientManagement.allClients, uiState, formData); 
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
-    
-    // --- HANDLERS BÁSICOS ---
 
-    // ... (handleLogin, handleLogout, handleAddServiceToCatalog, handleAddPackageToCatalog, handleEditCatalogService, handleGenerateStock, handleWhatsAppShare, handleQuickRenew, handleImportCSV están aquí) ...
-    // *** Se omiten para brevedad, pero mantenlos en tu archivo ***
-
+    // --- HANDLERS SIMPLIFICADOS (Delegación) ---
     const handleLogin = async (e) => {
         e.preventDefault(); setLoginError('');
-        try { 
-            await signInWithEmailAndPassword(auth, loginEmail, loginPass); 
-            setNotification({ show: true, message: '¡Bienvenido!', type: 'success' }); 
-        } 
-        catch (error) { 
-            console.error("Login Error:", error);
-            setLoginError('Error credenciales. Verifica Email y Contraseña.'); 
-        }
+        try { await signInWithEmailAndPassword(auth, loginEmail, loginPass); setNotification({ show: true, message: '¡Bienvenido!', type: 'success' }); } 
+        catch (error) { setLoginError('Error credenciales.'); }
     };
     const handleLogout = () => signOut(auth);
 
-    const handleAddServiceToCatalog = async (e) => {
-        e.preventDefault();
-        const success = await addCatalogService(catalogForm); 
-        if (success) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
-    };
-
-    const handleAddPackageToCatalog = async (e) => {
-        e.preventDefault();
-        const success = await addCatalogPackage(packageForm);
-        if (success) setPackageForm({ name: '', cost: '', slots: 2 });
-    };
-
-    const handleEditCatalogService = async (serviceId, updatedData) => {
-        if (!user || !serviceId) return;
-        try {
-            await updateDoc(doc(db, userPath, 'catalog', serviceId), updatedData);
-            setNotification({ show: true, message: 'Servicio actualizado.', type: 'success' });
-            return true;
-        } catch (error) {
-            setNotification({ show: true, message: 'Error al actualizar.', type: 'error' });
-            console.error(error);
-            return false;
-        }
-    };
+    // Acciones de Catálogo y Stock
+    const handleAddServiceToCatalog = async (e) => { e.preventDefault(); if(await crmActions.addCatalogService(catalogForm)) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 }); };
+    const handleAddPackageToCatalog = async (e) => { e.preventDefault(); if(await crmActions.addCatalogPackage(packageForm)) setPackageForm({ name: '', cost: '', slots: 2 }); };
     
-    const handleGenerateStock = async (dataFromChild) => {
-        const dataToSubmit = (dataFromChild && dataFromChild.service) ? dataFromChild : stockForm;
-        const success = await generateStock(dataToSubmit);
-        if (success) {
-            setStockTab('manage');
-            setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
-        }
+    // Edición de Servicio del Catálogo (Restaurada)
+    const handleEditCatalogService = async (serviceId, updatedData) => {
+        return await crmActions.updateCatalogService(serviceId, updatedData);
     };
 
+    const handleGenerateStock = async (data) => { if(await crmActions.generateStock(data || stockForm)) { dispatch({type:uiActionTypes.SET_STOCK_TAB, payload:'manage'}); setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' }); }};
+    
+    // Acción Confirmar (Borrar/Liberar)
     const handleConfirmActionWrapper = async () => {
-        const success = await executeConfirmAction(confirmModal, sales, catalog);
+        await crmActions.executeConfirmAction(confirmModal, sales, catalog);
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
+    // Edición de Cuenta
+    const handleEditAccountCredentials = async () => {
+        if (!editAccountModal.newPass) return setNotification({ show: true, message: 'Contraseña vacía.', type: 'error' });
+        await crmActions.editAccountCredentials(editAccountModal.email, editAccountModal.oldPass, editAccountModal.newPass, sales);
+        setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
+    };
+
+    // --- EL GRAN HANDLER DE VENTA (Simplificado y Robusto) ---
+    const handleSaveSale = async (e) => {
+        e.preventDefault(); if (!user) return;
+        
+        // A. Guardar Cliente (si no es un estado especial)
+        if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
+            await clientManagement.saveClientIfNew(formData.client, formData.phone); 
+        }
+
+        // B. Calcular Vencimiento Default (LÓGICA MEJORADA) 🛡️
+        let finalEndDate = formData.endDate;
+        
+        // Lista de clientes exentos de fecha automática
+        const EXEMPT_FROM_AUTO_DATE = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
+        
+        // Verificamos si el cliente actual es exento (insensible a mayúsculas)
+        const isExempt = EXEMPT_FROM_AUTO_DATE.some(status => 
+            formData.client.trim().toLowerCase() === status.toLowerCase()
+        );
+
+        // Solo asignamos 30 días automáticos si:
+        // 1. No tiene fecha puesta
+        // 2. NO es un espacio LIBRE
+        // 3. NO es un cliente exento (Admin, Caída, etc)
+        if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
+            const d = new Date(); d.setDate(d.getDate() + 30); finalEndDate = d.toISOString().split('T')[0];
+        }
+        
+        const dataToSave = { ...formData, endDate: finalEndDate };
+        const quantity = parseInt(formData.profilesToBuy || 1);
+
+        let success = false;
+
+        // C. Delegar a crmActions
+        if (formData.id) {
+            // Venta Específica / Edición
+            const originalSale = sales.find(s => s.id === formData.id);
+            success = await crmActions.processSale(dataToSave, originalSale, catalog, sales, quantity, bulkProfiles);
+        } else {
+            // Venta Batch (Desde Stock Libre)
+            const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
+            success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
+        }
+
+        if (success) { setView('dashboard'); resetForm(); }
+    };
+
+    // --- UTILS UI ---
     const handleWhatsAppShare = (sale, actionType) => {
         if (sale.client === 'LIBRE') return; 
-        
-        const relatedProfiles = sales.filter(s => 
-            s.email === sale.email && 
-            s.pass === sale.pass && 
-            s.client === sale.client &&
-            s.client !== 'LIBRE' 
-        );
-
-        if (relatedProfiles.length > 1) {
-            sendWhatsApp(relatedProfiles, actionType);
-        } else {
-            sendWhatsApp([sale], actionType);
-        }
-    };
-
-
-    // --- LÓGICA DE EDICIÓN DE CUENTAS (Nueva Sección) ---
-
-    // ✅ HANDLER: Ejecuta la acción de edición en el hook
-    const handleEditAccountCredentials = async () => {
-        if (!editAccountModal.newPass) {
-            setNotification({ show: true, message: 'La nueva contraseña no puede estar vacía.', type: 'error' });
-            return;
-        }
-        
-        // Llamada a la función del hook useCRMActions
-        const success = await editAccountCredentials(
-            editAccountModal.email,
-            editAccountModal.oldPass,
-            editAccountModal.newPass,
-            sales // Pasamos sales para la búsqueda de IDs
-        );
-
-        if (success) {
-            setNotification({ show: true, message: `Contraseña de ${editAccountModal.email} actualizada.`, type: 'success' });
-            setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
-        } else {
-             // Si el hook ya notifica el error, solo cerramos
-            setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
-        }
-    };
-
-
-    // ✅ TRIGGER: Abre el modal de edición de cuentas
-    const triggerEditAccount = (accountData) => {
-        setEditAccountModal({
-            show: true,
-            email: accountData.email,
-            oldPass: accountData.pass,
-            newPass: accountData.pass // Inicialmente, la nueva es la misma que la vieja
-        });
-    };
-    // -----------------------------------------------------------
-
-
-    // ... (handleSaveSale, handleQuickRenew, handleImportCSV están aquí) ...
-    // *** Se omiten para brevedad, pero mantenlos en tu archivo ***
-
-    const handleSaveSale = async (e) => {
-        e.preventDefault(); 
-        if (!user) return;
-        
-        // 1. Guardar cliente si es nuevo
-        if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
-            await saveClientIfNew(formData.client, formData.phone); 
-        }
-
-        const quantity = parseInt(formData.profilesToBuy || 1);
-        
-        // Calcular costo
-        const totalCost = Number(formData.cost) || 0;
-        const costToSaveInDB = totalCost; 
-
-        // Calcular vencimiento por defecto
-        let finalEndDate = formData.endDate;
-        if (!finalEndDate && formData.client !== 'LIBRE') {
-            const d = new Date();
-            d.setDate(d.getDate() + 30);
-            finalEndDate = d.toISOString().split('T')[0];
-        }
-
-        // --- A. MODO EDICIÓN / VENTA ESPECÍFICA (Con ID) ---
-        if (formData.id) {
-            const originalSale = sales.find(s => s.id === formData.id);
-            if (!originalSale) return;
-
-            const dataToSave = {
-                ...formData,
-                cost: costToSaveInDB, // ENVIAMOS EL PRECIO TOTAL
-                endDate: finalEndDate
-            };
-
-            // ✅ CONEXIÓN FINAL: Pasamos bulkProfiles al hook
-            const success = await handleSave(dataToSave, originalSale, catalog, sales, quantity, bulkProfiles);
-
-            if (success) { setView('dashboard'); resetForm(); }
-            return; 
-        }
-
-        // --- B. MODO VENTA MASIVA (Desde Stock LIBRE, sin ID) ---
-        let freeRows = sales.filter(s => 
-            s.email === formData.email && 
-            s.service === formData.service && 
-            s.client === 'LIBRE'
-        ); 
-        
-        if (quantity > freeRows.length) { 
-            setNotification({ show: true, message: `Stock insuficiente. Solo quedan ${freeRows.length} libres.`, type: 'error' });
-            return; 
-        }
-
-        const profilesToSell = freeRows.slice(0, quantity);
-
-        // Determinación del costo unitario para el batch
-        const selectedService = catalog.find(c => c.name === formData.service);
-        const isSelectedServicePackage = selectedService && selectedService.type === 'Paquete';
-        
-        let individualCostForStock;
-
-        if (quantity > 1 && isSelectedServicePackage) {
-            individualCostForStock = (totalCost / quantity).toFixed(2);
-        } else {
-            individualCostForStock = totalCost; 
-        }
-
-        try {
-            const batch = writeBatch(db);
-
-            profilesToSell.forEach((docSnap, index) => {
-                const docRef = doc(db, userPath, 'sales', docSnap.id);
-                
-                // ✅ FIX: Asignamos perfil y PIN directamente desde bulkProfiles para todas las unidades
-                const currentBulkProfile = bulkProfiles[index] || {};
-                
-                // Prioridad: bulkProfiles > docSnap.profile (el nombre de la tarjeta libre) > default
-                const assignedProfile = currentBulkProfile.profile || docSnap.profile || '';
-                const assignedPin = currentBulkProfile.pin || docSnap.pin || '';
-
-
-                batch.update(docRef, {
-                    client: formData.client,
-                    phone: formData.phone || '',
-                    endDate: finalEndDate,
-                    cost: Number(individualCostForStock), 
-                    type: formData.type,
-                    profile: assignedProfile, // ✅ Asignado
-                    pin: assignedPin,         // ✅ Asignado
-                    soldAt: new Date()
-                });
-            });
-
-            await batch.commit();
-            
-            setNotification({ show: true, message: `¡Venta de ${quantity} perfiles exitosa!`, type: 'success' });
-            setView('dashboard'); 
-            resetForm();
-
-        } catch (error) {
-            console.error("Error batch venta:", error);
-            setNotification({ show: true, message: 'Error al procesar la venta.', type: 'error' });
-        }
-    };
-
-    // --- RENOVACIÓN RÁPIDA (LÓGICA EXACTA DE MES) ---
-    const handleQuickRenew = async (id) => {
-        const sale = sales.find(s => s.id === id);
-        if (sale && sale.endDate) {
-             try {
-                const [y, m, d] = sale.endDate.split('-').map(Number);
-                const currentDate = new Date(y, m - 1, d);
-                const nextDate = new Date(currentDate);
-                nextDate.setMonth(nextDate.getMonth() + 1);
-
-                if (currentDate.getDate() !== nextDate.getDate()) {
-                    nextDate.setDate(0); // Retrocede al último día del mes
-                }
-
-                await updateDoc(doc(db, userPath, 'sales', id), {
-                    endDate: nextDate.toISOString().split('T')[0]
-                });
-                setNotification({ show: true, message: 'Renovado +1 mes exacto.', type: 'success' });
-            } catch (error) { setNotification({ show: true, message: 'Error al renovar.', type: 'error' }); }
-        }
-    };
-
-    const handleImportCSV = (event) => console.log("Import CSV Logic Placeholder");
-
-    const triggerDeleteService = (id) => { setConfirmModal({ show: true, id: id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá del catálogo.' }); };
-    const triggerLiberate = (id) => { setConfirmModal({ show: true, id: id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' }); };
-    const triggerDeleteAccount = (accountData) => { setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${accountData.email}.`, data: accountData.ids }); };
-    
-    // ✅ TRIGGER PARA ELIMINAR SOLO STOCK LIBRE
-    const triggerDeleteFreeStock = (accountEmail, accountPass) => {
-        const freeProfilesToDelete = sales.filter(s => 
-            s.email === accountEmail && 
-            s.pass === accountPass && 
-            s.client === 'LIBRE' 
-        ).map(s => s.id);
-        
-        if (freeProfilesToDelete.length === 0) {
-             setNotification({ show: true, message: 'No se encontró stock libre para eliminar en esta cuenta.', type: 'info' });
-             return;
-        }
-
-        setConfirmModal({ 
-            show: true, 
-            type: 'delete_free_stock', 
-            title: 'Limpiar Stock Libre', 
-            msg: `Se eliminarán ${freeProfilesToDelete.length} perfiles LIBRES de ${accountEmail}.`, 
-            data: freeProfilesToDelete 
-        });
+        const related = sales.filter(s => s.email === sale.email && s.pass === sale.pass && s.client === sale.client && s.client !== 'LIBRE');
+        sendWhatsApp(related.length > 1 ? related : [sale], actionType);
     };
     
+    // Triggers UI
+    const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
+    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
+    const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
+    const triggerDeleteFreeStock = (email, pass) => {
+        const ids = sales.filter(s => s.email === email && s.pass === pass && s.client === 'LIBRE').map(s => s.id);
+        if(ids.length) setConfirmModal({ show: true, type: 'delete_free_stock', title: 'Limpiar Stock Libre', msg: `Se eliminarán ${ids.length} perfiles libres.`, data: ids });
+        else setNotification({ show: true, message: 'No hay stock libre.', type: 'info' });
+    };
+    const triggerEditAccount = (d) => setEditAccountModal({ show: true, email: d.email, oldPass: d.pass, newPass: d.pass });
+
+    // Form Helpers
     const handleClientNameChange = (e) => {
-        const nameInput = e.target.value; let newPhone = formData.phone;
-        const existingClient = allClients.find(c => c.name.toLowerCase() === nameInput.toLowerCase());
-        if (existingClient) newPhone = existingClient.phone; 
-        setFormData({ ...formData, client: nameInput, phone: newPhone });
+        const name = e.target.value; 
+        const existing = clientManagement.allClients.find(c => c.name.toLowerCase() === name.toLowerCase());
+        setFormData({ ...formData, client: name, phone: existing ? existing.phone : formData.phone });
     };
-    const handleBulkProfileChange = (index, field, value) => {
-        const newArr = [...bulkProfiles]; newArr[index][field] = value;
-        if (field === 'profile') { const matched = getClientPreviousProfiles.find(p => p.profile === value); if (matched && matched.pin) newArr[index].pin = matched.pin; }
-        setBulkProfiles(newArr);
+    const handleBulkProfileChange = (idx, field, val) => {
+        const arr = [...bulkProfiles]; arr[idx][field] = val;
+        if(field==='profile'){ const m = getClientPreviousProfiles.find(p=>p.profile===val); if(m?.pin) arr[idx].pin = m.pin; }
+        setBulkProfiles(arr);
     };
-    const handleSingleProfileChange = (value) => {
-        let newPin = formData.pin; const matched = getClientPreviousProfiles.find(p => p.profile === value);
-        if (matched && matched.pin) newPin = matched.pin; 
-        setFormData({ ...formData, profile: value, pin: newPin });
-    };
-    const handleStockServiceChange = (e) => {
-        const found = catalog.find(s => s.name === e.target.value);
-        if (found) setStockForm({...stockForm, service: found.name, cost: found.cost, type: found.type, slots: found.defaultSlots || 1});
-        else setStockForm({...stockForm, service: e.target.value});
+    const handleSingleProfileChange = (val) => {
+        const m = getClientPreviousProfiles.find(p => p.profile === val);
+        setFormData({ ...formData, profile: val, pin: m?.pin || formData.pin });
     };
     const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1 }); setBulkProfiles([{ profile: '', pin: '' }]); };
+    const handleStockServiceChange = (e) => { const f = catalog.find(s=>s.name===e.target.value); setStockForm({...stockForm, service: f?.name||e.target.value, cost: f?.cost||0, type: f?.type||'Perfil', slots: f?.defaultSlots||1}); };
 
+    // Effects & Dispatchers
     useEffect(() => { 
-        const count = parseInt(formData.profilesToBuy || 1);
-        setBulkProfiles(prev => {
-            const newArr = [...prev];
-            if (newArr.length < count) while(newArr.length < count) newArr.push({ profile: '', pin: '' });
-            else if (newArr.length > count) return newArr.slice(0, count);
-            return newArr;
-        });
-    }, [formData.profilesToBuy, formData.client, formData.id]);
+        const c = parseInt(formData.profilesToBuy || 1);
+        setBulkProfiles(prev => { const n = [...prev]; while(n.length < c) n.push({profile:'',pin:''}); return n.length > c ? n.slice(0, c) : n; });
+    }, [formData.profilesToBuy]);
 
-    const setFilter = (key, value) => dispatch({ type: uiActionTypes.SET_FILTER, payload: { key, value } });
-    const setView = (newView) => dispatch({ type: uiActionTypes.SET_VIEW, payload: newView });
-    const setStockTab = (newTab) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: newTab });
+    const setFilter = (k, v) => dispatch({ type: uiActionTypes.SET_FILTER, payload: { key: k, value: v } });
+    const setView = (v) => dispatch({ type: uiActionTypes.SET_VIEW, payload: v });
+    const setStockTab = (t) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: t });
 
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
-
     if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/></>;
 
     return (
         <MainLayout view={view} setView={setView} handleLogout={handleLogout} notification={notification} setNotification={setNotification}>
-            
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
-            <datalist id="clients-suggestions">{allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
+            <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
-            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={() => handleConfirmActionWrapper()} />
-            
-            {/* ✅ RENDERIZADO DEL MODAL DE EDICIÓN DE CUENTA */}
-            {editAccountModal.show && (
-                <EditAccountModal 
-                    modal={editAccountModal}
-                    setModal={setEditAccountModal}
-                    onConfirm={handleEditAccountCredentials}
-                />
-            )}
+            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} />
+            {editAccountModal.show && <EditAccountModal modal={editAccountModal} setModal={setEditAccountModal} onConfirm={handleEditAccountCredentials} />}
 
             {view === 'dashboard' && <Dashboard 
                 sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
                 filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
                 totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
                 getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
-                NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} 
-                sendWhatsApp={handleWhatsAppShare} 
-                handleQuickRenew={handleQuickRenew}
-                triggerLiberate={triggerLiberate}
-                setFormData={setFormData} setView={setView}
-                openMenuId={openMenuId} setOpenMenuId={setOpenMenuId}
-                setBulkProfiles={setBulkProfiles} loadingData={loadingData}
-                expiringToday={expiringToday}
-                expiringTomorrow={expiringTomorrow}
-                overdueSales={overdueSales}
+                NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} 
+                handleQuickRenew={(id) => { const s = sales.find(i=>i.id===id); crmActions.quickRenew(id, s?.endDate); }} 
+                triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView}
+                openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
+                expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
             />}
 
             {view === 'config' && <Config 
-                catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm}
-                packageForm={packageForm} setPackageForm={setPackageForm}
-                handleAddServiceToCatalog={handleAddServiceToCatalog}
-                handleAddPackageToCatalog={handleAddPackageToCatalog}
-                handleEditCatalogService={handleEditCatalogService}
-                triggerDeleteService={triggerDeleteService}
-                clientsDirectory={clientsDirectory} allClients={allClients} 
-                triggerDeleteClient={triggerDeleteClient} 
-                triggerEditClient={triggerEditClient}
+                catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
+                handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
+                handleEditCatalogService={handleEditCatalogService} 
+                triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients} 
+                triggerDeleteClient={clientManagement.triggerDeleteClient} triggerEditClient={clientManagement.triggerEditClient}
                 setNotification={setNotification} formData={formData} setFormData={setFormData}
             />}
 
             {view === 'add_stock' && <StockManager
-                accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab}
-                stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
-                handleStockServiceChange={handleStockServiceChange}
-                handleGenerateStock={handleGenerateStock}
-                triggerDeleteAccount={triggerDeleteAccount}
-                triggerDeleteFreeStock={triggerDeleteFreeStock}
-                triggerEditAccount={triggerEditAccount} // ✅ PASAR EL NUEVO TRIGGER AL STOCKMANAGER
+                accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab} stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
+                handleStockServiceChange={handleStockServiceChange} handleGenerateStock={handleGenerateStock}
+                triggerDeleteAccount={triggerDeleteAccount} triggerDeleteFreeStock={triggerDeleteFreeStock} triggerEditAccount={triggerEditAccount}
             />}
 
             {view === 'form' && <SaleForm
-                formData={formData} setFormData={setFormData}
-                bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
-                allClients={allClients} packageCatalog={packageCatalog} maxAvailableSlots={maxAvailableSlots}
-                getClientPreviousProfiles={getClientPreviousProfiles}
-                handleClientNameChange={handleClientNameChange}
-                handleBulkProfileChange={handleBulkProfileChange}
-                handleSingleProfileChange={handleSingleProfileChange}
-                handleSaveSale={handleSaveSale}
-                setView={setView} resetForm={resetForm} catalog={sortedCatalog}
+                formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
+                allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={maxAvailableSlots}
+                getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
+                handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
+                handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}
             />}
         </MainLayout>
     );
 };
 
 export default App;
-// Si usas ThemeProvider, ajusta el export:
-/*
-const AppWrapper = () => (
-    <ThemeProvider> 
-        <App />
-    </ThemeProvider>
-);
-export default AppWrapper;
-*/

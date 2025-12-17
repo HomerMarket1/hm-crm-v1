@@ -4,7 +4,19 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config'; 
 
-// 🚨 IMPORTANTE: Debe decir 'export const', NO 'export default'
+// ⚡️ OPTIMIZACIÓN: Función pura fuera del Hook para no recrearla en cada render
+const sanitizeData = (doc) => {
+    const data = doc.data();
+    return {
+        ...data,
+        id: doc.id,
+        // Conversión segura de Timestamps a Date
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : null,
+        // Si tienes fechas de vencimiento como string, se mantienen igual
+    };
+};
+
 export const useDataSync = () => {
   
   const [user, setUser] = useState(null);
@@ -15,27 +27,12 @@ export const useDataSync = () => {
   const [catalog, setCatalog] = useState([]);
   const [clientsDirectory, setClientsDirectory] = useState([]);
   
-  // Estado de carga granular para evitar parpadeos
+  // Estado de carga granular
   const [loadingState, setLoadingState] = useState({
     sales: true,
     catalog: true,
     clients: true
   });
-
-  // --- HELPER PARA SANITIZAR DATOS ---
-  const sanitizeData = (doc) => {
-    const data = doc.data();
-    
-    // Normalización de fechas de Firebase Timestamp a objetos Date de JS
-    const sanitizedData = {
-        ...data,
-        id: doc.id,
-        createdAt: data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : null,
-        updatedAt: data.updatedAt && data.updatedAt.toDate ? data.updatedAt.toDate() : null,
-    };
-    
-    return sanitizedData;
-  };
 
   // 1. DETECTOR DE AUTENTICACIÓN
   useEffect(() => {
@@ -43,7 +40,7 @@ export const useDataSync = () => {
       setUser(currentUser);
       setAuthLoading(false);
       
-      // Si el usuario hace logout, limpiamos todo inmediatamente
+      // Limpieza inmediata al salir
       if (!currentUser) {
         setSales([]);
         setCatalog([]);
@@ -61,18 +58,17 @@ export const useDataSync = () => {
     const userPath = `users/${user.uid}`;
     
     // Consultas
-    // Ordenamos por 'createdAt' para la lista de ventas
+    // NOTA: Si tienes miles de ventas, en el futuro podrías necesitar 'limit(100)' aquí.
     const salesQuery = query(collection(db, userPath, 'sales'), orderBy('createdAt', 'desc'));
     const catalogRef = collection(db, userPath, 'catalog');
     const clientsRef = collection(db, userPath, 'clients');
 
     // A. Suscripción a VENTAS
     const salesUnsub = onSnapshot(salesQuery, (snapshot) => {
-      // ✅ Si el borrado sucede, onSnapshot detectará que el doc ha desaparecido.
       setSales(snapshot.docs.map(sanitizeData));
       setLoadingState(prev => ({ ...prev, sales: false }));
     }, (error) => {
-      console.error("Error sincronizando ventas:", error);
+      console.error("Error sync ventas:", error);
       setLoadingState(prev => ({ ...prev, sales: false }));
     });
     
@@ -81,7 +77,7 @@ export const useDataSync = () => {
       setCatalog(snapshot.docs.map(sanitizeData));
       setLoadingState(prev => ({ ...prev, catalog: false }));
     }, (error) => {
-        console.error("Error sincronizando catálogo:", error);
+        console.error("Error sync catálogo:", error);
         setLoadingState(prev => ({ ...prev, catalog: false }));
     });
     
@@ -90,15 +86,15 @@ export const useDataSync = () => {
       setClientsDirectory(snapshot.docs.map(sanitizeData));
       setLoadingState(prev => ({ ...prev, clients: false }));
     }, (error) => {
-        console.error("Error sincronizando clientes:", error);
+        console.error("Error sync clientes:", error);
         setLoadingState(prev => ({ ...prev, clients: false }));
     });
     
-    // Limpieza al desmontar
+    // Limpieza al desmontar o cambiar usuario
     return () => { salesUnsub(); catalogUnsub(); clientsUnsub(); };
   }, [user]); 
 
-  // Calculamos si la app sigue cargando datos iniciales
+  // Calculamos bandera global de carga
   const loadingData = authLoading || loadingState.sales || loadingState.catalog || loadingState.clients;
 
   return { user, authLoading, sales, catalog, clientsDirectory, loadingData };
