@@ -59,73 +59,44 @@ export const useCRMActions = (user, setNotification) => {
             const batch = writeBatch(db);
             const totalCost = Number(formData.cost) || 0; 
 
-            // Datos de destino y origen
             const targetCatalogItem = catalog.find(c => c.name === formData.service);
             const targetType = targetCatalogItem ? targetCatalogItem.type : 'Perfil'; 
             const originalType = originalSale.type || 'Perfil';
 
             // =======================================================================
-            // ESCENARIO 1: UNIFICACIÓN (Solo si el destino es explícitamente CUENTA)
+            // ESCENARIO 1: UNIFICACIÓN (Destino es CUENTA)
             // =======================================================================
             if (targetType === 'Cuenta') {
-                
                 const siblings = sales.filter(s => 
                     s.email === originalSale.email && 
                     s.pass === originalSale.pass && 
                     s.id !== originalSale.id && 
                     (s.client === 'LIBRE' || s.client === originalSale.client || s.client === formData.client)
                 );
-
-                siblings.forEach(sib => {
-                    batch.delete(doc(db, userPath, 'sales', sib.id));
-                });
-
+                siblings.forEach(sib => { batch.delete(doc(db, userPath, 'sales', sib.id)); });
                 const survivorRef = doc(db, userPath, 'sales', originalSale.id);
-                batch.update(survivorRef, {
-                    ...formData,
-                    type: 'Cuenta', 
-                    profile: 'General', 
-                    pin: '',
-                    cost: totalCost,
-                    updatedAt: serverTimestamp()
-                });
-
+                batch.update(survivorRef, { ...formData, type: 'Cuenta', profile: 'General', pin: '', cost: totalCost, updatedAt: serverTimestamp() });
                 notify(`¡Cuenta Unificada! ${siblings.length + 1} perfiles fusionados.`, 'success');
-                await batch.commit();
-                return true;
+                await batch.commit(); return true;
             }
 
             // =======================================================================
-            // ESCENARIO 2: FRAGMENTACIÓN (Cuenta/Paquete -> Paquete/Perfil)
+            // ESCENARIO 2: FRAGMENTACIÓN (Origen Cuenta -> Destino Perfil/Paquete)
             // =======================================================================
             if ((originalType === 'Cuenta' || originalType === 'Paquete') && (targetType === 'Perfil' || targetType === 'Paquete')) {
                 
                 if (totalCost <= 0) { notify('Asigna un costo para fragmentar.', 'warning'); return false; }
 
-                // 🔴 PASO DE SEGURIDAD CRÍTICO: LIMPIAR FANTASMAS
-                // Antes de dividir, borramos cualquier otro perfil "extra" que pueda existir por error
-                const ghostSiblings = sales.filter(s => 
-                    s.email === originalSale.email && 
-                    s.pass === originalSale.pass && 
-                    s.id !== originalSale.id
-                );
-                // Los borramos para empezar de cero con la cuenta madre limpia
-                ghostSiblings.forEach(ghost => {
-                    batch.delete(doc(db, userPath, 'sales', ghost.id));
-                });
+                // Limpieza de fantasmas
+                const ghostSiblings = sales.filter(s => s.email === originalSale.email && s.pass === originalSale.pass && s.id !== originalSale.id);
+                ghostSiblings.forEach(ghost => { batch.delete(doc(db, userPath, 'sales', ghost.id)); });
 
-                // 1. Determinar cupos totales originales
+                // 1. Determinar cupos totales
                 let totalSlots = 1;
                 const originCatalogItem = catalog.find(c => c.name === originalSale.service);
-                if (originCatalogItem && originCatalogItem.defaultSlots) {
-                    totalSlots = Number(originCatalogItem.defaultSlots);
-                } else {
-                    totalSlots = 5; // Fallback
-                }
+                if (originCatalogItem && originCatalogItem.defaultSlots) { totalSlots = Number(originCatalogItem.defaultSlots); } else { totalSlots = 5; }
 
-                // 2. Calcular costo
-                // Si es paquete, el precio es global. Si es perfil, es unitario. 
-                // Para simplificar, dividimos el costo total ingresado entre los perfiles vendidos.
+                // 2. Calcular costo unitario
                 const unitCostForSold = totalCost / profilesToSell;
                 
                 // 3. Nombre para los libres
@@ -133,56 +104,54 @@ export const useCRMActions = (user, setNotification) => {
 
                 const salesCollection = collection(db, userPath, 'sales');
 
-                // 4. BUCLE: Crear las tarjetas exactas
+                // 4. BUCLE: Crear tarjetas
                 for (let i = 0; i < totalSlots; i++) {
-                    const isSoldSlot = i < profilesToSell; // ¿Es parte de la venta?
+                    const isSoldSlot = i < profilesToSell; 
                     const currentProfileData = bulkProfiles[i] || {};
                     
-                    // Configuración para tarjeta LIBRE
-                    const freeData = {
-                        client: 'LIBRE', 
-                        phone: '', 
-                        service: freeServiceName, 
-                        type: 'Perfil', 
-                        cost: 0, 
-                        email: formData.email, 
-                        pass: formData.pass, 
-                        profile: `Perfil ${i + 1}`, 
-                        pin: '', 
-                        endDate: '',
-                    };
+                    // Configuración LIBRE
+                    const freeData = { client: 'LIBRE', phone: '', service: freeServiceName, type: 'Perfil', cost: 0, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '' };
 
-                    // Configuración para tarjeta VENDIDA
+                    // ✅ CORRECCIÓN AQUÍ: Determinar Nombre y PIN correctamente según si es venta única o paquete
+                    let finalProfileName = `Perfil ${i + 1}`; // Fallback por defecto
+                    let finalPin = '';
+
+                    if (isSoldSlot) {
+                        if (profilesToSell === 1) {
+                            // Venta Única: Usar datos principales del formulario
+                            finalProfileName = formData.profile || finalProfileName;
+                            finalPin = formData.pin || '';
+                        } else {
+                            // Venta Paquete: Usar datos de la lista grupal
+                            finalProfileName = currentProfileData.profile || finalProfileName;
+                            finalPin = currentProfileData.pin || '';
+                        }
+                    }
+
+                    // Configuración VENDIDA con los datos correctos
                     const soldData = {
                         ...formData,
                         type: 'Perfil', 
-                        service: formData.service, // Mantiene "Paquete X"
+                        service: formData.service,
                         cost: unitCostForSold,
-                        profile: currentProfileData.profile || `Perfil ${i + 1}`,
-                        pin: currentProfileData.pin || '',
+                        profile: finalProfileName, // Usamos el valor calculado
+                        pin: finalPin,             // Usamos el valor calculado
                     };
 
                     if (i === 0) {
-                        // Actualizamos la original (Sobreviviente)
+                        // Actualizamos original
                         const survivorRef = doc(db, userPath, 'sales', originalSale.id);
-                        batch.update(survivorRef, {
-                            ...(isSoldSlot ? soldData : freeData),
-                            updatedAt: serverTimestamp()
-                        });
+                        batch.update(survivorRef, { ...(isSoldSlot ? soldData : freeData), updatedAt: serverTimestamp() });
                     } else {
                         // Creamos clones
                         const newDocRef = doc(salesCollection);
                         const creationDate = new Date(Date.now() + i * 50);
-                        batch.set(newDocRef, {
-                            ...(isSoldSlot ? soldData : freeData),
-                            createdAt: creationDate
-                        });
+                        batch.set(newDocRef, { ...(isSoldSlot ? soldData : freeData), createdAt: creationDate });
                     }
                 }
 
                 notify(`Cuenta reorganizada: ${profilesToSell} vendidos, ${totalSlots - profilesToSell} libres.`, 'success');
-                await batch.commit();
-                return true;
+                await batch.commit(); return true;
             }
 
             // =======================================================================
@@ -192,33 +161,21 @@ export const useCRMActions = (user, setNotification) => {
             
             if (profilesToSell > 1 && originalSale.client === 'LIBRE') {
                 const otherFreeSlots = sales.filter(s => s.client === 'LIBRE' && s.email === originalSale.email && s.pass === originalSale.pass && s.id !== originalSale.id).slice(0, profilesToSell - 1); 
-                
                 if ((1 + otherFreeSlots.length) < profilesToSell) { notify(`Stock insuficiente.`, 'error'); return false; }
-
                 const slotsToUpdate = [originalSale, ...otherFreeSlots];
                 const finalUnitCost = totalCost / profilesToSell;
-
                 slotsToUpdate.forEach((slot, index) => { 
                     const currentBulkProfile = bulkProfiles[index] || {};
-                    batch.update(doc(db, userPath, 'sales', slot.id), { 
-                        client: formData.client, phone: formData.phone, endDate: formData.endDate, cost: finalUnitCost,
-                        profile: currentBulkProfile.profile || slot.profile || '', pin: currentBulkProfile.pin || slot.pin || '',     
-                        service: formData.service, updatedAt: serverTimestamp() 
-                    });
+                    batch.update(doc(db, userPath, 'sales', slot.id), { client: formData.client, phone: formData.phone, endDate: formData.endDate, cost: finalUnitCost, profile: currentBulkProfile.profile || slot.profile || '', pin: currentBulkProfile.pin || slot.pin || '', service: formData.service, updatedAt: serverTimestamp() });
                 });
                 notify(`Venta de ${profilesToSell} perfiles registrada.`, 'success');
-
             } else {
                 batch.update(saleRef, { ...formData, cost: totalCost, updatedAt: serverTimestamp() });
                 if (formData.client === 'LIBRE') notify('Servicio liberado.', 'success');
                 else notify('Venta registrada.', 'success');
             }
-
             await batch.commit(); return true;
-
-        } catch (error) {
-            console.error("Error processSale:", error); notify('Error al procesar venta.', 'error'); return false;
-        }
+        } catch (error) { console.error("Error processSale:", error); notify('Error al procesar venta.', 'error'); return false; }
     };
 
     // --- MANTENER RESTO DE FUNCIONES IGUALES ---
@@ -228,25 +185,7 @@ export const useCRMActions = (user, setNotification) => {
     const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch (e) { return false; } };
     const updateCatalogService = async (id, data) => { try { await updateDoc(doc(db, userPath, 'catalog', id), data); notify('Servicio actualizado.'); return true; } catch (e) { return false; } };
     const generateStock = async (f) => { try { const b = writeBatch(db); const r = collection(db, userPath, 'sales'); for(let i=0; i<f.slots; i++) b.set(doc(r), {client:'LIBRE', phone:'', service:f.service, email:f.email, pass:f.pass, profile:'', pin:'', cost:Number(f.cost), type:f.type, createdAt:new Date(Date.now()+i)}); await b.commit(); notify('Stock generado.'); return true; } catch(e){ return false; } };
-    
-    // Al liberar, cost debe ser 0
-    const executeConfirmAction = async (d, s, c) => { 
-        try { 
-            const batch = writeBatch(db);
-            if(d.type==='delete_service') batch.delete(doc(db, userPath, 'catalog', d.id));
-            else if(d.type==='liberate') { 
-                const cur = s.find(i=>i.id===d.id); 
-                const svc = (cur.type?.toLowerCase() === 'perfil') ? findIndividualServiceName(cur.service, c) : cur.service;
-                batch.update(doc(db, userPath, 'sales', d.id), {
-                    client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service: svc, 
-                    cost: 0, 
-                    updatedAt:serverTimestamp()
-                }); 
-            } 
-            else if (d.type === 'delete_account' || d.type === 'delete_free_stock') d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id)));
-            await batch.commit(); notify('Éxito.', 'success'); return true; 
-        } catch(e){ notify('Error al borrar.', 'error'); return false; } 
-    };
+    const executeConfirmAction = async (d, s, c) => { try { const batch = writeBatch(db); if(d.type==='delete_service') batch.delete(doc(db, userPath, 'catalog', d.id)); else if(d.type==='liberate') { const cur = s.find(i=>i.id===d.id); const svc = (cur.type?.toLowerCase() === 'perfil') ? findIndividualServiceName(cur.service, c) : cur.service; batch.update(doc(db, userPath, 'sales', d.id), {client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service: svc, cost: 0, updatedAt:serverTimestamp()}); } else if (d.type === 'delete_account' || d.type === 'delete_free_stock') d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id))); await batch.commit(); notify('Éxito.', 'success'); return true; } catch(e){ notify('Error al borrar.', 'error'); return false; } };
 
     return { addCatalogService, addCatalogPackage, generateStock, executeConfirmAction, editAccountCredentials, processSale, processBatchSale, quickRenew, updateCatalogService };
 };
