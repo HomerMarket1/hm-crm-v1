@@ -1,17 +1,16 @@
 // src/views/Dashboard.jsx
-import React, { useState, useEffect } from 'react'; // ✅ Importamos useEffect
+import React, { useState, useEffect } from 'react'; 
 import { 
     Search, Smartphone, Lock, Edit2, Ban, XCircle, RotateCcw, 
     X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Box
 } from 'lucide-react';
 
 // ========================================================================
-// 0. HELPERS INTERNOS DE SEGURIDAD
+// 0. HELPERS INTERNOS
 // ========================================================================
 
 const cleanServiceName = (name) => {
     if (!name) return '';
-    // Corta desde la primera palabra clave técnica hasta el final.
     return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
 };
 
@@ -35,11 +34,14 @@ const getWhatsAppUrl = (phone, message) => {
     }
 };
 
+// ⚠️ FALLBACK LOCAL: Solo se usa si falla el hook, pero actualizado con la lógica correcta
 const safeGetDays = (dateString) => {
     if (!dateString) return 0;
     const today = new Date(); today.setHours(0,0,0,0);
-    const end = new Date(dateString); end.setHours(0,0,0,0);
-    return Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    const [y, m, d] = dateString.split('-').map(Number);
+    const end = new Date(y, m - 1, d); // Parse manual local
+    const diffTime = end - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
 const safeGetStatusColor = (endDate, client, NON_BILLABLE) => {
@@ -63,40 +65,32 @@ const Dashboard = ({
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
     handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles,
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
+    getDaysRemaining, // ✅ Recibimos la función correcta del Hook
     NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía']
 }) => {
 
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
 
-    const _getDays = (date) => safeGetDays(date);
+    // ✅ USAR PREFERENTEMENTE LA FUNCIÓN DEL HOOK
+    const _getDays = (date) => getDaysRemaining ? getDaysRemaining(date) : safeGetDays(date);
     const _getColor = (end, client) => safeGetStatusColor(end, client, NON_BILLABLE_STATUSES);
     const _getIcon = (svc) => safeGetStatusIcon(svc);
 
-    // ========================================================================
-    // ✅ PERSISTENCIA DE MEMORIA (LocalStorage)
-    // ========================================================================
+    // Persistencia de enviados
     useEffect(() => {
-        // Al cargar, buscamos si hay IDs guardados de HOY
         const today = new Date().toISOString().split('T')[0];
         const savedData = localStorage.getItem('crm_sent_ids');
-        
         if (savedData) {
             const parsed = JSON.parse(savedData);
-            if (parsed.date === today) {
-                // Si son de hoy, los restauramos
-                setSentIds(parsed.ids);
-            } else {
-                // Si son de ayer, limpiamos la memoria
-                localStorage.removeItem('crm_sent_ids');
-            }
+            if (parsed.date === today) { setSentIds(parsed.ids); } 
+            else { localStorage.removeItem('crm_sent_ids'); }
         }
     }, []);
 
-    // Helper para guardar en memoria y en estado
     const saveSentIds = (newIds) => {
         setSentIds(prev => {
-            const updated = [...new Set([...prev, ...newIds])]; // Evitar duplicados
+            const updated = [...new Set([...prev, ...newIds])];
             const today = new Date().toISOString().split('T')[0];
             localStorage.setItem('crm_sent_ids', JSON.stringify({ date: today, ids: updated }));
             return updated;
@@ -112,23 +106,14 @@ const Dashboard = ({
 
         let useGrouping = actionType === 'reminder';
         let serviceNames = [];
-
-        // Detectar si es cuenta completa
         const isFullAccount = sale.type === 'Cuenta' || (sale.service && sale.service.toLowerCase().includes('cuenta completa'));
 
         if (useGrouping && !isFullAccount) {
-            // Agrupar perfiles hermanos (solo si NO es cuenta completa)
             const siblings = sales.filter(item => item.client?.trim() === client?.trim() && _getDays(item.endDate) === targetDays);
             const counts = {};
-            siblings.forEach(s => { 
-                const name = cleanServiceName(s.service); 
-                counts[name] = (counts[name] || 0) + 1; 
-            });
-            serviceNames = Object.entries(counts).map(([name, count]) => 
-                count > 1 ? `${count} perfiles de ${name}` : `1 perfil de ${name}`
-            );
+            siblings.forEach(s => { const name = cleanServiceName(s.service); counts[name] = (counts[name] || 0) + 1; });
+            serviceNames = Object.entries(counts).map(([name, count]) => count > 1 ? `${count} perfiles de ${name}` : `1 perfil de ${name}`);
         } else {
-            // Si es cuenta completa o no agrupamos
             const cleanName = cleanServiceName(sale.service);
             serviceNames = isFullAccount ? [`la cuenta completa de ${cleanName}`] : [`un perfil de ${cleanName}`];
         }
@@ -139,7 +124,6 @@ const Dashboard = ({
         if (endDate && endDate.includes('-')) { const [y, m, d] = endDate.split('-'); readableDate = `${d}/${m}/${y}`; }
 
         let message = '';
-
         if (actionType === 'reminder') {
             if (targetDays === 0) message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
             else if (targetDays === 1) message = `⚠️ Buen Día ${client}⚠️\nMañana vence: ${servicesString}.\n¿Renuevas un mes más?  Confirma cuando puedas.\n¡Gracias!`;
@@ -153,16 +137,12 @@ const Dashboard = ({
                 message = `*${serviceNameUpper}${suffix}*\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile || "Asignado"}\nPIN:\n${sale.pin || "Sin PIN"}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
             }
         }
-
-        const url = getWhatsAppUrl(phone, message);
-        window.open(url, '_blank');
+        window.open(getWhatsAppUrl(phone, message), '_blank');
     };
 
     const handleCopyCredentials = (e, email, pass) => {
-        e.preventDefault();
-        navigator.clipboard.writeText(`${email}:${pass}`);
-        const btn = e.currentTarget;
-        const originalContent = btn.innerHTML;
+        e.preventDefault(); navigator.clipboard.writeText(`${email}:${pass}`);
+        const btn = e.currentTarget; const originalContent = btn.innerHTML;
         btn.innerHTML = `<span class="text-emerald-600 flex items-center gap-1">Copiado</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
     };
@@ -181,14 +161,12 @@ const Dashboard = ({
 
     const handleBulkSend = (sale) => {
         handleUnifiedWhatsApp(sale, 'reminder');
-        // Marcar como enviado (Guardar en Memoria)
         const allClientIdsInQueue = bulkModal.list.filter(item => item.client === sale.client && item.phone === sale.phone).map(item => item.id);
         saveSentIds(allClientIdsInQueue); 
     };
 
     const handleModalRenew = (sale) => {
         handleQuickRenew(sale.id);
-        // Marcar como procesado también (Guardar en Memoria)
         const allClientIdsInQueue = bulkModal.list.filter(item => item.client === sale.client && item.phone === sale.phone).map(item => item.id);
         saveSentIds(allClientIdsInQueue); 
     };
@@ -211,10 +189,8 @@ const Dashboard = ({
         const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
 
         let containerStyle = "bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60";
-        let textPrimary = "text-slate-800";
-        let textSecondary = "text-slate-500";
-        let accentColor = "bg-indigo-500 text-white shadow-indigo-500/30";
-        let priceColor = isAdmin ? "text-white/80" : "text-slate-700"; 
+        let textPrimary = "text-slate-800"; let textSecondary = "text-slate-500";
+        let accentColor = "bg-indigo-500 text-white shadow-indigo-500/30"; let priceColor = isAdmin ? "text-white/80" : "text-slate-700"; 
 
         if (isFree) {
             containerStyle = "bg-emerald-50/30 backdrop-blur-sm border border-emerald-100/50";
