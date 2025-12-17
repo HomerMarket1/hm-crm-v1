@@ -1,216 +1,185 @@
+// src/hooks/useSalesData.js
 import { useMemo } from 'react';
 
-// =========================================================================
-// CONSTANTES INTERNAS (Para que no dependas de archivos externos)
-// =========================================================================
-const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado'];
-const NON_ALERT_STATUSES = ['LIBRE', 'Admin', ...NON_BILLABLE_STATUSES];
-
-// =========================================================================
-// 0. HELPERS ESTATICOS (Optimizados fuera del Hook)
-// =========================================================================
-
-const getDaysRemaining = (dateString) => {
-    if (!dateString) return 0;
-    const today = new Date();
-    today.setHours(0,0,0,0); // Normalizar hoy
-    const end = new Date(dateString);
-    end.setHours(0,0,0,0) + 12; // Ajuste zona horaria seguro
-    const diffTime = end - today;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+// ============================================================================
+// 1. HELPER DE BÚSQUEDA AVANZADA (Normalizador)
+// ============================================================================
+const normalizeText = (text) => {
+    if (!text) return '';
+    return text.toString()
+        .normalize("NFD") 
+        .replace(/[\u0300-\u036f]/g, "") 
+        .toLowerCase();
 };
 
-const getStatusIcon = (serviceName) => {
-    const lower = serviceName ? serviceName.toLowerCase() : '';
-    return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
-};
-
-const getStatusColor = (client, endDate) => {
-    if (client === 'LIBRE') return 'bg-emerald-100 text-emerald-600 border-emerald-200';
-    if (NON_BILLABLE_STATUSES.includes(client)) return 'bg-gray-100 text-gray-500 border-gray-200';
-    if (!endDate) return 'bg-slate-100 text-slate-500';
-    
-    const days = getDaysRemaining(endDate);
-    if (days < 0) return 'bg-rose-100 text-rose-600 border-rose-200'; // Vencido
-    if (days <= 3) return 'bg-amber-100 text-amber-600 border-amber-200'; // Por vencer
-    return 'bg-blue-50 text-blue-600 border-blue-200'; // Activo
-};
-
-// =========================================================================
-// HOOK PRINCIPAL
-// =========================================================================
-
-export const useSalesData = (sales, catalog, allClients, uiState, formData) => { 
-    
+export const useSalesData = (sales, catalog, allClients, uiState, currentFormData) => {
     const { filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
 
-    // =========================================================================
-    // 1. LÓGICA DE FILTRADO (Optimizada)
-    // =========================================================================
+    // Lista de estados que NO deben ser contados en alertas de cobro NI en dinero
+    const NON_BILLABLE = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 
+    // ========================================================================
+    // 2. FILTRADO PRINCIPAL DE VENTAS
+    // ========================================================================
     const filteredSales = useMemo(() => {
-        if (!sales) return []; 
-
-        // Optimización: Calcular minúsculas FUERA del bucle
-        const searchLower = filterClient ? filterClient.toLowerCase() : '';
-        const hasDateFilter = !!(dateFrom || dateTo);
-        
-        // Preparar fechas de filtro una sola vez
-        let dateF, dateT;
-        if (hasDateFilter) {
-            if(dateFrom) { dateF = new Date(dateFrom); dateF.setHours(0,0,0,0); }
-            if(dateTo) { dateT = new Date(dateTo); dateT.setHours(0,0,0,0); }
-        }
-
-        return sales.filter(s => {
-            // 1. Filtro Rápido: Estado
-            const isFree = s.client === 'LIBRE';
-            const isProblem = NON_BILLABLE_STATUSES.includes(s.client);
+        return sales.filter(sale => {
             
-            let matchStatus = true;
-            if (filterStatus === 'Libres') matchStatus = isFree;
-            else if (filterStatus === 'Ocupados') matchStatus = !isFree && !isProblem;
-            else if (filterStatus === 'Problemas') matchStatus = isProblem;
-            else if (filterStatus === 'Vencidos') matchStatus = getDaysRemaining(s.endDate) < 0 && !isFree;
-            else if (filterStatus === 'Activos') matchStatus = getDaysRemaining(s.endDate) >= 0 && !isFree && !isProblem;
-            
-            if (!matchStatus) return false;
+            // A. FILTRO DE TEXTO
+            if (filterClient) {
+                const term = normalizeText(filterClient);
+                const matchName = normalizeText(sale.client).includes(term);
+                const matchEmail = normalizeText(sale.email).includes(term);
+                const matchPhone = normalizeText(sale.phone).includes(term); 
 
-            // 2. Filtro Texto
-            if (searchLower) {
-                const clientMatch = s.client.toLowerCase().includes(searchLower);
-                const emailMatch = s.email && s.email.toLowerCase().includes(searchLower);
-                if (!clientMatch && !emailMatch) return false;
+                if (!matchName && !matchEmail && !matchPhone) return false;
             }
-            
-            // 3. Filtro Servicio
-            if (filterService && filterService !== 'Todos' && s.service !== filterService) return false;
-            
-            // 4. Filtro Fechas
-            if (hasDateFilter) {
-                if (!s.endDate) return false;
-                const endDate = new Date(s.endDate);
-                endDate.setHours(0,0,0,0);
+
+            // B. FILTRO SERVICIO
+            if (filterService !== 'Todos' && sale.service !== filterService) return false;
+
+            // C. FILTRO ESTADO
+            if (filterStatus !== 'Todos') {
+                const isFree = sale.client === 'LIBRE';
+                const isProblem = NON_BILLABLE.some(s => s.toLowerCase() === (sale.client || '').toLowerCase());
                 
-                if (dateFrom && dateTo) {
-                    if (endDate < dateF || endDate > dateT) return false;
-                } else if (dateFrom) {
-                    if (endDate.getTime() !== dateF.getTime()) return false;
+                if (filterStatus === 'Libres' && !isFree) return false;
+                if (filterStatus === 'Ocupados' && (isFree || isProblem)) return false;
+                if (filterStatus === 'Problemas' && !isProblem) return false;
+                if (filterStatus === 'Vencidos') {
+                    if (!sale.endDate || isFree || isProblem) return false;
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const end = new Date(sale.endDate); end.setHours(0,0,0,0);
+                    if ((end - today) >= 0) return false; 
                 }
             }
-            
+
+            // D. FILTRO FECHA
+            if (dateFrom || dateTo) {
+                if (!sale.endDate) return false;
+                const saleDate = sale.endDate; 
+                if (dateFrom && saleDate < dateFrom) return false;
+                if (dateTo && saleDate > dateTo) return false;
+            }
+
             return true;
         });
     }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo]);
 
-    // =========================================================================
-    // 2. ALERTAS E INVENTARIO
-    // =========================================================================
+    // ========================================================================
+    // 3. CÁLCULOS AGREGADOS (CORREGIDO: Dinero Real)
+    // ========================================================================
     
-    const { expiringToday, expiringTomorrow, overdueSales } = useMemo(() => {
-        const today = [];
-        const tomorrow = [];
-        const overdue = [];
+    const totalFilteredMoney = useMemo(() => filteredSales.reduce((sum, s) => {
+        // CORRECCIÓN: Si es LIBRE o PROBLEMA, su aporte es $0, sin importar qué diga la base de datos
+        const isFree = s.client === 'LIBRE';
+        const isProblem = NON_BILLABLE.some(st => st.toLowerCase() === (s.client || '').toLowerCase());
+        
+        if (isFree || isProblem) return sum;
+        
+        return sum + (Number(s.cost) || 0);
+    }, 0), [filteredSales]);
 
-        if (sales) {
-            sales.forEach(sale => {
-                if (!sale.client || NON_ALERT_STATUSES.includes(sale.client)) return;
-                const days = getDaysRemaining(sale.endDate); 
-                if (days === 0) today.push(sale);
-                else if (days === 1) tomorrow.push(sale);
-                else if (days < 0) overdue.push(sale);
-            });
-        }
-        return { expiringToday: today, expiringTomorrow: tomorrow, overdueSales: overdue };
-    }, [sales]);
-
-    // =========================================================================
-    // 3. CÁLCULOS FINANCIEROS
-    // =========================================================================
-
-    const totalFilteredMoney = useMemo(() => {
-        return filteredSales.reduce((acc, curr) => {
-            const isExcluded = curr.client === 'LIBRE' || NON_BILLABLE_STATUSES.includes(curr.client) || curr.client === 'Admin';
-            return !isExcluded ? acc + (Number(curr.cost) || 0) : acc;
-        }, 0);
-    }, [filteredSales]);
-    
     const totalItems = filteredSales.length;
 
-    // =========================================================================
-    // 4. BÓVEDA DE INVENTARIO
-    // =========================================================================
-    
+    const getClientPreviousProfiles = useMemo(() => {
+        if (!currentFormData.client || currentFormData.client === 'LIBRE') return [];
+        return sales
+            .filter(s => s.client === currentFormData.client && s.profile)
+            .map(s => ({ profile: s.profile, pin: s.pin }))
+            .filter((v, i, a) => a.findIndex(t => t.profile === v.profile) === i);
+    }, [sales, currentFormData.client]);
+
     const accountsInventory = useMemo(() => {
         const groups = {};
-        if (!sales) return [];
-
-        sales.forEach(sale => {
-            if (!sale.email) return;
-            const key = `${sale.email}-${sale.service}`; 
-            
-            if (!groups[key]) {
-                groups[key] = {
-                    id: key, 
-                    email: sale.email,
-                    service: sale.service,
-                    pass: sale.pass,
-                    total: 0,
-                    free: 0,
-                    ids: []
-                };
-            }
+        sales.forEach(s => {
+            const key = `${s.email}|${s.pass}`;
+            if (!groups[key]) groups[key] = { 
+                email: s.email, pass: s.pass, service: s.service, 
+                total: 0, free: 0, id: s.id, ids: [] 
+            };
             groups[key].total++;
-            groups[key].ids.push(sale.id);
-            if (sale.client === 'LIBRE') groups[key].free++;
+            if (s.client === 'LIBRE') groups[key].free++;
+            groups[key].ids.push(s.id);
         });
         return Object.values(groups);
     }, [sales]);
 
-    // =========================================================================
-    // 5. HELPERS DE FORMULARIO
-    // =========================================================================
-
-    const getClientPreviousProfiles = useMemo(() => {
-        if (!formData.client || formData.client === 'LIBRE') return [];
-        const clientName = formData.client.toLowerCase();
-        
-        const history = sales.filter(s => s.client && s.client.toLowerCase() === clientName && s.profile)
-                             .map(s => ({ profile: s.profile, pin: s.pin }));
-        
-        const uniqueSet = new Set(history.map(JSON.stringify));
-        return Array.from(uniqueSet).map(JSON.parse);
-    }, [sales, formData.client]);
-
     const maxAvailableSlots = useMemo(() => {
-        if (formData.client !== 'LIBRE' && formData.id) return 1;
-        return sales.filter(s => s.email === formData.email && s.client === 'LIBRE').length;
-    }, [sales, formData.email, formData.id]);
-    
-    const packageCatalog = useMemo(() => {
-        if (!catalog) return [];
-        return catalog.filter(s => s.type === 'Paquete' || (s.name && s.name.toLowerCase().includes('paquete')));
-    }, [catalog]);
+        if (!currentFormData.service || !currentFormData.email) return 5;
+        return sales.filter(s => s.email === currentFormData.email && s.service === currentFormData.service && s.client === 'LIBRE').length;
+    }, [sales, currentFormData.service, currentFormData.email]);
 
-    // =========================================================================
-    // RETURN
-    // =========================================================================
+    const packageCatalog = useMemo(() => catalog.filter(s => s.type === 'Paquete'), [catalog]);
+
+    // ========================================================================
+    // 4. HELPERS VISUALES
+    // ========================================================================
+    
+    const getStatusIcon = (serviceName) => {
+        const lower = serviceName ? serviceName.toLowerCase() : '';
+        if (lower.includes('netflix')) return 'N';
+        if (lower.includes('disney')) return 'D';
+        if (lower.includes('max') || lower.includes('hbo')) return 'M';
+        if (lower.includes('prime') || lower.includes('amazon')) return 'P';
+        if (lower.includes('paramount')) return 'P+';
+        if (lower.includes('vix')) return 'V';
+        if (lower.includes('plex')) return 'PX';
+        if (lower.includes('iptv')) return 'TV';
+        if (lower.includes('magis')) return 'MG';
+        if (lower.includes('crunchyroll')) return 'CR';
+        if (lower.includes('spotify')) return 'S';
+        if (lower.includes('youtube')) return 'Y';
+        return 'S';
+    };
+
+    const getDaysRemaining = (endDate) => {
+        if (!endDate) return 0;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const end = new Date(endDate); end.setHours(0,0,0,0);
+        const diffTime = end - today;
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    };
+
+    const getStatusColor = (endDate, client) => {
+        if (client === 'LIBRE') return 'bg-emerald-100 text-emerald-600 border border-emerald-200';
+        if (NON_BILLABLE.some(s => s.toLowerCase() === (client || '').toLowerCase())) return 'bg-gray-100 text-gray-500 border border-gray-200';
+        
+        if (!endDate) return 'bg-slate-100 text-slate-500'; 
+        
+        const days = getDaysRemaining(endDate);
+        if (days < 0) return 'bg-rose-100 text-rose-600 border border-rose-200'; 
+        if (days <= 3) return 'bg-amber-100 text-amber-600 border border-amber-200'; 
+        return 'bg-blue-50 text-blue-600 border border-blue-200'; 
+    };
+
+    // ========================================================================
+    // LISTAS DE ALERTAS
+    // ========================================================================
+    
+    const isBillable = (s) => {
+        if (s.client === 'LIBRE') return false;
+        if (!s.endDate) return false;
+        if (NON_BILLABLE.some(status => status.toLowerCase() === s.client.toLowerCase())) return false;
+        return true;
+    };
+
+    const expiringToday = useMemo(() => sales.filter(s => isBillable(s) && getDaysRemaining(s.endDate) === 0), [sales]);
+    const expiringTomorrow = useMemo(() => sales.filter(s => isBillable(s) && getDaysRemaining(s.endDate) === 1), [sales]);
+    const overdueSales = useMemo(() => sales.filter(s => isBillable(s) && getDaysRemaining(s.endDate) < 0), [sales]);
 
     return {
         filteredSales,
         totalFilteredMoney,
         totalItems,
+        getClientPreviousProfiles,
+        maxAvailableSlots,
         accountsInventory,
         packageCatalog,
-        maxAvailableSlots,
+        getStatusIcon,
+        getStatusColor,
+        getDaysRemaining,
         expiringToday,
         expiringTomorrow,
-        overdueSales,
-        allClients,
-        getClientPreviousProfiles,
-        NON_BILLABLE_STATUSES, 
-        getStatusIcon, 
-        getStatusColor: (date, client) => getStatusColor(client, date),
-        getDaysRemaining, 
+        overdueSales
     };
 };
