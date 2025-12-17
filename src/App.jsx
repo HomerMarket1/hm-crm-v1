@@ -25,20 +25,18 @@ import Config from './views/Config';
 import SaleForm from './views/SaleForm';
 import Toast from './components/Toast'; 
 
-// Intentamos importar constantes, si falla usamos un fallback seguro
-let NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía'];
+// Fallback de constantes
+let NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 try {
     const constants = require('./config/constants');
     if (constants.NON_BILLABLE_STATUSES) NON_BILLABLE_STATUSES = constants.NON_BILLABLE_STATUSES;
-} catch (e) {
-    // Si no existe el archivo, usamos el array por defecto definido arriba
-}
+} catch (e) {}
 
 const App = () => {
     // 1. DATA & AUTH
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData } = useDataSync();
     
-    // 2. UI STATE & HELPERS
+    // 2. UI STATE
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
     const { view, stockTab, filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
     const [notification, setNotification] = useState({ show: true, message: '', type: 'success' }); 
@@ -46,7 +44,7 @@ const App = () => {
     const [openMenuId, setOpenMenuId] = useState(null);
     const [editAccountModal, setEditAccountModal] = useState({ show: false, email: '', oldPass: '', newPass: '' });
 
-    // 3. LOGIC HOOKS (El Cerebro)
+    // 3. LOGIC HOOKS
     const crmActions = useCRMActions(user, setNotification);
     const clientManagement = useClientManagement(user, user ? `users/${user.uid}` : '', sales, clientsDirectory, setNotification);
 
@@ -69,7 +67,7 @@ const App = () => {
     } = useSalesData(sales, catalog, clientManagement.allClients, uiState, formData); 
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name)); 
 
-    // --- HANDLERS SIMPLIFICADOS (Delegación) ---
+    // --- HANDLERS ---
     const handleLogin = async (e) => {
         e.preventDefault(); setLoginError('');
         try { await signInWithEmailAndPassword(auth, loginEmail, loginPass); setNotification({ show: true, message: '¡Bienvenido!', type: 'success' }); } 
@@ -77,58 +75,53 @@ const App = () => {
     };
     const handleLogout = () => signOut(auth);
 
-    // Acciones de Catálogo y Stock
+    // Catalog & Stock Actions
     const handleAddServiceToCatalog = async (e) => { e.preventDefault(); if(await crmActions.addCatalogService(catalogForm)) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 }); };
     const handleAddPackageToCatalog = async (e) => { e.preventDefault(); if(await crmActions.addCatalogPackage(packageForm)) setPackageForm({ name: '', cost: '', slots: 2 }); };
-    
-    // Edición de Servicio del Catálogo (Restaurada)
-    const handleEditCatalogService = async (serviceId, updatedData) => {
-        return await crmActions.updateCatalogService(serviceId, updatedData);
-    };
-
+    const handleEditCatalogService = async (serviceId, updatedData) => { return await crmActions.updateCatalogService(serviceId, updatedData); };
     const handleGenerateStock = async (data) => { if(await crmActions.generateStock(data || stockForm)) { dispatch({type:uiActionTypes.SET_STOCK_TAB, payload:'manage'}); setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' }); }};
     
-    // Acción Confirmar (Borrar/Liberar)
     const handleConfirmActionWrapper = async () => {
         await crmActions.executeConfirmAction(confirmModal, sales, catalog);
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
 
-    // Edición de Cuenta
-    const handleEditAccountCredentials = async () => {
-        if (!editAccountModal.newPass) return setNotification({ show: true, message: 'Contraseña vacía.', type: 'error' });
-        await crmActions.editAccountCredentials(editAccountModal.email, editAccountModal.oldPass, editAccountModal.newPass, sales);
+    // --- 🚀 EDICIÓN DE CREDENCIALES OPTIMIZADA ---
+    // Recibe 'passwordOverride' desde el Modal para evitar el lag de escritura
+    const handleEditAccountCredentials = async (passwordOverride = null) => {
+        const finalPass = typeof passwordOverride === 'string' ? passwordOverride : editAccountModal.newPass;
+
+        if (!finalPass) return setNotification({ show: true, message: 'Contraseña vacía.', type: 'error' });
+        
+        await crmActions.editAccountCredentials(editAccountModal.email, editAccountModal.oldPass, finalPass);
+        
         setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
     };
 
-    // --- EL GRAN HANDLER DE VENTA (Simplificado y Robusto) ---
+    // --- HANDLER DE VENTA PRINCIPAL ---
     const handleSaveSale = async (e) => {
         e.preventDefault(); if (!user) return;
         
-        // A. Guardar Cliente (si no es un estado especial)
+        // A. Guardar Cliente (si no es Admin/Problema)
         if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
             await clientManagement.saveClientIfNew(formData.client, formData.phone); 
         }
 
-        // B. Calcular Vencimiento Default (LÓGICA MEJORADA) 🛡️
+        // B. Calcular Vencimiento Default (LÓGICA BLINDADA)
         let finalEndDate = formData.endDate;
         
-        // Lista de clientes exentos de fecha automática
+        // Lista de clientes que NO deben tener fecha automática
         const EXEMPT_FROM_AUTO_DATE = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         
-        // Verificamos si el cliente actual es exento (insensible a mayúsculas)
         const isExempt = EXEMPT_FROM_AUTO_DATE.some(status => 
             formData.client.trim().toLowerCase() === status.toLowerCase()
         );
 
-        // Solo asignamos 30 días automáticos si:
-        // 1. No tiene fecha puesta
-        // 2. NO es un espacio LIBRE
-        // 3. NO es un cliente exento (Admin, Caída, etc)
+        // Solo ponemos 30 días si NO tiene fecha Y NO es exento Y NO es LIBRE
         if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
             const d = new Date(); d.setDate(d.getDate() + 30); finalEndDate = d.toISOString().split('T')[0];
         }
-        
+
         const dataToSave = { ...formData, endDate: finalEndDate };
         const quantity = parseInt(formData.profilesToBuy || 1);
 
@@ -136,11 +129,9 @@ const App = () => {
 
         // C. Delegar a crmActions
         if (formData.id) {
-            // Venta Específica / Edición
             const originalSale = sales.find(s => s.id === formData.id);
             success = await crmActions.processSale(dataToSave, originalSale, catalog, sales, quantity, bulkProfiles);
         } else {
-            // Venta Batch (Desde Stock Libre)
             const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
             success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
         }
@@ -160,6 +151,7 @@ const App = () => {
     const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
     const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
     const triggerDeleteFreeStock = (email, pass) => {
+        // Ahora usamos 'accountsInventory' que ya tiene los IDs agrupados, pero como fallback usamos filtro
         const ids = sales.filter(s => s.email === email && s.pass === pass && s.client === 'LIBRE').map(s => s.id);
         if(ids.length) setConfirmModal({ show: true, type: 'delete_free_stock', title: 'Limpiar Stock Libre', msg: `Se eliminarán ${ids.length} perfiles libres.`, data: ids });
         else setNotification({ show: true, message: 'No hay stock libre.', type: 'info' });
@@ -203,6 +195,8 @@ const App = () => {
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
             <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} />
+            
+            {/* Modal de Edición de Cuenta (Optimizado) */}
             {editAccountModal.show && <EditAccountModal modal={editAccountModal} setModal={setEditAccountModal} onConfirm={handleEditAccountCredentials} />}
 
             {view === 'dashboard' && <Dashboard 

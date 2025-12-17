@@ -1,5 +1,6 @@
 // src/hooks/useCRMActions.js
-import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc } from 'firebase/firestore'; 
+// ✅ NUEVOS IMPORTS AGREGADOS: query, where, getDocs
+import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc, query, where, getDocs } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 
 const findIndividualServiceName = (currentServiceName, catalog) => {
@@ -24,30 +25,47 @@ export const useCRMActions = (user, setNotification) => {
     const userPath = `users/${user.uid}`;
     const notify = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
 
-    // --- 1. ACCIONES DE CUENTA ---
-    const editAccountCredentials = async (email, oldPass, newPass, sales) => {
+    // --- 1. ACCIONES DE CUENTA (OPTIMIZADO) ---
+    // Ya no dependemos de 'sales' local para buscar, vamos directo a la BD.
+    const editAccountCredentials = async (email, oldPass, newPass) => {
         try {
             if (newPass === oldPass) { notify('La contraseña es la misma.', 'info'); return true; }
-            const batch = writeBatch(db);
-            const salesToUpdate = sales.filter(sale => sale.email === email && sale.pass === oldPass);
+            
+            // 🚀 OPTIMIZACIÓN DE VELOCIDAD
+            // En lugar de filtrar el array local (lento), consultamos solo los docs necesarios.
+            const q = query(
+                collection(db, userPath, 'sales'),
+                where('email', '==', email),
+                where('pass', '==', oldPass)
+            );
 
-            if (salesToUpdate.length === 0) {
-                const freeStockRef = sales.find(s => s.email === email && s.pass === oldPass && s.client === 'LIBRE');
-                if (freeStockRef) {
-                     batch.update(doc(db, userPath, 'sales', freeStockRef.id), { pass: newPass, updatedAt: serverTimestamp() });
-                    await batch.commit(); return true;
-                }
-                notify('No se encontraron registros.', 'error'); return false;
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                // Fallback de emergencia: Si no encontró por pass exacto (caso raro), avisamos.
+                notify('No se encontraron registros coincidentes en la base de datos.', 'error'); 
+                return false;
             }
 
-            salesToUpdate.forEach(sale => {
-                batch.update(doc(db, userPath, 'sales', sale.id), { pass: newPass, updatedAt: serverTimestamp() });
+            const batch = writeBatch(db);
+            let count = 0;
+
+            querySnapshot.forEach((docSnap) => {
+                batch.update(docSnap.ref, { 
+                    pass: newPass, 
+                    updatedAt: serverTimestamp() 
+                });
+                count++;
             });
+
             await batch.commit();
-            notify(`Contraseña actualizada en ${salesToUpdate.length} registros.`, 'success');
+            notify(`Contraseña actualizada en ${count} registros.`, 'success');
             return true;
+
         } catch (error) {
-            console.error(error); notify('Fallo al editar credenciales.', 'error'); return false;
+            console.error("Error editAccountCredentials:", error); 
+            notify('Fallo al editar credenciales.', 'error'); 
+            return false;
         }
     };
 
@@ -112,30 +130,30 @@ export const useCRMActions = (user, setNotification) => {
                     // Configuración LIBRE
                     const freeData = { client: 'LIBRE', phone: '', service: freeServiceName, type: 'Perfil', cost: 0, email: formData.email, pass: formData.pass, profile: `Perfil ${i + 1}`, pin: '', endDate: '' };
 
-                    // ✅ CORRECCIÓN AQUÍ: Determinar Nombre y PIN correctamente según si es venta única o paquete
-                    let finalProfileName = `Perfil ${i + 1}`; // Fallback por defecto
+                    // Determinar Nombre y PIN correctamente
+                    let finalProfileName = `Perfil ${i + 1}`; 
                     let finalPin = '';
 
                     if (isSoldSlot) {
                         if (profilesToSell === 1) {
-                            // Venta Única: Usar datos principales del formulario
+                            // Venta Única: Usar datos principales
                             finalProfileName = formData.profile || finalProfileName;
                             finalPin = formData.pin || '';
                         } else {
-                            // Venta Paquete: Usar datos de la lista grupal
+                            // Venta Paquete: Usar datos grupales
                             finalProfileName = currentProfileData.profile || finalProfileName;
                             finalPin = currentProfileData.pin || '';
                         }
                     }
 
-                    // Configuración VENDIDA con los datos correctos
+                    // Configuración VENDIDA
                     const soldData = {
                         ...formData,
                         type: 'Perfil', 
                         service: formData.service,
                         cost: unitCostForSold,
-                        profile: finalProfileName, // Usamos el valor calculado
-                        pin: finalPin,             // Usamos el valor calculado
+                        profile: finalProfileName, 
+                        pin: finalPin,             
                     };
 
                     if (i === 0) {
@@ -185,7 +203,25 @@ export const useCRMActions = (user, setNotification) => {
     const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch (e) { return false; } };
     const updateCatalogService = async (id, data) => { try { await updateDoc(doc(db, userPath, 'catalog', id), data); notify('Servicio actualizado.'); return true; } catch (e) { return false; } };
     const generateStock = async (f) => { try { const b = writeBatch(db); const r = collection(db, userPath, 'sales'); for(let i=0; i<f.slots; i++) b.set(doc(r), {client:'LIBRE', phone:'', service:f.service, email:f.email, pass:f.pass, profile:'', pin:'', cost:Number(f.cost), type:f.type, createdAt:new Date(Date.now()+i)}); await b.commit(); notify('Stock generado.'); return true; } catch(e){ return false; } };
-    const executeConfirmAction = async (d, s, c) => { try { const batch = writeBatch(db); if(d.type==='delete_service') batch.delete(doc(db, userPath, 'catalog', d.id)); else if(d.type==='liberate') { const cur = s.find(i=>i.id===d.id); const svc = (cur.type?.toLowerCase() === 'perfil') ? findIndividualServiceName(cur.service, c) : cur.service; batch.update(doc(db, userPath, 'sales', d.id), {client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service: svc, cost: 0, updatedAt:serverTimestamp()}); } else if (d.type === 'delete_account' || d.type === 'delete_free_stock') d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id))); await batch.commit(); notify('Éxito.', 'success'); return true; } catch(e){ notify('Error al borrar.', 'error'); return false; } };
+    
+    // Al liberar, cost debe ser 0
+    const executeConfirmAction = async (d, s, c) => { 
+        try { 
+            const batch = writeBatch(db);
+            if(d.type==='delete_service') batch.delete(doc(db, userPath, 'catalog', d.id));
+            else if(d.type==='liberate') { 
+                const cur = s.find(i=>i.id===d.id); 
+                const svc = (cur.type?.toLowerCase() === 'perfil') ? findIndividualServiceName(cur.service, c) : cur.service;
+                batch.update(doc(db, userPath, 'sales', d.id), {
+                    client:'LIBRE', phone:'', endDate:'', profile:'', pin:'', service: svc, 
+                    cost: 0, 
+                    updatedAt:serverTimestamp()
+                }); 
+            } 
+            else if (d.type === 'delete_account' || d.type === 'delete_free_stock') d.data.forEach(id => batch.delete(doc(db, userPath, 'sales', id)));
+            await batch.commit(); notify('Éxito.', 'success'); return true; 
+        } catch(e){ notify('Error al borrar.', 'error'); return false; } 
+    };
 
     return { addCatalogService, addCatalogPackage, generateStock, executeConfirmAction, editAccountCredentials, processSale, processBatchSale, quickRenew, updateCatalogService };
 };
