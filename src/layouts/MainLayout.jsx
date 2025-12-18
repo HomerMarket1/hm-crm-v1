@@ -52,7 +52,6 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                     background-color: transparent;
                     border-radius: 20px;
                 }
-                /* Solo mostrar al pasar el mouse sobre el elemento scrollable */
                 *:hover::-webkit-scrollbar-thumb {
                     background-color: ${darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'};
                 }
@@ -91,8 +90,8 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                 </div>
             </aside>
 
-            {/* MOBILE HEADER */}
-            <div className={`md:hidden fixed top-0 left-0 right-0 h-20 z-40 px-4 flex items-center justify-between backdrop-blur-md border-b transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/10' : 'bg-[#F2F2F7]/90 border-white/20'}`}>
+            {/* ✅ MOBILE HEADER (AJUSTADO PARA EL NOTCH) */}
+            <div className={`md:hidden fixed top-0 left-0 right-0 h-28 pt-8 z-40 px-5 flex items-center justify-between backdrop-blur-md border-b transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/10' : 'bg-[#F2F2F7]/90 border-white/20'}`}>
                 <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-full shadow-sm flex items-center justify-center overflow-hidden border ${darkMode ? 'bg-black border-white/20' : 'bg-white border-white'}`}>
                         <img src={logoImg} alt="Logo" className="w-full h-full object-cover" />
@@ -115,7 +114,7 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
             {/* MOBILE MENU */}
             {mobileMenuOpen && (
                 <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setMobileMenuOpen(false)}>
-                    <div className={`absolute right-0 top-0 bottom-0 w-3/4 max-w-sm p-6 shadow-2xl animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-[#0B0F19]' : 'bg-[#F2F2F7]'}`} onClick={e => e.stopPropagation()}>
+                    <div className={`absolute right-0 top-0 bottom-0 w-3/4 max-w-sm p-6 pt-16 shadow-2xl animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-[#0B0F19]' : 'bg-[#F2F2F7]'}`} onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-8">
                             <h2 className={`text-2xl font-black ${theme.text}`}>Menú</h2>
                             <button onClick={() => setMobileMenuOpen(false)} className={`p-2 rounded-full shadow-sm ${darkMode ? 'bg-[#161B28] text-white' : 'bg-white text-black'}`}><X size={24} /></button>
@@ -131,8 +130,8 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                 </div>
             )}
 
-            {/* MAIN CONTENT */}
-            <main className="flex-1 h-full overflow-y-auto overflow-x-hidden relative pt-20 md:pt-0">
+            {/* ✅ MAIN CONTENT (Ajustado pt-28 para que no se esconda) */}
+            <main className="flex-1 h-full overflow-y-auto overflow-x-hidden relative pt-28 md:pt-0">
                 <div className="max-w-[1600px] mx-auto p-4 md:p-6 h-full">
                     {children}
                 </div>
