@@ -32,13 +32,35 @@ const SaleForm = ({
     handleSaveSale,
     setView,
     resetForm,
-    catalog 
+    catalog,
+    darkMode // ✅ Recibimos el Modo Oscuro
 }) => {
 
-    // ESTILOS
+    // =========================================================================
+    // 🎨 ESTILOS DINÁMICOS (Modo Día / Noche)
+    // =========================================================================
+    const theme = {
+        bg: darkMode ? 'bg-[#161B28]' : 'bg-white',
+        text: darkMode ? 'text-white' : 'text-slate-800',
+        textMuted: darkMode ? 'text-slate-400' : 'text-slate-400',
+        border: darkMode ? 'border-white/5' : 'border-slate-50',
+        inputBg: darkMode ? 'bg-black/20' : 'bg-slate-50',
+        inputBorder: darkMode ? 'border-white/5' : 'border-slate-200',
+        inputText: darkMode ? 'text-white' : 'text-slate-800',
+        sectionBg: darkMode ? 'bg-black/20' : 'bg-slate-50/80',
+        sectionBorder: darkMode ? 'border-white/5' : 'border-slate-100',
+        divider: darkMode ? 'border-white/5' : 'border-slate-100',
+        footerBg: darkMode ? 'bg-[#161B28]' : 'bg-white',
+        cancelBtn: darkMode ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200',
+        trackBg: darkMode ? 'bg-black/20' : 'bg-slate-100',
+        activeBtn: darkMode ? 'bg-[#2A303C] text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm',
+    };
+
     const INPUT_WRAPPER = "relative group";
     const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none";
-    const INPUT_STYLE = "w-full p-4 pl-11 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-200 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-400";
+    
+    // Input adaptado a ambos modos
+    const INPUT_STYLE = `w-full p-4 pl-11 rounded-2xl text-sm font-bold outline-none transition-all focus:ring-4 focus:ring-indigo-500/10 ${theme.inputBg} ${theme.inputBorder} ${theme.inputText} placeholder:text-slate-400 disabled:opacity-50`;
     
     // 1. LÓGICA DE CATEGORIZACIÓN
     const baseService = getServiceCategory(formData.service);
@@ -51,13 +73,11 @@ const SaleForm = ({
         });
     }, [catalog, baseService, formData.service]); 
 
-    // 2. DETECCIÓN DE ESTADOS EXENTOS (Sin fecha/precio obligatorio)
-    // ✅ Si el cliente es uno de estos, no exigimos fecha ni costo.
+    // 2. DETECCIÓN DE ESTADOS EXENTOS
     const EXEMPT_STATUSES = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
     
     const isExempt = useMemo(() => {
         if (!formData.client) return false;
-        // Verifica si el nombre del cliente coincide con alguno de la lista (ignorando mayúsculas/minúsculas)
         return EXEMPT_STATUSES.some(status => 
             formData.client.trim().toLowerCase() === status.toLowerCase()
         );
@@ -84,47 +104,47 @@ const SaleForm = ({
         navigator.clipboard.writeText(`${formData.email}:${formData.pass}`);
         const btn = e.currentTarget;
         const originalContent = btn.innerHTML;
-        btn.innerHTML = `<span class="text-emerald-600 flex items-center gap-1">Copiado</span>`;
+        btn.innerHTML = `<span class="text-emerald-500 flex items-center gap-1">Copiado</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="w-full md:max-w-lg h-[85dvh] md:h-auto md:max-h-[90vh] bg-white rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className={`w-full md:max-w-lg h-[85dvh] md:h-auto md:max-h-[90vh] rounded-t-[2.5rem] md:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden ${theme.bg}`}>
                 
                 {/* HEADER */}
-                <div className="px-6 pt-6 pb-4 bg-white z-10 border-b border-slate-50">
+                <div className={`px-6 pt-6 pb-4 z-10 border-b ${theme.bg} ${theme.border}`}>
                     <div className="flex justify-between items-start mb-4">
                         <div>
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+                            <h2 className={`text-2xl font-black tracking-tight ${theme.text}`}>
                                 {formData.client === 'LIBRE' ? 'Nueva Venta' : 'Editar'}
                             </h2>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wide truncate max-w-[200px]">
                                 {formData.service}
                             </p>
                         </div>
-                        <button onClick={()=>{setView('dashboard'); resetForm();}} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
-                            <X size={20} className="text-slate-500"/>
+                        <button onClick={()=>{setView('dashboard'); resetForm();}} className={`p-2 rounded-full transition-colors ${darkMode ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}`}>
+                            <X size={20} />
                         </button>
                     </div>
-                    <button onClick={copyCredentials} className="w-full py-2.5 px-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-indigo-600 active:scale-95 transition-transform">
+                    <button onClick={copyCredentials} className={`w-full py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 text-xs font-bold active:scale-95 transition-transform border ${darkMode ? 'bg-[#0B0F19] border-white/5 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-600'}`}>
                         <span className="font-mono truncate">{formData.email}</span><span className="opacity-30">|</span><span className="font-mono">••••••</span><Copy size={12}/>
                     </button>
                 </div>
 
                 {/* BODY */}
-                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 bg-white no-scrollbar">
+                <div className={`flex-1 overflow-y-auto px-6 py-4 space-y-6 no-scrollbar ${theme.bg}`}>
                     <form id="sale-form" onSubmit={handleSaveSale} className="space-y-6 pb-4">
                         
                         {/* SELECTOR CANTIDAD */}
                         {(formData.client === 'LIBRE' || formData.id) && (
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-2">Perfiles a vender</label>
-                                <div className="flex p-1 bg-slate-100 rounded-xl">
+                                <div className={`flex p-1 rounded-xl ${theme.trackBg}`}>
                                     {[1,2,3,4,5].map(num => {
                                         const isDisabled = num > maxAvailableSlots && formData.client === 'LIBRE';
                                         return (
-                                            <button key={num} type="button" onClick={() => handleQuantityClick(num)} disabled={isDisabled} className={`flex-1 h-9 rounded-lg text-sm font-black transition-all ${formData.profilesToBuy === num ? 'bg-white text-indigo-600 shadow-sm scale-100' : 'text-slate-400'} ${isDisabled ? 'opacity-30 cursor-not-allowed' : ''}`}>{num}</button>
+                                            <button key={num} type="button" onClick={() => handleQuantityClick(num)} disabled={isDisabled} className={`flex-1 h-9 rounded-lg text-sm font-black transition-all ${formData.profilesToBuy === num ? theme.activeBtn : 'text-slate-500'} ${isDisabled ? 'opacity-30 cursor-not-allowed' : ''}`}>{num}</button>
                                         );
                                     })}
                                 </div>
@@ -146,18 +166,16 @@ const SaleForm = ({
                             <div className="grid grid-cols-2 gap-3">
                                 <div className={INPUT_WRAPPER}>
                                     <Calendar size={18} className={ICON_STYLE}/>
-                                    {/* ✅ FECHA: Opcional si es Exento (Admin, Caída, etc) */}
                                     <input 
                                         type="date" 
                                         className={INPUT_STYLE + " pr-2 text-xs"} 
                                         value={formData.endDate} 
                                         onChange={e=>setFormData({...formData, endDate:e.target.value})} 
-                                        required={!isExempt} // Solo requerido si NO es exento
+                                        required={!isExempt} 
                                     />
                                 </div>
                                 <div className={INPUT_WRAPPER}>
                                     <DollarSign size={18} className={ICON_STYLE}/>
-                                    {/* ✅ PRECIO: Opcional si es Exento */}
                                     <input 
                                         type="number" 
                                         className={INPUT_STYLE} 
@@ -171,27 +189,27 @@ const SaleForm = ({
                         </div>
 
                         {/* INPUTS PERFILES */}
-                        <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100">
+                        <div className={`rounded-2xl p-4 border ${theme.sectionBg} ${theme.sectionBorder}`}>
                             <div className="flex items-center gap-2 mb-3">
                                 <Layers size={16} className="text-indigo-500"/>
-                                <span className="text-xs font-black text-slate-700 uppercase">{formData.profilesToBuy > 1 ? `Asignar ${formData.profilesToBuy} Perfiles` : 'Datos del Perfil'}</span>
+                                <span className={`text-xs font-black uppercase ${darkMode ? 'text-indigo-300' : 'text-slate-700'}`}>{formData.profilesToBuy > 1 ? `Asignar ${formData.profilesToBuy} Perfiles` : 'Datos del Perfil'}</span>
                             </div>
                             <div className="space-y-2">
                                 {(formData.profilesToBuy > 1 ? bulkProfiles : [bulkProfiles[0] || {profile: formData.profile, pin: formData.pin}]).map((p, i) => (
                                     <div key={i} className="flex gap-2">
-                                        <input className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-300" placeholder={`Nombre Perfil ${i+1}`} value={formData.profilesToBuy > 1 ? p.profile : formData.profile} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/>
-                                        <input className="w-20 p-3 text-center bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 outline-none focus:border-indigo-300" placeholder="PIN" value={formData.profilesToBuy > 1 ? p.pin : formData.pin} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/>
+                                        <input className={`w-full p-3 border rounded-xl text-xs font-bold outline-none focus:border-indigo-500 ${theme.bg} ${theme.inputBorder} ${theme.inputText}`} placeholder={`Nombre Perfil ${i+1}`} value={formData.profilesToBuy > 1 ? p.profile : formData.profile} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/>
+                                        <input className={`w-20 p-3 text-center border rounded-xl text-xs font-mono font-bold outline-none focus:border-indigo-500 ${theme.bg} ${theme.inputBorder} ${theme.inputText}`} placeholder="PIN" value={formData.profilesToBuy > 1 ? p.pin : formData.pin} onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* CONVERSION */}
+                        {/* CONVERSION (RESTAURADO) */}
                         {filteredConversionCatalog.length > 0 && (
-                            <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50">
+                            <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100/50'}`}>
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase mb-2"><Package size={12}/> Tipo de Servicio</label>
                                 <div className="relative">
-                                    <select className="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold text-indigo-900 outline-none appearance-none" onChange={(e) => { const selectedName = e.target.value; const selected = catalog.find(s => s.name === selectedName); if (selected) { setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots })); } }} value={formData.service}>
+                                    <select className={`w-full p-3 border rounded-xl text-xs font-bold outline-none appearance-none ${darkMode ? 'bg-[#0B0F19] border-white/5 text-indigo-300' : 'bg-white border-indigo-100 text-indigo-900'}`} onChange={(e) => { const selectedName = e.target.value; const selected = catalog.find(s => s.name === selectedName); if (selected) { setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots })); } }} value={formData.service}>
                                         <option value={formData.service}>{formData.service} (Actual)</option>
                                         <option disabled>──────────</option>
                                         {filteredConversionCatalog.map(item => <option key={item.id} value={item.name}>{item.name} ({item.type}) - ${item.cost}</option>)}
@@ -204,9 +222,9 @@ const SaleForm = ({
                 </div>
 
                 {/* FOOTER */}
-                <div className="p-4 bg-white border-t border-slate-100 flex gap-3 pb-8 md:pb-4">
-                    <button type="button" onClick={()=>{setView('dashboard'); resetForm();}} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-colors">Cancelar</button>
-                    <button type="submit" form="sale-form" className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl font-black text-sm shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2"><Save size={18} className="text-emerald-400"/> Guardar</button>
+                <div className={`p-4 border-t flex gap-3 pb-8 md:pb-4 ${theme.footerBg} ${theme.divider}`}>
+                    <button type="button" onClick={()=>{setView('dashboard'); resetForm();}} className={`flex-1 py-4 rounded-2xl font-bold text-sm transition-colors ${theme.cancelBtn}`}>Cancelar</button>
+                    <button type="submit" form="sale-form" className={`flex-[2] py-4 text-white rounded-2xl font-black text-sm shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2 ${darkMode ? 'bg-black border border-white/10' : 'bg-slate-900'}`}><Save size={18} className="text-emerald-400"/> Guardar</button>
                 </div>
             </div>
         </div>
