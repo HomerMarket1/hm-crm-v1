@@ -1,18 +1,18 @@
 // src/views/Config.jsx
 import React, { useState } from 'react';
-import { Settings, Plus, Trash2, Package, Users, Search, Edit2, ShieldAlert } from 'lucide-react';
+import { Settings, Plus, Trash2, Package, Users, Search, Edit2, ShieldAlert, Layers } from 'lucide-react';
 
 const Config = ({ 
     catalog, catalogForm, setCatalogForm, packageForm, setPackageForm,
     handleAddServiceToCatalog, handleAddPackageToCatalog, handleEditCatalogService, triggerDeleteService,
     clientsDirectory, allClients, triggerDeleteClient, triggerEditClient,
-    setNotification, formData, setFormData, darkMode // ✅ Recibimos darkMode
+    setNotification, formData, setFormData, darkMode 
 }) => {
 
     const [activeTab, setActiveTab] = useState('services'); // services | clients
     const [clientSearch, setClientSearch] = useState('');
 
-    // Estilos dinámicos
+    // 🎨 TEMA DINÁMICO
     const theme = {
         card: darkMode ? 'bg-[#161B28] border-white/5 shadow-none' : 'bg-white border-slate-100 shadow-xl shadow-slate-200/50',
         cardHeader: darkMode ? 'bg-[#0B0F19] border-white/5' : 'bg-slate-50 border-slate-100',
@@ -21,6 +21,8 @@ const Config = ({
         input: darkMode ? 'bg-black/20 text-white placeholder-slate-500 border-white/5 focus:border-indigo-500/50' : 'bg-slate-50 text-slate-800 placeholder-slate-400 border-slate-200 focus:border-indigo-500',
         itemBg: darkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100',
         sectionTitle: darkMode ? 'text-white' : 'text-slate-900',
+        tabActive: darkMode ? 'bg-[#161B28] text-indigo-400 shadow-sm border border-white/5' : 'bg-slate-800 text-white shadow-lg',
+        tabInactive: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600',
     };
 
     const filteredClients = allClients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()));
@@ -30,10 +32,10 @@ const Config = ({
             
             {/* TABS HEADER */}
             <div className={`p-1 rounded-2xl flex gap-1 w-full max-w-md mx-auto mb-8 border ${darkMode ? 'bg-[#0B0F19] border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
-                <button onClick={() => setActiveTab('services')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'services' ? (darkMode ? 'bg-[#161B28] text-indigo-400 shadow-sm border border-white/5' : 'bg-slate-800 text-white shadow-lg') : (darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}>
+                <button onClick={() => setActiveTab('services')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'services' ? theme.tabActive : theme.tabInactive}`}>
                     <Package size={14}/> Catálogo
                 </button>
-                <button onClick={() => setActiveTab('clients')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'clients' ? (darkMode ? 'bg-[#161B28] text-indigo-400 shadow-sm border border-white/5' : 'bg-slate-800 text-white shadow-lg') : (darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}>
+                <button onClick={() => setActiveTab('clients')} className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'clients' ? theme.tabActive : theme.tabInactive}`}>
                     <Users size={14}/> Clientes ({allClients.length})
                 </button>
             </div>
@@ -44,7 +46,7 @@ const Config = ({
                     {/* FORMULARIOS (Grid de 2 columnas) */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         
-                        {/* Nuevo Servicio */}
+                        {/* ✅ NUEVO SERVICIO (CORREGIDO CON CUPOS) */}
                         <div className={`rounded-[2rem] overflow-hidden border ${theme.card}`}>
                             <div className={`px-6 py-4 border-b flex items-center gap-3 ${theme.cardHeader}`}>
                                 <div className={`p-2 rounded-lg ${darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-100 text-indigo-600'}`}><Settings size={18}/></div>
@@ -52,15 +54,62 @@ const Config = ({
                             </div>
                             <div className="p-6">
                                 <form onSubmit={handleAddServiceToCatalog} className="space-y-4">
-                                    <input type="text" placeholder="Nombre (Ej: Netflix 1 Perfil)" required className={`w-full p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} value={catalogForm.name} onChange={e => setCatalogForm({...catalogForm, name: e.target.value})}/>
-                                    <div className="flex gap-4">
-                                        <input type="number" placeholder="Costo $" required className={`w-1/3 p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} value={catalogForm.cost} onChange={e => setCatalogForm({...catalogForm, cost: e.target.value})}/>
-                                        <div className={`flex-1 p-1 rounded-xl flex border ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
-                                            <button type="button" onClick={() => setCatalogForm({...catalogForm, type: 'Perfil'})} className={`flex-1 rounded-lg text-xs font-bold transition-all ${catalogForm.type === 'Perfil' ? (darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-black shadow-sm') : 'text-slate-400'}`}>Perfil</button>
-                                            <button type="button" onClick={() => setCatalogForm({...catalogForm, type: 'Cuenta'})} className={`flex-1 rounded-lg text-xs font-bold transition-all ${catalogForm.type === 'Cuenta' ? (darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-black shadow-sm') : 'text-slate-400'}`}>Cuenta</button>
+                                    
+                                    {/* Nombre */}
+                                    <div className="space-y-1">
+                                        <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Nombre del Servicio</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ej: Netflix 1 Perfil" 
+                                            required 
+                                            className={`w-full p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} 
+                                            value={catalogForm.name} 
+                                            onChange={e => setCatalogForm({...catalogForm, name: e.target.value})}
+                                        />
+                                    </div>
+
+                                    {/* Costo y Cupos (Grid) */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Costo ($)</label>
+                                            <input 
+                                                type="number" 
+                                                placeholder="0" 
+                                                required 
+                                                className={`w-full p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} 
+                                                value={catalogForm.cost} 
+                                                onChange={e => setCatalogForm({...catalogForm, cost: e.target.value})}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Cupos por Cuenta</label>
+                                            <div className="relative">
+                                                <Layers size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="Ej: 5" 
+                                                    required 
+                                                    min="1"
+                                                    className={`w-full pl-9 pr-3 py-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} 
+                                                    value={catalogForm.defaultSlots} 
+                                                    onChange={e => setCatalogForm({...catalogForm, defaultSlots: e.target.value})}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-                                    <button type="submit" className="w-full py-3 bg-[#0B0F19] hover:bg-black text-white rounded-xl font-bold text-sm shadow-lg shadow-slate-900/10 border border-white/10">Guardar</button>
+
+                                    {/* Selector Tipo */}
+                                    <div className="space-y-1">
+                                        <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Tipo de Venta</label>
+                                        <div className={`p-1 rounded-xl flex border ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
+                                            <button type="button" onClick={() => setCatalogForm({...catalogForm, type: 'Perfil'})} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${catalogForm.type === 'Perfil' ? (darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-black shadow-sm') : 'text-slate-400'}`}>Perfil</button>
+                                            <button type="button" onClick={() => setCatalogForm({...catalogForm, type: 'Cuenta'})} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${catalogForm.type === 'Cuenta' ? (darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-black shadow-sm') : 'text-slate-400'}`}>Cuenta Completa</button>
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" className={`w-full py-3.5 mt-2 rounded-xl font-bold text-sm shadow-lg border active:scale-95 transition-all ${darkMode ? 'bg-[#0B0F19] hover:bg-black text-white shadow-slate-900/10 border-white/10' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20 border-transparent'}`}>
+                                        Guardar Servicio
+                                    </button>
                                 </form>
                             </div>
                         </div>
@@ -73,7 +122,10 @@ const Config = ({
                             </div>
                             <div className="p-6">
                                 <form onSubmit={handleAddPackageToCatalog} className="space-y-4">
-                                    <input type="text" placeholder="Nombre Base (Ej: Netflix)" required className={`w-full p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} value={packageForm.name} onChange={e => setPackageForm({...packageForm, name: e.target.value})}/>
+                                    <div className="space-y-1">
+                                        <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Nombre Base</label>
+                                        <input type="text" placeholder="Ej: Netflix" required className={`w-full p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} value={packageForm.name} onChange={e => setPackageForm({...packageForm, name: e.target.value})}/>
+                                    </div>
                                     <div className="flex gap-4">
                                         <div className="w-1/2 space-y-1">
                                             <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Costo Total</label>
@@ -84,7 +136,7 @@ const Config = ({
                                             <input type="number" required className={`w-full p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} value={packageForm.slots} onChange={e => setPackageForm({...packageForm, slots: e.target.value})}/>
                                         </div>
                                     </div>
-                                    <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20">Crear Paquete</button>
+                                    <button type="submit" className="w-full py-3.5 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all">Crear Paquete</button>
                                 </form>
                             </div>
                         </div>
@@ -102,7 +154,8 @@ const Config = ({
                                             <p className={`font-bold text-sm ${theme.text}`}>{item.name}</p>
                                             <div className="flex gap-2">
                                                 <span className={`text-[10px] font-bold uppercase ${theme.subtext}`}>{item.type}</span>
-                                                {item.defaultSlots > 1 && <span className="text-[10px] font-bold text-indigo-500">• {item.defaultSlots} cupos</span>}
+                                                {/* Mostramos los cupos configurados */}
+                                                <span className="text-[10px] font-bold text-indigo-500">• {item.defaultSlots} cupos</span>
                                             </div>
                                         </div>
                                     </div>

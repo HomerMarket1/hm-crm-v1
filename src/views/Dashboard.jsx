@@ -4,11 +4,48 @@ import { Search, Smartphone, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, 
 // ✅ Importamos el Calendario
 import AppleCalendar from '../components/AppleCalendar';
 
-const cleanServiceName = (name) => { if (!name) return ''; return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim(); };
-const getWhatsAppUrl = (phone, message) => { if (!phone) return '#'; const cleanPhone = phone.replace(/\D/g, ''); const encodedMessage = encodeURIComponent(message); return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}` : `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`; };
-const safeGetDays = (dateString) => { if (!dateString || typeof dateString !== 'string' || !dateString.includes('-')) return 0; try { const today = new Date(); today.setHours(0,0,0,0); const [y, m, d] = dateString.split('-').map(Number); const end = new Date(y, m - 1, d); const diffTime = end - today; return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); } catch(e) { return 0; } };
-const safeGetStatusColor = (endDate, client, NON_BILLABLE, darkMode) => { if (client === 'LIBRE') return darkMode ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-100 text-emerald-600 border-emerald-200'; if (NON_BILLABLE?.includes(client)) return darkMode ? 'bg-white/5 text-slate-500 border-white/5' : 'bg-gray-100 text-gray-500 border-gray-200'; if (!endDate) return 'text-slate-500'; const days = safeGetDays(endDate); if (days < 0) return darkMode ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-100 text-rose-600 border-rose-200'; if (days <= 3) return darkMode ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-100 text-amber-600 border-amber-200'; return darkMode ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-600 border-blue-200'; };
-const safeGetStatusIcon = (serviceName) => { const lower = serviceName ? serviceName.toLowerCase() : ''; return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S'; };
+// --- HELPERS ---
+const cleanServiceName = (name) => {
+    if (!name) return '';
+    // Elimina palabras extra para dejar solo el nombre base (ej: "Netflix")
+    return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
+};
+
+const getWhatsAppUrl = (phone, message) => {
+    if (!phone) return '#';
+    const cleanPhone = phone.replace(/\D/g, '');
+    const encodedMessage = encodeURIComponent(message);
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`
+        : `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`;
+};
+
+const safeGetDays = (dateString) => {
+    if (!dateString || typeof dateString !== 'string' || !dateString.includes('-')) return 0;
+    try {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const [y, m, d] = dateString.split('-').map(Number);
+        const end = new Date(y, m - 1, d); 
+        const diffTime = end - today;
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    } catch(e) { return 0; }
+};
+
+const safeGetStatusColor = (endDate, client, NON_BILLABLE, darkMode) => {
+    if (client === 'LIBRE') return darkMode ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-100 text-emerald-600 border-emerald-200';
+    if (NON_BILLABLE?.includes(client)) return darkMode ? 'bg-white/5 text-slate-500 border-white/5' : 'bg-gray-100 text-gray-500 border-gray-200';
+    if (!endDate) return 'text-slate-500';
+    
+    const days = safeGetDays(endDate);
+    if (days < 0) return darkMode ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-100 text-rose-600 border-rose-200';
+    if (days <= 3) return darkMode ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-100 text-amber-600 border-amber-200';
+    return darkMode ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-600 border-blue-200';
+};
+
+const safeGetStatusIcon = (serviceName) => {
+    const lower = serviceName ? serviceName.toLowerCase() : '';
+    return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
+};
 
 const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
@@ -27,6 +64,7 @@ const Dashboard = ({
     const _getColor = (end, client) => safeGetStatusColor(end, client, NON_BILLABLE_STATUSES, darkMode);
     const _getIcon = (svc) => safeGetStatusIcon(svc);
 
+    // 🎨 TEMA DINÁMICO
     const theme = {
         card: darkMode ? 'bg-[#161B28]/60 backdrop-blur-md border border-white/5 shadow-sm hover:bg-[#161B28]' : 'bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60',
         textPrimary: darkMode ? "text-slate-200" : "text-slate-800",
@@ -56,6 +94,7 @@ const Dashboard = ({
         });
     };
 
+    // 🔥 MODIFICADO: FORMATO EXACTO DE WHATSAPP 🔥
     const handleUnifiedWhatsApp = (sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = _getDays(endDate);
@@ -70,8 +109,15 @@ const Dashboard = ({
             else message = `Hola ${client}, recordatorio: ${servicesString} vence en ${targetDays} días.`;
         } else if (actionType === 'data') {
             let readableDate = endDate ? endDate.split('-').reverse().join('/') : '---';
-            if (isFullAccount) message = `*${cleanName.toUpperCase()} CUENTA*\n${sale.email}\n${sale.pass}\nVence: ${readableDate}`;
-            else message = `*${cleanName.toUpperCase()} PERFIL*\n${sale.email}\n${sale.pass}\nPerfil: ${sale.profile}\nPIN: ${sale.pin}\nVence: ${readableDate}`;
+            const pinValue = (sale.pin && sale.pin.trim() !== "") ? sale.pin : "No Tiene";
+
+            if (isFullAccount) {
+                // Formato Cuenta Completa
+                message = `${cleanName.toUpperCase()} CUENTA COMPLETA\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n\n☑️Su Cuenta Vence el día ${readableDate}☑️`;
+            } else {
+                // Formato Perfil (Ajustado a tu plantilla)
+                message = `${cleanName.toUpperCase()} 1 PERFIL\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}\nPIN:\n${pinValue}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
+            }
         }
         window.open(getWhatsAppUrl(phone, message), '_blank');
     };
@@ -208,14 +254,14 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* BARRA FILTROS */}
+            {/* BARRA FILTROS (CON CALENDARIO GHOST) */}
             <div className={`sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 backdrop-blur-xl transition-all ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
                 <div className={`backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg border flex flex-col gap-2 ${theme.filterContainer}`}>
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar..." className={`block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 border-none font-medium rounded-2xl transition-all outline-none focus:ring-0 ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
                     <div className="flex flex-col md:flex-row gap-2 w-full">
                         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto"><div className="relative flex-shrink-0"><select className={`appearance-none font-bold text-[10px] md:text-xs py-2 pl-3 pr-6 rounded-xl border border-transparent transition-all cursor-pointer outline-none ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-slate-100/80 text-slate-600 hover:bg-white'}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}><option value="Todos">Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select><Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div><div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>{['Todos', 'Libres', 'Ocupados', 'Problemas', 'Vencidos'].map((status) => (<button key={status} onClick={() => setFilter('filterStatus', status)} className={`px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${filterStatus === status ? theme.filterBtnActive : theme.filterBtnInactive}`}>{status}</button>))}</div></div>
                         
-                        {/* ✅ AQUI USAMOS EL CALENDARIO GHOST */}
+                        {/* CALENDARIO GHOST */}
                         <div className={`flex items-center gap-1 px-2 py-1.5 rounded-xl border w-full md:w-auto ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}>
                             <div className="w-28"> 
                                 <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
