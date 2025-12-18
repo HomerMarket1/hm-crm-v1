@@ -7,7 +7,6 @@ import AppleCalendar from '../components/AppleCalendar';
 // --- HELPERS ---
 const cleanServiceName = (name) => {
     if (!name) return '';
-    // Elimina palabras extra para dejar solo el nombre base (ej: "Netflix")
     return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
 };
 
@@ -64,7 +63,6 @@ const Dashboard = ({
     const _getColor = (end, client) => safeGetStatusColor(end, client, NON_BILLABLE_STATUSES, darkMode);
     const _getIcon = (svc) => safeGetStatusIcon(svc);
 
-    // 🎨 TEMA DINÁMICO
     const theme = {
         card: darkMode ? 'bg-[#161B28]/60 backdrop-blur-md border border-white/5 shadow-sm hover:bg-[#161B28]' : 'bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60',
         textPrimary: darkMode ? "text-slate-200" : "text-slate-800",
@@ -94,31 +92,74 @@ const Dashboard = ({
         });
     };
 
-    // 🔥 MODIFICADO: FORMATO EXACTO DE WHATSAPP 🔥
+    // 🔥 LOGICA WHATSAPP UNIFICADA (VENCIDOS, HOY, MAÑANA) 🔥
     const handleUnifiedWhatsApp = (sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = _getDays(endDate);
-        const isFullAccount = sale.type === 'Cuenta' || (sale.service && sale.service.toLowerCase().includes('cuenta completa'));
-        const cleanName = cleanServiceName(sale.service);
-        let servicesString = isFullAccount ? `la cuenta completa de ${cleanName}` : `un perfil de ${cleanName}`;
         
         let message = '';
+
         if (actionType === 'reminder') {
-            if (targetDays === 0) message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
-            else if (targetDays === 1) message = `⚠️ Buen Día ${client}⚠️\nMañana vence: ${servicesString}.\n¿Renuevas un mes más?`;
-            else message = `Hola ${client}, recordatorio: ${servicesString} vence en ${targetDays} días.`;
-        } else if (actionType === 'data') {
+            // 1. Filtrar ventas relacionadas según el ESTADO de urgencia
+            let relatedSales = [];
+
+            if (targetDays < 0) {
+                // Si es VENCIDO, buscar TODOS los vencidos de este cliente
+                relatedSales = sales.filter(s => s.client === client && _getDays(s.endDate) < 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+            } else if (targetDays === 0) {
+                // Si es HOY, buscar TODOS los que vencen HOY
+                relatedSales = sales.filter(s => s.client === client && _getDays(s.endDate) === 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+            } else if (targetDays === 1) {
+                // Si es MAÑANA, buscar TODOS los que vencen MAÑANA
+                relatedSales = sales.filter(s => s.client === client && _getDays(s.endDate) === 1 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+            } else {
+                // Si es FUTURO, buscar por fecha exacta
+                relatedSales = sales.filter(s => s.client === client && s.endDate === endDate && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+            }
+
+            // 2. Agrupar y Sumar (Crear el texto "1 perfil de X y 2 cuentas de Y")
+            const groups = {};
+            relatedSales.forEach(s => {
+                const cleanName = cleanServiceName(s.service);
+                const isFull = s.type === 'Cuenta' || (s.service && s.service.toLowerCase().includes('cuenta completa'));
+                const key = `${cleanName}-${isFull ? 'C' : 'P'}`;
+
+                if (!groups[key]) { groups[key] = { name: cleanName, isFull: isFull, count: 0 }; }
+                groups[key].count += 1;
+            });
+
+            const descriptionParts = Object.values(groups).map(g => {
+                if (g.isFull) { return `${g.count} ${g.count > 1 ? 'cuentas completas' : 'cuenta completa'} de ${g.name}`; } 
+                else { return `${g.count} ${g.count > 1 ? 'perfiles' : 'perfil'} de ${g.name}`; }
+            });
+
+            const servicesString = descriptionParts.join(' y ');
+
+            // 3. Seleccionar Plantilla de Mensaje
+            if (targetDays < 0) {
+                message = `🔴 Hola, recordatorio de pago pendiente por: ${servicesString}`;
+            } else if (targetDays === 0) {
+                message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
+            } else if (targetDays === 1) {
+                message = `⚠️ Buen Día ${client}⚠️\nMañana vence: ${servicesString}.\n¿Renuevas un mes más?`;
+            } else {
+                message = `Hola ${client}, recordatorio: ${servicesString} vence en ${targetDays} días.`;
+            }
+        } 
+        else if (actionType === 'data') {
+            // ENVIO DE DATOS (Individual por ahora, o podrías agruparlo si quisieras)
             let readableDate = endDate ? endDate.split('-').reverse().join('/') : '---';
             const pinValue = (sale.pin && sale.pin.trim() !== "") ? sale.pin : "No Tiene";
+            const cleanName = cleanServiceName(sale.service);
+            const isFullAccount = sale.type === 'Cuenta' || (sale.service && sale.service.toLowerCase().includes('cuenta completa'));
 
             if (isFullAccount) {
-                // Formato Cuenta Completa
                 message = `${cleanName.toUpperCase()} CUENTA COMPLETA\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n\n☑️Su Cuenta Vence el día ${readableDate}☑️`;
             } else {
-                // Formato Perfil (Ajustado a tu plantilla)
                 message = `${cleanName.toUpperCase()} 1 PERFIL\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}\nPIN:\n${pinValue}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
             }
         }
+        
         window.open(getWhatsAppUrl(phone, message), '_blank');
     };
 
