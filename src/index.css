@@ -44,3 +44,13 @@ body {
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
 }
+
+/* --- FIX CALENDARIO MODO OSCURO --- */
+.dark-calendar::-webkit-calendar-picker-indicator {
+  filter: invert(1); /* Invierte el color del icono a Blanco */
+  opacity: 0.6;
+  cursor: pointer;
+}
+.dark-calendar::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

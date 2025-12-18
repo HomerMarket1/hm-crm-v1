@@ -1,10 +1,9 @@
 // src/views/SaleForm.jsx
 import React, { useMemo } from 'react';
-import { Copy, Package, User, Smartphone, Calendar, DollarSign, Layers, X, Save } from 'lucide-react';
+import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save } from 'lucide-react';
+// ✅ Importamos nuestro Calendario iOS
+import AppleCalendar from '../components/AppleCalendar';
 
-// =========================================================================
-// 0. HELPER INTERNO
-// =========================================================================
 const getServiceCategory = (serviceName) => {
     if (!serviceName) return 'UNKNOWN';
     const lower = serviceName.toLowerCase();
@@ -33,12 +32,10 @@ const SaleForm = ({
     setView,
     resetForm,
     catalog,
-    darkMode // ✅ Recibimos el Modo Oscuro
+    darkMode 
 }) => {
 
-    // =========================================================================
-    // 🎨 ESTILOS DINÁMICOS (Modo Día / Noche)
-    // =========================================================================
+    // 🎨 ESTILOS DINÁMICOS
     const theme = {
         bg: darkMode ? 'bg-[#161B28]' : 'bg-white',
         text: darkMode ? 'text-white' : 'text-slate-800',
@@ -54,15 +51,13 @@ const SaleForm = ({
         cancelBtn: darkMode ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200',
         trackBg: darkMode ? 'bg-black/20' : 'bg-slate-100',
         activeBtn: darkMode ? 'bg-[#2A303C] text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm',
+        placeholder: darkMode ? 'placeholder-slate-500' : 'placeholder-slate-400',
     };
 
     const INPUT_WRAPPER = "relative group";
     const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none";
+    const INPUT_STYLE = `w-full p-4 pl-11 rounded-2xl text-sm font-bold outline-none transition-all focus:ring-4 focus:ring-indigo-500/10 ${theme.inputBg} ${theme.inputBorder} ${theme.inputText} ${theme.placeholder} disabled:opacity-50`;
     
-    // Input adaptado a ambos modos
-    const INPUT_STYLE = `w-full p-4 pl-11 rounded-2xl text-sm font-bold outline-none transition-all focus:ring-4 focus:ring-indigo-500/10 ${theme.inputBg} ${theme.inputBorder} ${theme.inputText} placeholder:text-slate-400 disabled:opacity-50`;
-    
-    // 1. LÓGICA DE CATEGORIZACIÓN
     const baseService = getServiceCategory(formData.service);
 
     const filteredConversionCatalog = useMemo(() => {
@@ -73,28 +68,18 @@ const SaleForm = ({
         });
     }, [catalog, baseService, formData.service]); 
 
-    // 2. DETECCIÓN DE ESTADOS EXENTOS
     const EXEMPT_STATUSES = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
-    
     const isExempt = useMemo(() => {
         if (!formData.client) return false;
-        return EXEMPT_STATUSES.some(status => 
-            formData.client.trim().toLowerCase() === status.toLowerCase()
-        );
+        return EXEMPT_STATUSES.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
     }, [formData.client]);
 
-    // 3. HANDLERS
     const handleQuantityClick = (num) => {
         let newCost = formData.cost;
         let newService = formData.service;
-        
         if (formData.client === 'LIBRE' && num > 0) {
-            const individualService = catalog.find(s => 
-                s.type === 'Perfil' && s.defaultSlots === 1 && getServiceCategory(s.name) === baseService
-            );
-            if (individualService) {
-                newCost = Number(individualService.cost) * num; 
-            }
+            const individualService = catalog.find(s => s.type === 'Perfil' && s.defaultSlots === 1 && getServiceCategory(s.name) === baseService);
+            if (individualService) newCost = Number(individualService.cost) * num; 
         }
         setFormData({ ...formData, profilesToBuy: num, cost: newCost, service: newService });
     };
@@ -164,26 +149,20 @@ const SaleForm = ({
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
-                                <div className={INPUT_WRAPPER}>
-                                    <Calendar size={18} className={ICON_STYLE}/>
-                                    <input 
-                                        type="date" 
-                                        className={INPUT_STYLE + " pr-2 text-xs"} 
+                                
+                                {/* ✅ AQUI USAMOS EL CALENDARIO IOS */}
+                                <div className="z-20"> 
+                                    <AppleCalendar 
                                         value={formData.endDate} 
-                                        onChange={e=>setFormData({...formData, endDate:e.target.value})} 
-                                        required={!isExempt} 
+                                        onChange={(newDate) => setFormData({...formData, endDate: newDate})} 
+                                        label="Vencimiento"
+                                        darkMode={darkMode}
                                     />
                                 </div>
+
                                 <div className={INPUT_WRAPPER}>
                                     <DollarSign size={18} className={ICON_STYLE}/>
-                                    <input 
-                                        type="number" 
-                                        className={INPUT_STYLE} 
-                                        value={formData.cost} 
-                                        onChange={e=>setFormData({...formData, cost:e.target.value})} 
-                                        placeholder="Precio" 
-                                        required={!isExempt} 
-                                    />
+                                    <input type="number" className={INPUT_STYLE} value={formData.cost} onChange={e=>setFormData({...formData, cost:e.target.value})} placeholder="Precio" required={!isExempt} />
                                 </div>
                             </div>
                         </div>
@@ -204,7 +183,7 @@ const SaleForm = ({
                             </div>
                         </div>
 
-                        {/* CONVERSION (RESTAURADO) */}
+                        {/* CONVERSION */}
                         {filteredConversionCatalog.length > 0 && (
                             <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100/50'}`}>
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase mb-2"><Package size={12}/> Tipo de Servicio</label>
