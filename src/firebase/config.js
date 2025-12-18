@@ -1,12 +1,15 @@
 // src/firebase/config.js
+import { initializeApp } from "firebase/app";
+// Importamos las herramientas para activar la memoria caché offline
+import { 
+    getFirestore, 
+    initializeFirestore, 
+    persistentLocalCache, 
+    persistentMultipleTabManager 
+} from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-
-// ============================================================================
-// ✅ CREDENCIALES MOVIDAS
-// ============================================================================
+// Tus credenciales reales
 const firebaseConfig = {
   apiKey: "AIzaSyBw3xZAm7MIBg5_0wofo9ZLOKdaFqfrtKo",
   authDomain: "hm-digital-b573e.firebaseapp.com",
@@ -17,6 +20,18 @@ const firebaseConfig = {
   measurementId: "G-MYN2RPJXF0"
 };
 
+// Inicializar la App
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app); // Exportar para Login/Logout
-export const db = getFirestore(app); // Exportar para CRUD
+
+// ✅ ACTIVAR PERSISTENCIA (OFFLINE)
+// En lugar de usar getFirestore(), usamos initializeFirestore con configuración de caché.
+// Esto permite que los datos se guarden en el navegador (IndexedDB) para no gastar lecturas.
+const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
+});
+
+const auth = getAuth(app);
+
+export { db, auth };
