@@ -113,13 +113,18 @@ const App = () => {
         setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
     };
 
-    // ✅ Edición de Clientes (Directorio)
+    // ✅ Edición de Clientes (Directorio) - CORREGIDO: SE ENVÍA EL NOMBRE ORIGINAL
     const handleSaveEditClient = async (clientId, newData) => {
         if(clientManagement.updateClient) {
-            await clientManagement.updateClient(clientId, newData);
+            // 1. Rescatamos el nombre que tenía el cliente ANTES de la edición
+            const originalName = editClientModal.client ? editClientModal.client.name : null;
+            
+            // 2. Se lo enviamos a la función de actualización (3er argumento) para actualizar las ventas
+            await clientManagement.updateClient(clientId, newData, originalName);
         }
         setEditClientModal({ show: false, client: null });
     };
+
     const triggerOpenEditClient = (client) => {
         setEditClientModal({ show: true, client });
     };

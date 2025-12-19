@@ -1,26 +1,21 @@
 // src/hooks/useClientManagement.js
 import { useState, useEffect } from 'react';
-// ✅ Importamos updateDoc para poder editar
-import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore'; 
+import { collection, addDoc, deleteDoc, doc, updateDoc, query, where, getDocs, writeBatch } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 
 export const useClientManagement = (user, basePath, sales, clientsDirectory, setNotification) => {
     
-    // Lista local de clientes
     const [allClients, setAllClients] = useState([]);
 
-    // Mantiene la lista sincronizada con lo que descarga useDataSync
     useEffect(() => {
         if (clientsDirectory) {
             setAllClients(clientsDirectory);
         }
     }, [clientsDirectory]);
 
-    // 1. CREAR CLIENTE (Si no existe)
+    // 1. CREAR CLIENTE
     const saveClientIfNew = async (clientName, clientPhone) => {
         if (!user || !clientName) return;
-        
-        // Normalizamos nombre para evitar duplicados por mayúsculas
         const cleanName = clientName.trim();
         const exists = allClients.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
 
@@ -31,7 +26,6 @@ export const useClientManagement = (user, basePath, sales, clientsDirectory, set
                     phone: clientPhone || '',
                     createdAt: new Date().toISOString()
                 });
-                // No mostramos notificación para no interrumpir el flujo de venta rápida
             } catch (error) {
                 console.error("Error guardando cliente:", error);
             }
@@ -41,7 +35,7 @@ export const useClientManagement = (user, basePath, sales, clientsDirectory, set
     // 2. ELIMINAR CLIENTE
     const triggerDeleteClient = async (clientId) => {
         if (!user) return;
-        if (window.confirm("¿Estás seguro de eliminar este cliente del directorio?")) {
+        if (window.confirm("¿Estás seguro de eliminar este cliente del directorio? (Sus ventas no se borrarán)")) {
             try {
                 await deleteDoc(doc(db, `users/${user.uid}/clients`, clientId));
                 setNotification({ show: true, message: 'Cliente eliminado del directorio', type: 'success' });
@@ -52,17 +46,45 @@ export const useClientManagement = (user, basePath, sales, clientsDirectory, set
         }
     };
 
-    // 3. ✅ EDITAR CLIENTE (La función que faltaba)
-    const updateClient = async (clientId, updatedData) => {
-        if (!user) return;
+    // 3. ✅ EDITAR CLIENTE (SINCRONIZACIÓN TOTAL)
+    const updateClient = async (clientId, newData, originalName) => {
+        if (!user) return false;
+        
         try {
+            // A. Actualizar en el Directorio (Siempre se hace)
             const clientRef = doc(db, `users/${user.uid}/clients`, clientId);
             await updateDoc(clientRef, {
-                name: updatedData.name,
-                phone: updatedData.phone
+                name: newData.name,
+                phone: newData.phone
             });
-            setNotification({ show: true, message: 'Cliente actualizado correctamente', type: 'success' });
+
+            // B. Actualizar ventas asociadas (Cascada)
+            // Si recibimos el "Nombre Viejo" (originalName), buscamos todas las ventas que lo tengan
+            // y les pegamos el nombre nuevo y el teléfono nuevo.
+            if (originalName) {
+                const batch = writeBatch(db);
+                const salesRef = collection(db, `users/${user.uid}/sales`);
+                
+                // Buscar ventas que tengan el nombre antiguo
+                const q = query(salesRef, where('client', '==', originalName));
+                const snapshot = await getDocs(q);
+
+                if (!snapshot.empty) {
+                    snapshot.forEach((docSnap) => {
+                        // Actualizamos Cliente y Teléfono en la venta
+                        batch.update(docSnap.ref, { 
+                            client: newData.name,
+                            phone: newData.phone 
+                        });
+                    });
+                    await batch.commit();
+                    console.log(`Sincronizados ${snapshot.size} registros de venta.`);
+                }
+            }
+
+            setNotification({ show: true, message: 'Cliente y sus ventas actualizados', type: 'success' });
             return true;
+
         } catch (error) {
             console.error("Error actualizando cliente:", error);
             setNotification({ show: true, message: 'Error al actualizar datos', type: 'error' });
@@ -70,7 +92,6 @@ export const useClientManagement = (user, basePath, sales, clientsDirectory, set
         }
     };
 
-    // Función auxiliar (ya no se usa directamente aquí porque el modal está en App.jsx, pero la mantenemos por compatibilidad)
     const triggerEditClient = (client) => {
         console.log("Solicitud de edición para:", client);
     };
@@ -80,6 +101,6 @@ export const useClientManagement = (user, basePath, sales, clientsDirectory, set
         saveClientIfNew,
         triggerDeleteClient,
         triggerEditClient,
-        updateClient // ✅ Exportamos la nueva función para que App.jsx la pueda usar
+        updateClient 
     };
 };
