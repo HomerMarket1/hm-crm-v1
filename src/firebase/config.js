@@ -1,15 +1,14 @@
 // src/firebase/config.js
 import { initializeApp } from "firebase/app";
-// Importamos las herramientas para activar la memoria caché offline
+// Herramientas para caché offline (Persistencia)
 import { 
-    getFirestore, 
     initializeFirestore, 
     persistentLocalCache, 
     persistentMultipleTabManager 
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// Tus credenciales reales
+// Tus credenciales
 const firebaseConfig = {
   apiKey: "AIzaSyBw3xZAm7MIBg5_0wofo9ZLOKdaFqfrtKo",
   authDomain: "hm-digital-b573e.firebaseapp.com",
@@ -23,11 +22,12 @@ const firebaseConfig = {
 // Inicializar la App
 const app = initializeApp(firebaseConfig);
 
-// ✅ ACTIVAR PERSISTENCIA (OFFLINE)
-// En lugar de usar getFirestore(), usamos initializeFirestore con configuración de caché.
-// Esto permite que los datos se guarden en el navegador (IndexedDB) para no gastar lecturas.
+// ✅ ACTIVAR PERSISTENCIA (OFFLINE - MODO MODERNO)
+// Esto guarda tus 1800 clientes en la base de datos interna del navegador (IndexedDB).
+// Al recargar la página, los datos cargan al instante sin esperar a Internet.
 const db = initializeFirestore(app, {
     localCache: persistentLocalCache({
+        // Esto permite tener varias pestañas abiertas sin que la base de datos falle
         tabManager: persistentMultipleTabManager()
     })
 });

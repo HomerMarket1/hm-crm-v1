@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useReducer, useEffect } from 'react';
+import React, { useState, useReducer, useEffect, Suspense, lazy } from 'react'; // 1. Importamos Suspense y lazy
 import { Loader } from 'lucide-react'; 
 
 // Reducers y Hooks
@@ -18,15 +18,16 @@ import { sendWhatsApp } from './utils/helpers';
 import MainLayout from './layouts/MainLayout';
 import ConfirmModal from './components/ConfirmModal';
 import EditAccountModal from './components/EditAccountModal';
-import EditClientModal from './components/EditClientModal'; // ✅ Importamos el Modal de Clientes
+import EditClientModal from './components/EditClientModal'; 
 import Toast from './components/Toast'; 
 
-// Vistas
-import LoginScreen from './views/LoginScreen';
-import Dashboard from './views/Dashboard';
-import StockManager from './views/StockManager';
-import Config from './views/Config';
-import SaleForm from './views/SaleForm';
+// 2. VISTAS (OPTIMIZACIÓN: Carga Perezosa)
+// El navegador no descargará estos archivos hasta que el usuario entre a la sección.
+const LoginScreen = lazy(() => import('./views/LoginScreen'));
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const StockManager = lazy(() => import('./views/StockManager'));
+const Config = lazy(() => import('./views/Config'));
+const SaleForm = lazy(() => import('./views/SaleForm'));
 
 let NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 try {
@@ -46,7 +47,7 @@ const App = () => {
     const [notification, setNotification] = useState({ show: true, message: '', type: 'success' }); 
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '', data: null });
     const [editAccountModal, setEditAccountModal] = useState({ show: false, email: '', oldPass: '', newPass: '' });
-    const [editClientModal, setEditClientModal] = useState({ show: false, client: null }); // ✅ Estado para Editar Cliente
+    const [editClientModal, setEditClientModal] = useState({ show: false, client: null }); 
     const [openMenuId, setOpenMenuId] = useState(null);
 
     // 🌑 MODO NOCTURNO (Persistente)
@@ -99,7 +100,7 @@ const App = () => {
     const handleGenerateStock = async (data) => { if(await crmActions.generateStock(data || stockForm)) { dispatch({type:uiActionTypes.SET_STOCK_TAB, payload:'manage'}); setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' }); }};
     const handleStockServiceChange = (e) => { const f = catalog.find(s=>s.name===e.target.value); setStockForm({...stockForm, service: f?.name||e.target.value, cost: f?.cost||0, type: f?.type||'Perfil', slots: f?.defaultSlots||1}); };
 
-    // Acciones de Confirmación (Borrar, Liberar, etc.)
+    // Acciones de Confirmación
     const handleConfirmActionWrapper = async () => {
         await crmActions.executeConfirmAction(confirmModal, sales, catalog);
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
@@ -113,18 +114,14 @@ const App = () => {
         setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
     };
 
-    // ✅ Edición de Clientes (Directorio) - CORREGIDO: SE ENVÍA EL NOMBRE ORIGINAL
+    // Edición de Clientes
     const handleSaveEditClient = async (clientId, newData) => {
         if(clientManagement.updateClient) {
-            // 1. Rescatamos el nombre que tenía el cliente ANTES de la edición
             const originalName = editClientModal.client ? editClientModal.client.name : null;
-            
-            // 2. Se lo enviamos a la función de actualización (3er argumento) para actualizar las ventas
             await clientManagement.updateClient(clientId, newData, originalName);
         }
         setEditClientModal({ show: false, client: null });
     };
-
     const triggerOpenEditClient = (client) => {
         setEditClientModal({ show: true, client });
     };
@@ -162,7 +159,7 @@ const App = () => {
         sendWhatsApp(related.length > 1 ? related : [sale], actionType);
     };
     
-    // Triggers para Modales
+    // Triggers
     const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
     const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
     const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
@@ -193,7 +190,6 @@ const App = () => {
     const setView = (v) => dispatch({ type: uiActionTypes.SET_VIEW, payload: v });
     const setStockTab = (t) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: t });
 
-    // Multi-Input Perfiles
     useEffect(() => { 
         const c = parseInt(formData.profilesToBuy || 1);
         setBulkProfiles(prev => { const n = [...prev]; while(n.length < c) n.push({profile:'',pin:''}); return n.length > c ? n.slice(0, c) : n; });
@@ -201,8 +197,9 @@ const App = () => {
 
 
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader className="animate-spin text-blue-500"/></div>;
-    if (!user) return <><Toast notification={notification} setNotification={setNotification} /><LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/></>;
-
+    
+    // 3. RENDERIZADO OPTIMIZADO (Suspense)
+    // Mientras carga la vista, muestra un spinner centrado
     return (
         <MainLayout 
             view={view} setView={setView} handleLogout={handleLogout} 
@@ -212,58 +209,57 @@ const App = () => {
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
 
-            {/* ✅ MODALES CON MODO OSCURO */}
-            <ConfirmModal 
-                modal={confirmModal} 
-                onClose={() => setConfirmModal({show:false})} 
-                onConfirm={handleConfirmActionWrapper} 
-                darkMode={darkMode} 
-            />
-            
+            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({show:false})} onConfirm={handleConfirmActionWrapper} darkMode={darkMode} />
             {editAccountModal.show && <EditAccountModal modal={editAccountModal} setModal={setEditAccountModal} onConfirm={handleEditAccountCredentials} />}
-            
             {editClientModal.show && <EditClientModal modal={editClientModal} setModal={setEditClientModal} onConfirm={handleSaveEditClient} darkMode={darkMode} />}
 
-            {/* VISTAS */}
-            {view === 'dashboard' && <Dashboard 
-                sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
-                filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
-                totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
-                getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
-                NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} 
-                handleQuickRenew={(id) => { const s = sales.find(i=>i.id===id); crmActions.quickRenew(id, s?.endDate); }} 
-                triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView}
-                openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
-                expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
-                darkMode={darkMode}
-            />}
+            <Suspense fallback={<div className="flex h-full items-center justify-center min-h-[60vh]"><Loader className="animate-spin text-indigo-500 w-10 h-10"/></div>}>
+                {!user ? (
+                    <LoginScreen loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin}/>
+                ) : (
+                    <>
+                        {view === 'dashboard' && <Dashboard 
+                            sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
+                            filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
+                            totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
+                            getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
+                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} 
+                            handleQuickRenew={(id) => { const s = sales.find(i=>i.id===id); crmActions.quickRenew(id, s?.endDate); }} 
+                            triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView}
+                            openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
+                            expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
+                            darkMode={darkMode}
+                        />}
 
-            {view === 'config' && <Config 
-                catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
-                handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
-                handleEditCatalogService={handleEditCatalogService} 
-                triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients} 
-                triggerDeleteClient={clientManagement.triggerDeleteClient} 
-                triggerEditClient={triggerOpenEditClient} 
-                setNotification={setNotification} formData={formData} setFormData={setFormData}
-                darkMode={darkMode}
-            />}
+                        {view === 'config' && <Config 
+                            catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
+                            handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
+                            handleEditCatalogService={handleEditCatalogService} 
+                            triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients} 
+                            triggerDeleteClient={clientManagement.triggerDeleteClient} 
+                            triggerEditClient={triggerOpenEditClient} 
+                            setNotification={setNotification} formData={formData} setFormData={setFormData}
+                            darkMode={darkMode}
+                        />}
 
-            {view === 'add_stock' && <StockManager
-                accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab} stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
-                handleStockServiceChange={handleStockServiceChange} handleGenerateStock={handleGenerateStock}
-                triggerDeleteAccount={triggerDeleteAccount} triggerDeleteFreeStock={triggerDeleteFreeStock} triggerEditAccount={triggerEditAccount}
-                darkMode={darkMode}
-            />}
+                        {view === 'add_stock' && <StockManager
+                            accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab} stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
+                            handleStockServiceChange={handleStockServiceChange} handleGenerateStock={handleGenerateStock}
+                            triggerDeleteAccount={triggerDeleteAccount} triggerDeleteFreeStock={triggerDeleteFreeStock} triggerEditAccount={triggerEditAccount}
+                            darkMode={darkMode}
+                        />}
 
-            {view === 'form' && <SaleForm
-                formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
-                allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={maxAvailableSlots}
-                getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
-                handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
-                handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}
-                darkMode={darkMode}
-            />}
+                        {view === 'form' && <SaleForm
+                            formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
+                            allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={maxAvailableSlots}
+                            getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
+                            handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
+                            handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}
+                            darkMode={darkMode}
+                        />}
+                    </>
+                )}
+            </Suspense>
         </MainLayout>
     );
 };
