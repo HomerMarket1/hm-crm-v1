@@ -304,14 +304,31 @@ const Dashboard = ({
             {/* BARRA FILTROS */}
             <div className={`sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 backdrop-blur-xl transition-all ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
                 <div className={`backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg border flex flex-col gap-2 ${theme.filterContainer}`}>
+                    
+                    {/* Buscador */}
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar..." className={`block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 border-none font-medium rounded-2xl transition-all outline-none focus:ring-0 ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
+                    
                     <div className="flex flex-col md:flex-row gap-2 w-full">
+                        {/* Filtros de Servicio y Estado */}
                         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto"><div className="relative flex-shrink-0"><select className={`appearance-none font-bold text-[10px] md:text-xs py-2 pl-3 pr-6 rounded-xl border border-transparent transition-all cursor-pointer outline-none ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-slate-100/80 text-slate-600 hover:bg-white'}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}><option value="Todos">Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select><Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div><div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>{['Todos', 'Libres', 'Ocupados', 'Problemas', 'Vencidos'].map((status) => (<button key={status} onClick={() => setFilter('filterStatus', status)} className={`px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${filterStatus === status ? theme.filterBtnActive : theme.filterBtnInactive}`}>{status}</button>))}</div></div>
-                        <div className={`flex items-center gap-1 px-2 py-1.5 rounded-xl border w-full md:w-auto ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}>
-                            <div className="w-28"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div>
-                            <span className="text-slate-400 text-xs">-</span>
-                            <div className="w-28"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
-                            {(dateFrom || dateTo) && <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100"><X size={10}/></button>}
+                        
+                        {/* ✅ FECHAS MINIMALISTAS (Contenedor Cápsula) */}
+                        <div className={`flex items-center gap-1 px-1 py-1 rounded-xl border w-full md:w-auto flex-shrink-0 ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}>
+                            <div className="w-24 md:w-28">
+                                {/* El label "Desde" se mostrará dentro del botón si no hay fecha */}
+                                <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
+                            </div>
+                            <span className="text-slate-400 text-xs shrink-0">-</span>
+                            <div className="w-24 md:w-28">
+                                <AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} />
+                            </div>
+                            
+                            {/* Botón limpiar */}
+                            {(dateFrom || dateTo) && (
+                                <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition-colors shrink-0">
+                                    <X size={14}/>
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
