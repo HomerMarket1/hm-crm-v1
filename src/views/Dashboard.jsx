@@ -1,10 +1,12 @@
 // src/views/Dashboard.jsx
-import React, { useState, useEffect } from 'react'; 
-import { Search, Smartphone, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy } from 'lucide-react';
-// ✅ Importamos el Calendario
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
+import { Search, Smartphone, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Loader } from 'lucide-react';
+// ✅ Importamos el Calendario (Conservado)
 import AppleCalendar from '../components/AppleCalendar';
 
-// --- HELPERS ---
+// --- HELPERS GLOBALES ---
+const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
+
 const cleanServiceName = (name) => {
     if (!name) return '';
     return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
@@ -30,9 +32,9 @@ const safeGetDays = (dateString) => {
     } catch(e) { return 0; }
 };
 
-const safeGetStatusColor = (endDate, client, NON_BILLABLE, darkMode) => {
+const safeGetStatusColor = (endDate, client, darkMode) => {
     if (client === 'LIBRE') return darkMode ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-100 text-emerald-600 border-emerald-200';
-    if (NON_BILLABLE?.includes(client)) return darkMode ? 'bg-white/5 text-slate-500 border-white/5' : 'bg-gray-100 text-gray-500 border-gray-200';
+    if (NON_BILLABLE_STATUSES.includes(client)) return darkMode ? 'bg-white/5 text-slate-500 border-white/5' : 'bg-gray-100 text-gray-500 border-gray-200';
     if (!endDate) return 'text-slate-500';
     
     const days = safeGetDays(endDate);
@@ -46,33 +48,145 @@ const safeGetStatusIcon = (serviceName) => {
     return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
 };
 
+// ⚡️ OPTIMIZACIÓN: COMPONENTE TARJETA EXTERNO Y MEMOIZADO
+// Al sacarlo del Dashboard, React no lo "re-crea" en cada render, lo que acelera todo x10.
+const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
+    const isFree = sale.client === 'LIBRE';
+    const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
+    const isAdmin = sale.client === 'Admin';
+    const days = safeGetDays(sale.endDate);
+    const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
+
+    // Reconstruimos el tema localmente para este componente
+    const cardStyle = isFree 
+        ? (darkMode ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-emerald-50/30 border border-emerald-100/50")
+        : isProblem 
+            ? (darkMode ? "bg-rose-500/5 border border-rose-500/10" : "bg-rose-50/30 border border-rose-100/50")
+            : isAdmin 
+                ? (darkMode ? "bg-black border border-white/10" : "bg-slate-900/90 text-white")
+                : (darkMode ? 'bg-[#161B28]/60 backdrop-blur-md border border-white/5 shadow-sm hover:bg-[#161B28]' : 'bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60');
+
+    const primaryColor = isFree 
+        ? (darkMode ? "text-emerald-400" : "text-emerald-900")
+        : isProblem
+            ? (darkMode ? "text-rose-400" : "text-rose-900")
+            : isAdmin
+                ? "text-white"
+                : (darkMode ? "text-slate-200" : "text-slate-800");
+
+    const priceColor = isAdmin ? "text-white/80" : (darkMode ? "text-slate-300" : "text-slate-700");
+    const textSecondary = darkMode ? "text-slate-400" : "text-slate-500";
+
+    return (
+        <div className={`p-2.5 md:p-4 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${cardStyle}`}>
+            <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
+                <div className="col-span-12 md:col-span-4 w-full flex items-start gap-2.5">
+                    <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 border ${darkMode ? 'border-white/5' : 'border-transparent'} ${safeGetStatusColor(sale.endDate, sale.client, darkMode)}`}>
+                        {safeGetStatusIcon(sale.service)}
+                    </div>
+                    <div className="flex-1 min-w-0 relative pt-0.5">
+                        <div className="flex justify-between items-start">
+                            <div className='pr-1'>
+                                <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${primaryColor} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
+                                <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>{sale.service}</div>
+                            </div>
+                            {!isFree && !isProblem && (
+                                <div className="text-right md:hidden flex flex-col items-end leading-none">
+                                    {cost > 0 && <span className={`text-sm font-black tracking-tight ${priceColor}`}>${cost}</span>}
+                                    <div className={`text-[9px] font-bold mt-0.5 ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
+                                </div>
+                            )}
+                        </div>
+                        {!isFree && !isProblem && <div className="md:hidden mt-0.5 flex items-center gap-1 opacity-70"><Smartphone size={9} className="text-slate-400"/> <span className="text-[9px] font-medium text-slate-500">{sale.phone}</span></div>}
+                    </div>
+                </div>
+
+                <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
+                    <div className={`flex flex-col justify-center rounded-lg px-2 py-1.5 md:p-0 border md:border-none ${darkMode ? 'bg-black/20 border-white/5' : 'bg-white/40 border-white/20 md:bg-transparent'}`}>
+                        <div className={`flex items-start justify-between gap-1 mb-1 ${textSecondary}`}>
+                            <div className="flex items-start gap-1 min-w-0"><div className="text-[10px] md:text-[11px] font-medium truncate select-all">{sale.email}</div></div>
+                            <button onClick={(e) => handlers.copy(e, sale.email, sale.pass)} className={`p-0.5 rounded-full transition-colors active:scale-90 flex-shrink-0 -mt-0.5 ${darkMode ? 'text-slate-500 hover:text-indigo-400' : 'text-slate-400 hover:text-indigo-600'}`}><Copy size={12}/></button>
+                        </div>
+                        <div className={`flex items-center justify-between gap-2 pt-1 md:pt-0 md:border-none ${darkMode ? 'border-white/5' : 'border-black/5'}`}>
+                            <div className="flex items-center gap-1"><div className={`text-[10px] md:text-xs font-mono font-bold truncate select-all ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{sale.pass}</div></div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                                {!isFree && (<><span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase border border-white/10 ${isAdmin ? 'bg-white/10 text-white' : (darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white/60 text-indigo-600')}`}>{sale.profile || 'Gral'}</span><span className={`font-mono text-[9px] tracking-widest px-1 py-0.5 rounded border border-white/10 ${isAdmin ? 'bg-white/5 text-slate-300' : (darkMode ? 'bg-white/5 text-slate-500' : 'bg-slate-100/50 text-slate-500')}`}>{sale.pin || '••••'}</span></>)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="hidden md:flex col-span-3 w-full flex-col items-center">
+                    {!isFree && !isProblem ? (
+                        <div className="text-center">
+                            <div className={`text-xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : primaryColor}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
+                            <div className={`text-[10px] font-bold uppercase tracking-wider ${textSecondary}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
+                        </div>
+                    ) : (isFree ? <span className="text-xs font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-lg">LIBRE</span> : <span className="text-xs font-black text-slate-500 uppercase tracking-widest">---</span>)}
+                    {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
+                </div>
+
+                <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t md:border-none border-white/5">
+                    <div className="flex justify-end gap-1 w-full md:w-auto">
+                        {isFree ? (
+                            <button onClick={() => handlers.assign(sale)} className={`w-full md:w-auto px-4 h-8 md:h-9 rounded-full font-bold text-xs shadow-lg flex items-center justify-center gap-1 ${darkMode ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-emerald-500 text-white shadow-emerald-500/30'}`}>Asignar <ChevronRight size={14}/></button>
+                        ) : (
+                            <div className="flex items-center gap-1 w-full justify-end">
+                                <div className="flex gap-1">
+                                    {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? (darkMode ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600') : (darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600')}`}><XCircle size={12}/></button>}
+                                    {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-white/5 text-slate-400 hover:bg-indigo-500/20 hover:text-indigo-300' : 'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600'}`}><Lock size={12}/></button>}
+                                    <button onClick={() => handlers.edit(sale)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center hover:bg-slate-200 ${darkMode ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'}`}><Edit2 size={12}/></button>
+                                </div>
+                                <div className={`flex gap-1 pl-1 border-l ml-1 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                                    {!isProblem && <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center shadow-sm ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}><CalendarPlus size={12}/></button>}
+                                    <button onClick={() => handlers.liberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full border flex items-center justify-center shadow-sm ${darkMode ? 'bg-transparent border-white/10 text-slate-500 hover:bg-rose-500/20 hover:text-rose-400' : 'bg-white border-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500'}`}><RotateCcw size={12}/></button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
+
+
 const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
     handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles,
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
-    getDaysRemaining, darkMode, 
-    NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía']
+    getDaysRemaining, darkMode
 }) => {
 
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
     const [sentIds, setSentIds] = useState([]); 
 
-    const _getDays = (date) => getDaysRemaining ? getDaysRemaining(date) : safeGetDays(date);
-    const _getColor = (end, client) => safeGetStatusColor(end, client, NON_BILLABLE_STATUSES, darkMode);
-    const _getIcon = (svc) => safeGetStatusIcon(svc);
+    // --- LOGICA DE SCROLL INFINITO ---
+    const [displayLimit, setDisplayLimit] = useState(50); // Carga inicial
+    const observer = useRef();
 
-    const theme = {
-        card: darkMode ? 'bg-[#161B28]/60 backdrop-blur-md border border-white/5 shadow-sm hover:bg-[#161B28]' : 'bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60',
-        textPrimary: darkMode ? "text-slate-200" : "text-slate-800",
-        textSecondary: darkMode ? "text-slate-400" : "text-slate-500",
-        inputBg: darkMode ? 'bg-black/20 text-white placeholder-slate-600 border-white/5' : 'bg-transparent text-slate-800 placeholder-slate-400',
-        filterBtnActive: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
-        filterBtnInactive: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700',
-        filterContainer: darkMode ? 'bg-[#161B28]/60 border-white/5 shadow-black/20' : 'bg-white/60 shadow-indigo-500/5 border-white/50',
-    };
+    // Resetear límite cuando cambian los filtros
+    useEffect(() => {
+        setDisplayLimit(50);
+    }, [filterClient, filterService, filterStatus, dateFrom, dateTo]);
 
+    // El Sensor de Scroll
+    const lastElementRef = useCallback(node => {
+        if (loadingData) return;
+        if (observer.current) observer.current.disconnect();
+        
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && displayLimit < filteredSales.length) {
+                setDisplayLimit(prev => prev + 50); // Cargar 50 más
+            }
+        });
+        
+        if (node) observer.current.observe(node);
+    }, [loadingData, displayLimit, filteredSales.length]);
+
+    // Helpers y Handlers antiguos
     useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
         const savedData = localStorage.getItem('crm_sent_ids');
@@ -92,38 +206,28 @@ const Dashboard = ({
         });
     };
 
-    // 🔥 LOGICA WHATSAPP UNIFICADA (VENCIDOS, HOY, MAÑANA) 🔥
     const handleUnifiedWhatsApp = (sale, actionType) => {
         const { client, phone, endDate } = sale;
-        const targetDays = _getDays(endDate);
+        const targetDays = safeGetDays(endDate); // Usamos el helper seguro
         
         let message = '';
-
         if (actionType === 'reminder') {
-            // 1. Filtrar ventas relacionadas según el ESTADO de urgencia
             let relatedSales = [];
-
             if (targetDays < 0) {
-                // Si es VENCIDO, buscar TODOS los vencidos de este cliente
-                relatedSales = sales.filter(s => s.client === client && _getDays(s.endDate) < 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+                relatedSales = sales.filter(s => s.client === client && safeGetDays(s.endDate) < 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
             } else if (targetDays === 0) {
-                // Si es HOY, buscar TODOS los que vencen HOY
-                relatedSales = sales.filter(s => s.client === client && _getDays(s.endDate) === 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+                relatedSales = sales.filter(s => s.client === client && safeGetDays(s.endDate) === 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
             } else if (targetDays === 1) {
-                // Si es MAÑANA, buscar TODOS los que vencen MAÑANA
-                relatedSales = sales.filter(s => s.client === client && _getDays(s.endDate) === 1 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
+                relatedSales = sales.filter(s => s.client === client && safeGetDays(s.endDate) === 1 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
             } else {
-                // Si es FUTURO, buscar por fecha exacta
                 relatedSales = sales.filter(s => s.client === client && s.endDate === endDate && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
             }
 
-            // 2. Agrupar y Sumar (Crear el texto "1 perfil de X y 2 cuentas de Y")
             const groups = {};
             relatedSales.forEach(s => {
                 const cleanName = cleanServiceName(s.service);
                 const isFull = s.type === 'Cuenta' || (s.service && s.service.toLowerCase().includes('cuenta completa'));
                 const key = `${cleanName}-${isFull ? 'C' : 'P'}`;
-
                 if (!groups[key]) { groups[key] = { name: cleanName, isFull: isFull, count: 0 }; }
                 groups[key].count += 1;
             });
@@ -132,34 +236,21 @@ const Dashboard = ({
                 if (g.isFull) { return `${g.count} ${g.count > 1 ? 'cuentas completas' : 'cuenta completa'} de ${g.name}`; } 
                 else { return `${g.count} ${g.count > 1 ? 'perfiles' : 'perfil'} de ${g.name}`; }
             });
-
             const servicesString = descriptionParts.join(' y ');
 
-            // 3. Seleccionar Plantilla de Mensaje
-            if (targetDays < 0) {
-                message = `🔴 Hola, recordatorio de pago pendiente por: ${servicesString}`;
-            } else if (targetDays === 0) {
-                message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
-            } else if (targetDays === 1) {
-                message = `⚠️ Buen Día ${client}⚠️\nMañana vence: ${servicesString}.\n¿Renuevas un mes más?`;
-            } else {
-                message = `Hola ${client}, recordatorio: ${servicesString} vence en ${targetDays} días.`;
-            }
+            if (targetDays < 0) message = `🔴 Hola, recordatorio de pago pendiente por: ${servicesString}`;
+            else if (targetDays === 0) message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
+            else if (targetDays === 1) message = `⚠️ Buen Día ${client}⚠️\nMañana vence: ${servicesString}.\n¿Renuevas un mes más?`;
+            else message = `Hola ${client}, recordatorio: ${servicesString} vence en ${targetDays} días.`;
         } 
         else if (actionType === 'data') {
-            // ENVIO DE DATOS (Individual por ahora, o podrías agruparlo si quisieras)
             let readableDate = endDate ? endDate.split('-').reverse().join('/') : '---';
             const pinValue = (sale.pin && sale.pin.trim() !== "") ? sale.pin : "No Tiene";
             const cleanName = cleanServiceName(sale.service);
             const isFullAccount = sale.type === 'Cuenta' || (sale.service && sale.service.toLowerCase().includes('cuenta completa'));
-
-            if (isFullAccount) {
-                message = `${cleanName.toUpperCase()} CUENTA COMPLETA\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n\n☑️Su Cuenta Vence el día ${readableDate}☑️`;
-            } else {
-                message = `${cleanName.toUpperCase()} 1 PERFIL\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}\nPIN:\n${pinValue}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
-            }
+            if (isFullAccount) message = `${cleanName.toUpperCase()} CUENTA COMPLETA\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n\n☑️Su Cuenta Vence el día ${readableDate}☑️`;
+            else message = `${cleanName.toUpperCase()} 1 PERFIL\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}\nPIN:\n${pinValue}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
         }
-        
         window.open(getWhatsAppUrl(phone, message), '_blank');
     };
 
@@ -170,6 +261,16 @@ const Dashboard = ({
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
     };
 
+    // Empaquetamos handlers para la tarjeta memoizada
+    const handlers = useMemo(() => ({
+        whatsapp: handleUnifiedWhatsApp,
+        copy: handleCopyCredentials,
+        assign: (sale) => { setFormData(sale); setView('form'); },
+        edit: (sale) => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); },
+        renew: (id, endDate) => handleQuickRenew(id, endDate),
+        liberate: (id) => triggerLiberate(id)
+    }), [sales, handleQuickRenew, triggerLiberate]); // Dependencias clave
+
     const openBulkModal = (type) => {
         let list = []; let title = '';
         if (type === 'today') { list = expiringToday; title = 'Vencen Hoy'; }
@@ -179,100 +280,12 @@ const Dashboard = ({
         setBulkModal({ show: true, title, list });
     };
 
-    const SaleCard = ({ sale }) => {
-        const isFree = sale.client === 'LIBRE';
-        const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
-        const isAdmin = sale.client === 'Admin';
-        const days = _getDays(sale.endDate);
-        const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
-
-        let cardStyle = theme.card;
-        let primaryColor = theme.textPrimary;
-        let priceColor = darkMode ? "text-slate-300" : "text-slate-700";
-
-        if (isFree) {
-            cardStyle = darkMode ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-emerald-50/30 border border-emerald-100/50";
-            primaryColor = darkMode ? "text-emerald-400" : "text-emerald-900"; 
-        } else if (isProblem) {
-            cardStyle = darkMode ? "bg-rose-500/5 border border-rose-500/10" : "bg-rose-50/30 border border-rose-100/50"; 
-            primaryColor = darkMode ? "text-rose-400" : "text-rose-900"; 
-        } else if (isAdmin) {
-            cardStyle = darkMode ? "bg-black border border-white/10" : "bg-slate-900/90 text-white";
-            primaryColor = "text-white"; 
-            priceColor = "text-white/80";
-        }
-        
-        return (
-            <div className={`p-2.5 md:p-4 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${cardStyle}`}>
-                <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
-                    <div className="col-span-12 md:col-span-4 w-full flex items-start gap-2.5">
-                        <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 border ${darkMode ? 'border-white/5' : 'border-transparent'} ${_getColor(sale.endDate, sale.client)}`}>
-                            {_getIcon(sale.service)}
-                        </div>
-                        <div className="flex-1 min-w-0 relative pt-0.5">
-                            <div className="flex justify-between items-start">
-                                <div className='pr-1'>
-                                    <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${primaryColor} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
-                                    <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${theme.textSecondary}`}>{sale.service}</div>
-                                </div>
-                                {!isFree && !isProblem && (
-                                    <div className="text-right md:hidden flex flex-col items-end leading-none">
-                                        {cost > 0 && <span className={`text-sm font-black tracking-tight ${priceColor}`}>${cost}</span>}
-                                        <div className={`text-[9px] font-bold mt-0.5 ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
-                                    </div>
-                                )}
-                            </div>
-                            {!isFree && !isProblem && <div className="md:hidden mt-0.5 flex items-center gap-1 opacity-70"><Smartphone size={9} className="text-slate-400"/> <span className="text-[9px] font-medium text-slate-500">{sale.phone}</span></div>}
-                        </div>
-                    </div>
-
-                    <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
-                        <div className={`flex flex-col justify-center rounded-lg px-2 py-1.5 md:p-0 border md:border-none ${darkMode ? 'bg-black/20 border-white/5' : 'bg-white/40 border-white/20 md:bg-transparent'}`}>
-                            <div className={`flex items-start justify-between gap-1 mb-1 ${theme.textSecondary}`}>
-                                <div className="flex items-start gap-1 min-w-0"><div className="text-[10px] md:text-[11px] font-medium truncate select-all">{sale.email}</div></div>
-                                <button onClick={(e) => handleCopyCredentials(e, sale.email, sale.pass)} className={`p-0.5 rounded-full transition-colors active:scale-90 flex-shrink-0 -mt-0.5 ${darkMode ? 'text-slate-500 hover:text-indigo-400' : 'text-slate-400 hover:text-indigo-600'}`}><Copy size={12}/></button>
-                            </div>
-                            <div className={`flex items-center justify-between gap-2 pt-1 md:pt-0 md:border-none ${darkMode ? 'border-white/5' : 'border-black/5'}`}>
-                                <div className="flex items-center gap-1"><div className={`text-[10px] md:text-xs font-mono font-bold truncate select-all ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{sale.pass}</div></div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                    {!isFree && (<><span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase border border-white/10 ${isAdmin ? 'bg-white/10 text-white' : (darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white/60 text-indigo-600')}`}>{sale.profile || 'Gral'}</span><span className={`font-mono text-[9px] tracking-widest px-1 py-0.5 rounded border border-white/10 ${isAdmin ? 'bg-white/5 text-slate-300' : (darkMode ? 'bg-white/5 text-slate-500' : 'bg-slate-100/50 text-slate-500')}`}>{sale.pin || '••••'}</span></>)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="hidden md:flex col-span-3 w-full flex-col items-center">
-                        {!isFree && !isProblem ? (
-                            <div className="text-center">
-                                <div className={`text-xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : primaryColor}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
-                                <div className={`text-[10px] font-bold uppercase tracking-wider ${theme.textSecondary}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
-                            </div>
-                        ) : (isFree ? <span className="text-xs font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-lg">LIBRE</span> : <span className="text-xs font-black text-slate-500 uppercase tracking-widest">---</span>)}
-                        {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
-                    </div>
-
-                    <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t md:border-none border-white/5">
-                        <div className="flex justify-end gap-1 w-full md:w-auto">
-                            {isFree ? (
-                                <button onClick={() => { setFormData(sale); setView('form'); }} className={`w-full md:w-auto px-4 h-8 md:h-9 rounded-full font-bold text-xs shadow-lg flex items-center justify-center gap-1 ${darkMode ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-emerald-500 text-white shadow-emerald-500/30'}`}>Asignar <ChevronRight size={14}/></button>
-                            ) : (
-                                <div className="flex items-center gap-1 w-full justify-end">
-                                    <div className="flex gap-1">
-                                        {!isProblem && days <= 3 && <button onClick={() => handleUnifiedWhatsApp(sale, 'reminder')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? (darkMode ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600') : (darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600')}`}><XCircle size={12}/></button>}
-                                        {!isProblem && <button onClick={() => handleUnifiedWhatsApp(sale, 'data')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-white/5 text-slate-400 hover:bg-indigo-500/20 hover:text-indigo-300' : 'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600'}`}><Lock size={12}/></button>}
-                                        <button onClick={() => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); }} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center hover:bg-slate-200 ${darkMode ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'}`}><Edit2 size={12}/></button>
-                                    </div>
-                                    <div className={`flex gap-1 pl-1 border-l ml-1 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                                        {!isProblem && <button onClick={() => handleQuickRenew(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center shadow-sm ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}><CalendarPlus size={12}/></button>}
-                                        <button onClick={() => triggerLiberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full border flex items-center justify-center shadow-sm ${darkMode ? 'bg-transparent border-white/10 text-slate-500 hover:bg-rose-500/20 hover:text-rose-400' : 'bg-white border-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500'}`}><RotateCcw size={12}/></button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
+    const theme = {
+        filterContainer: darkMode ? 'bg-[#161B28]/60 border-white/5 shadow-black/20' : 'bg-white/60 shadow-indigo-500/5 border-white/50',
+        inputBg: darkMode ? 'bg-black/20 text-white placeholder-slate-600 border-white/5' : 'bg-transparent text-slate-800 placeholder-slate-400',
+        filterBtnActive: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
+        filterBtnInactive: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700',
+        textPrimary: darkMode ? "text-slate-200" : "text-slate-800",
     };
 
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh]"><div className="w-16 h-16 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"/><p className="text-slate-400 font-bold tracking-widest text-xs uppercase animate-pulse">Sincronizando...</p></div>;
@@ -283,6 +296,9 @@ const Dashboard = ({
         const clientB = b.client ? b.client.toUpperCase() : '';
         return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
     });
+
+    // 🚀 RECORTE DE LISTA (La magia de la velocidad)
+    const visibleSales = sortedSales.slice(0, displayLimit);
 
     return (
         <div className="w-full pb-32 space-y-3 md:space-y-8 animate-in fade-in">
@@ -295,25 +311,18 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* BARRA FILTROS (CON CALENDARIO GHOST) */}
+            {/* BARRA FILTROS */}
             <div className={`sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 backdrop-blur-xl transition-all ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
                 <div className={`backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg border flex flex-col gap-2 ${theme.filterContainer}`}>
                     <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar..." className={`block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 border-none font-medium rounded-2xl transition-all outline-none focus:ring-0 ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
                     <div className="flex flex-col md:flex-row gap-2 w-full">
                         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto"><div className="relative flex-shrink-0"><select className={`appearance-none font-bold text-[10px] md:text-xs py-2 pl-3 pr-6 rounded-xl border border-transparent transition-all cursor-pointer outline-none ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-slate-100/80 text-slate-600 hover:bg-white'}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}><option value="Todos">Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select><Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div><div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>{['Todos', 'Libres', 'Ocupados', 'Problemas', 'Vencidos'].map((status) => (<button key={status} onClick={() => setFilter('filterStatus', status)} className={`px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${filterStatus === status ? theme.filterBtnActive : theme.filterBtnInactive}`}>{status}</button>))}</div></div>
-                        
-                        {/* CALENDARIO GHOST */}
                         <div className={`flex items-center gap-1 px-2 py-1.5 rounded-xl border w-full md:w-auto ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}>
-                            <div className="w-28"> 
-                                <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
-                            </div>
+                            <div className="w-28"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div>
                             <span className="text-slate-400 text-xs">-</span>
-                            <div className="w-28">
-                                <AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} />
-                            </div>
+                            <div className="w-28"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
                             {(dateFrom || dateTo) && <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100"><X size={10}/></button>}
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -321,12 +330,27 @@ const Dashboard = ({
             {/* HEADER METRICAS */}
             <div className="flex items-end justify-between px-2 md:px-4"><div><h1 className={`text-3xl md:text-6xl font-black tracking-tighter mb-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest pl-1">Ingresos Mensuales</p></div><div className="text-right pb-1 md:pb-2"><div className={`text-xl md:text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalItems}</div><div className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Activos</div></div></div>
 
-            {/* LISTA */}
+            {/* LISTA CON SCROLL INFINITO (MEJORADO) */}
             <div className="grid grid-cols-1 gap-2 md:gap-4">
-                {sortedSales.length > 0 ? (
-                    sortedSales.map(sale => <SaleCard key={sale.id} sale={sale} />)
+                {visibleSales.length > 0 ? (
+                    visibleSales.map((sale, index) => {
+                         // Si es el último elemento, adjuntamos la referencia (el sensor)
+                        if (visibleSales.length === index + 1) {
+                            return (
+                                <div ref={lastElementRef} key={sale.id}>
+                                    <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} />
+                                </div>
+                            );
+                        } else {
+                            return <SaleCard key={sale.id} sale={sale} darkMode={darkMode} handlers={handlers} />;
+                        }
+                    })
                 ) : (
                     <div className="flex flex-col items-center justify-center py-20 opacity-50"><div className="w-24 h-24 bg-slate-200 rounded-full mb-4 animate-pulse"/><p className="text-slate-400 font-bold">Sin resultados</p></div>
+                )}
+                {/* Loader de fondo al hacer scroll */}
+                {displayLimit < sortedSales.length && (
+                    <div className="py-4 text-center text-xs font-bold text-slate-400 animate-pulse">Cargando más...</div>
                 )}
             </div>
 
