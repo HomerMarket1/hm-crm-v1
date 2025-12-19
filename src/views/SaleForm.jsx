@@ -1,7 +1,6 @@
 // src/views/SaleForm.jsx
 import React, { useMemo } from 'react';
 import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save } from 'lucide-react';
-// ✅ Importamos nuestro Calendario iOS
 import AppleCalendar from '../components/AppleCalendar';
 
 const getServiceCategory = (serviceName) => {
@@ -148,21 +147,23 @@ const SaleForm = ({
                                     <input className={INPUT_STYLE} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="WhatsApp (Opcional)" type="tel"/>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-3 items-end">
                                 
-                                {/* ✅ AQUI USAMOS EL CALENDARIO IOS */}
-                                <div className="z-20"> 
-                                    <AppleCalendar 
-                                        value={formData.endDate} 
-                                        onChange={(newDate) => setFormData({...formData, endDate: newDate})} 
-                                        label="Vencimiento"
-                                        darkMode={darkMode}
-                                    />
-                                </div>
+                                {/* CALENDARIO (Sin div extra) */}
+                                <AppleCalendar 
+                                    value={formData.endDate} 
+                                    onChange={(newDate) => setFormData({...formData, endDate: newDate})} 
+                                    label="Vencimiento"
+                                    darkMode={darkMode}
+                                />
 
-                                <div className={INPUT_WRAPPER}>
-                                    <DollarSign size={18} className={ICON_STYLE}/>
-                                    <input type="number" className={INPUT_STYLE} value={formData.cost} onChange={e=>setFormData({...formData, cost:e.target.value})} placeholder="Precio" required={!isExempt} />
+                                {/* PRECIO (Con estructura idéntica al calendario para alineación) */}
+                                <div className="flex flex-col gap-1">
+                                    <label className={`text-xs font-bold ml-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Precio</label>
+                                    <div className={INPUT_WRAPPER}>
+                                        <DollarSign size={18} className={ICON_STYLE}/>
+                                        <input type="number" className={INPUT_STYLE} value={formData.cost} onChange={e=>setFormData({...formData, cost:e.target.value})} placeholder="0" required={!isExempt} />
+                                    </div>
                                 </div>
                             </div>
                         </div>
