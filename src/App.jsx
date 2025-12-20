@@ -231,7 +231,8 @@ const App = () => {
                             darkMode={darkMode}
                         />}
 
-                        {view === 'config' && <Config 
+                        {view === 'config' && <Config
+                            sales={sales} 
                             catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
                             handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
                             handleEditCatalogService={handleEditCatalogService} 

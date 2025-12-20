@@ -27,8 +27,19 @@ const AppleCalendar = ({ value, onChange, label = "Fecha", darkMode, ghost = fal
 
     const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
     const getFirstDayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-    const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-    const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    
+    // ✅ CORRECCIÓN: Evitamos que estos botones disparen el submit del formulario
+    const handlePrevMonth = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    };
+
+    const handleNextMonth = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    };
 
     const handleDayClick = (day) => {
         const year = currentDate.getFullYear();
@@ -73,7 +84,7 @@ const AppleCalendar = ({ value, onChange, label = "Fecha", darkMode, ghost = fal
     return (
         <div className="relative w-full" ref={wrapperRef}>
             {ghost ? (
-                // MODO FILTRO (Minimalista para Dashboard)
+                // MODO FILTRO
                 <div onClick={() => setShow(!show)} className={`cursor-pointer group relative rounded-xl pl-3 pr-2 py-2 border transition-all flex items-center justify-between gap-2 ${triggerClass}`}>
                     <span className={`text-[10px] md:text-xs font-bold truncate ${valueTextClass}`}>
                         {value ? value.split('-').reverse().join('/') : label}
@@ -81,8 +92,7 @@ const AppleCalendar = ({ value, onChange, label = "Fecha", darkMode, ghost = fal
                     <CalendarIcon size={14} className={`text-slate-400 group-hover:text-indigo-500 transition-colors ${value ? 'text-indigo-500' : ''}`}/>
                 </div>
             ) : (
-                // MODO FORMULARIO (Nueva Venta / Editar)
-                // ✅ CORRECCIÓN: Usamos h-[52px] para forzar la altura exacta y que coincida con el input de precio
+                // MODO FORMULARIO
                 <div className="flex flex-col gap-1">
                     <label className={`text-xs font-bold ml-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{label}</label>
                     <button type="button" onClick={() => setShow(!show)} className={`w-full h-[52px] px-4 rounded-2xl font-bold text-sm flex items-center justify-between transition-all outline-none border focus:ring-2 focus:ring-indigo-500/50 ${darkMode ? 'bg-black/20 border-white/10 text-white hover:bg-white/5' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
@@ -94,10 +104,33 @@ const AppleCalendar = ({ value, onChange, label = "Fecha", darkMode, ghost = fal
 
             {show && (
                 <div className={`absolute top-full mt-2 left-0 z-50 p-3 rounded-[24px] animate-in fade-in zoom-in-95 duration-200 ${containerClass}`} style={{ width: '260px' }}>
-                    <div className="flex items-center justify-between mb-3 px-1"><button onClick={handlePrevMonth} className={`p-1 rounded-full hover:scale-110 transition-transform ${darkMode ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}><ChevronLeft size={16}/></button><span className="text-sm font-black capitalize tracking-tight">{months[currentDate.getMonth()]} <span className="text-indigo-500">{currentDate.getFullYear()}</span></span><button onClick={handleNextMonth} className={`p-1 rounded-full hover:scale-110 transition-transform ${darkMode ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}><ChevronRight size={16}/></button></div>
+                    <div className="flex items-center justify-between mb-3 px-1">
+                        {/* ✅ CORRECCIÓN: type="button" agregado */}
+                        <button type="button" onClick={handlePrevMonth} className={`p-1 rounded-full hover:scale-110 transition-transform ${darkMode ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}>
+                            <ChevronLeft size={16}/>
+                        </button>
+                        
+                        <span className="text-sm font-black capitalize tracking-tight">
+                            {months[currentDate.getMonth()]} <span className="text-indigo-500">{currentDate.getFullYear()}</span>
+                        </span>
+                        
+                        {/* ✅ CORRECCIÓN: type="button" agregado */}
+                        <button type="button" onClick={handleNextMonth} className={`p-1 rounded-full hover:scale-110 transition-transform ${darkMode ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}>
+                            <ChevronRight size={16}/>
+                        </button>
+                    </div>
+                    
                     <div className="grid grid-cols-7 mb-1">{weekDays.map(day => (<div key={day} className="h-6 flex items-center justify-center text-[10px] font-bold text-slate-500">{day}</div>))}</div>
                     <div className="grid grid-cols-7 gap-y-1">{renderDays()}</div>
-                    {value && (<div className="mt-3 pt-2 border-t border-dashed border-slate-500/20 flex justify-center"><button onClick={(e) => { e.stopPropagation(); onChange(''); setShow(false); }} className="text-[10px] font-bold text-rose-500 hover:text-rose-400 flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-rose-500/10 transition-colors"><X size={10}/> Limpiar Fecha</button></div>)}
+                    
+                    {value && (
+                        <div className="mt-3 pt-2 border-t border-dashed border-slate-500/20 flex justify-center">
+                            {/* ✅ CORRECCIÓN: type="button" agregado */}
+                            <button type="button" onClick={(e) => { e.stopPropagation(); onChange(''); setShow(false); }} className="text-[10px] font-bold text-rose-500 hover:text-rose-400 flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-rose-500/10 transition-colors">
+                                <X size={10}/> Limpiar Fecha
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
