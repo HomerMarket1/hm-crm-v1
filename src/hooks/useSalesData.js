@@ -7,6 +7,30 @@ const normalizeText = (text) => {
     return String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
+// 🧠 NUEVO HELPER INTELIGENTE: Detecta la plataforma base
+const getPlatformBaseName = (serviceName) => {
+    if (!serviceName) return 'Desconocido';
+    const lower = serviceName.toLowerCase();
+    
+    if (lower.includes('disney')) return 'Disney+';
+    if (lower.includes('netflix')) return 'Netflix';
+    if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
+    if (lower.includes('max') || lower.includes('hbo')) return 'Max';
+    if (lower.includes('paramount')) return 'Paramount+';
+    if (lower.includes('vix')) return 'Vix';
+    if (lower.includes('plex')) return 'Plex';
+    if (lower.includes('iptv')) return 'IPTV';
+    if (lower.includes('magis')) return 'Magis TV';
+    if (lower.includes('crunchyroll')) return 'Crunchyroll';
+    if (lower.includes('spotify')) return 'Spotify';
+    if (lower.includes('youtube')) return 'YouTube';
+    if (lower.includes('apple')) return 'Apple TV';
+    
+    // Si no coincide con ninguno conocido, devolvemos el nombre original 
+    // (para no romper servicios personalizados)
+    return serviceName;
+};
+
 export const useSalesData = (sales, catalog, allClients, uiState, currentFormData) => {
     const { filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
 
@@ -62,15 +86,12 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                 }
             }
             
-            // D. FILTRO FECHA (CORREGIDO PARA BÚSQUEDA EXACTA) ✅
+            // D. FILTRO FECHA
             if (dateFrom || dateTo) {
                 if (!sale.endDate) return false;
-                
-                // Caso 1: Usuario solo puso la primera fecha -> Busca coincidencia EXACTA
                 if (dateFrom && !dateTo) {
                     if (sale.endDate !== dateFrom) return false;
                 }
-                // Caso 2: Usuario puso rango (o solo fecha fin) -> Busca en el intervalo
                 else {
                     if (dateFrom && sale.endDate < dateFrom) return false;
                     if (dateTo && sale.endDate > dateTo) return false;
@@ -101,11 +122,28 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             .filter((v, i, a) => a.findIndex(t => t.profile === v.profile) === i);
     }, [sales, currentFormData.client]);
 
+    // 🔴 LÓGICA DE BÓVEDA CORREGIDA (AGRUPACIÓN POR PLATAFORMA BASE)
     const accountsInventory = useMemo(() => {
         const groups = {};
         sales.forEach(s => {
-            const key = `${s.email}|${s.pass}`;
-            if (!groups[key]) groups[key] = { email: s.email, pass: s.pass, service: s.service, total: 0, free: 0, id: s.id, ids: [] };
+            // Normalizamos el nombre (ej: "Disney+ Paquete" -> "Disney+")
+            const platformName = getPlatformBaseName(s.service);
+            
+            // La llave ahora usa la PLATAFORMA BASE, no el servicio específico
+            const key = `${s.email}|${s.pass}|${platformName}`;
+            
+            if (!groups[key]) {
+                groups[key] = { 
+                    email: s.email, 
+                    pass: s.pass, 
+                    service: platformName, // Guardamos el nombre limpio para mostrar en la tarjeta
+                    total: 0, 
+                    free: 0, 
+                    id: s.id, 
+                    ids: [] 
+                };
+            }
+            
             groups[key].total++;
             if (s.client === 'LIBRE') groups[key].free++;
             groups[key].ids.push(s.id);
@@ -115,7 +153,14 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
 
     const maxAvailableSlots = useMemo(() => {
         if (!currentFormData.service || !currentFormData.email) return 5;
-        return sales.filter(s => s.email === currentFormData.email && s.service === currentFormData.service && s.client === 'LIBRE').length;
+        // Aquí mantenemos la lógica estricta para el formulario de venta (queremos vender el servicio exacto)
+        // Opcional: Podrías usar getPlatformBaseName aquí también si quieres que al seleccionar "Disney Paquete"
+        // te sugiera cupos de cualquier "Disney". Por ahora lo dejo estricto para seguridad.
+        return sales.filter(s => 
+            s.email === currentFormData.email && 
+            s.service === currentFormData.service && 
+            s.client === 'LIBRE'
+        ).length;
     }, [sales, currentFormData.service, currentFormData.email]);
 
     const packageCatalog = useMemo(() => catalog ? catalog.filter(s => s.type === 'Paquete') : [], [catalog]);
@@ -150,7 +195,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     };
 
-    // Listas Alertas
     const isBillable = (s) => {
         if (s.client === 'LIBRE') return false;
         if (!s.endDate) return false;
