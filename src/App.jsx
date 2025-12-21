@@ -19,7 +19,6 @@ import MainLayout from './layouts/MainLayout';
 import ConfirmModal from './components/ConfirmModal';
 import EditAccountModal from './components/EditAccountModal';
 import EditClientModal from './components/EditClientModal';
-// Nota: 'Toast' se eliminó porque no se usaba aquí (seguramente está dentro de MainLayout)
 
 // VISTAS (Lazy Loading)
 const LoginScreen = lazy(() => import('./views/LoginScreen'));
@@ -28,20 +27,20 @@ const StockManager = lazy(() => import('./views/StockManager'));
 const Config = lazy(() => import('./views/Config'));
 const SaleForm = lazy(() => import('./views/SaleForm'));
 
-// CONSTANTES (Definición limpia para evitar errores de CommonJS)
-// Si tienes un archivo real en ./config/constants, cámbialo a: import { NON_BILLABLE_STATUSES } from './config/constants';
+// CONSTANTES
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 
 const App = () => {
     // 1. DATA & AUTH
-    const { user, authLoading, sales, catalog, clientsDirectory, loadingData } = useDataSync();
+    // ✅ CAMBIO 1: Extraemos 'totalRevenue' del hook actualizado
+    const { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue } = useDataSync();
 
     // 2. UI STATE
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
     const { view, stockTab, filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
 
     // Modales y Notificaciones
-    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); // Corrección: show false inicial
+    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null, type: null, title: '', msg: '', data: null });
     const [editAccountModal, setEditAccountModal] = useState({ show: false, email: '', oldPass: '', newPass: '' });
     const [editClientModal, setEditClientModal] = useState({ show: false, client: null });
@@ -76,6 +75,13 @@ const App = () => {
     } = useSalesData(sales, catalog, clientManagement.allClients, uiState, formData);
 
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name));
+
+    // --- LOGICA DE DINERO ---
+    // ✅ CAMBIO 2: Decidimos qué total mostrar. 
+    // Si hay filtros activos, mostramos la suma de lo visible (totalFilteredMoney).
+    // Si NO hay filtros, mostramos el Total Global del Servidor (totalRevenue) para máxima precisión.
+    const hasActiveFilters = filterClient || (filterService && filterService !== 'Todos') || (filterStatus && filterStatus !== 'Todos') || dateFrom || dateTo;
+    const moneyToShow = hasActiveFilters ? totalFilteredMoney : (totalRevenue || totalFilteredMoney);
 
     // --- HANDLERS ---
     const handleLogin = async (e) => {
@@ -124,11 +130,9 @@ const App = () => {
     // Sales Handlers
     const handleSaveSale = async (e) => {
         e.preventDefault(); if (!user) return;
-        // Auto-save client if needed
         if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
             await clientManagement.saveClientIfNew(formData.client, formData.phone);
         }
-        // Calculate Date
         let finalEndDate = formData.endDate;
         const EXEMPT_FROM_AUTO_DATE = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         const isExempt = EXEMPT_FROM_AUTO_DATE.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
@@ -172,7 +176,7 @@ const App = () => {
         setFormData({ ...formData, profile: val, pin: m?.pin || formData.pin });
     };
 
-    // UI Helpers & Triggers
+    // Triggers
     const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
     const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
     const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
@@ -184,7 +188,6 @@ const App = () => {
     const triggerEditAccount = (d) => setEditAccountModal({ show: true, email: d.email, oldPass: d.pass, newPass: d.pass });
     const triggerOpenEditClient = (client) => setEditClientModal({ show: true, client });
 
-    // State Setters (to avoid prop drilling later, though Context is better)
     const setFilter = (k, v) => dispatch({ type: uiActionTypes.SET_FILTER, payload: { key: k, value: v } });
     const setView = (v) => dispatch({ type: uiActionTypes.SET_VIEW, payload: v });
     const setStockTab = (t) => dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: t });
@@ -202,7 +205,7 @@ const App = () => {
             view={view} setView={setView} handleLogout={handleLogout}
             notification={notification} setNotification={setNotification}
             darkMode={darkMode} setDarkMode={setDarkMode}
-            user={user} // Pasamos User para que MainLayout sepa si mostrar Sidebar o no
+            user={user} 
         >
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
@@ -223,7 +226,9 @@ const App = () => {
                         {view === 'dashboard' && <Dashboard
                             sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
                             filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
-                            totalItems={totalItems} totalFilteredMoney={totalFilteredMoney}
+                            totalItems={totalItems} 
+                            // ✅ CAMBIO 3: Pasamos el dinero calculado
+                            totalFilteredMoney={moneyToShow} 
                             getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
                             NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare}
                             handleQuickRenew={(id) => { const s = sales.find(i => i.id === id); crmActions.quickRenew(id, s?.endDate); }}

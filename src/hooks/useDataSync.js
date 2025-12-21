@@ -1,19 +1,26 @@
 // src/hooks/useDataSync.js
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth'; 
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { 
+    collection, 
+    onSnapshot, 
+    query, 
+    orderBy, 
+    limit, 
+    where, // ✅ Importante para filtrar basura
+    getAggregateFromServer, 
+    sum 
+} from 'firebase/firestore';
 import { auth, db } from '../firebase/config'; 
 
-// ⚡️ OPTIMIZACIÓN: Función pura fuera del Hook para no recrearla en cada render
+// ⚡️ Función pura para limpiar datos
 const sanitizeData = (doc) => {
     const data = doc.data();
     return {
         ...data,
         id: doc.id,
-        // Conversión segura de Timestamps a Date
         createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
         updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : null,
-        // Si tienes fechas de vencimiento como string, se mantienen igual
     };
 };
 
@@ -22,12 +29,13 @@ export const useDataSync = () => {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  // Estados de datos
   const [sales, setSales] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [clientsDirectory, setClientsDirectory] = useState([]);
   
-  // Estado de carga granular
+  // Estado para el Dinero Real (Sin contar Admin/Problemas/etc)
+  const [totalRevenue, setTotalRevenue] = useState(0); 
+  
   const [loadingState, setLoadingState] = useState({
     sales: true,
     catalog: true,
@@ -40,32 +48,79 @@ export const useDataSync = () => {
       setUser(currentUser);
       setAuthLoading(false);
       
-      // Limpieza inmediata al salir
       if (!currentUser) {
         setSales([]);
         setCatalog([]);
         setClientsDirectory([]);
+        setTotalRevenue(0);
         setLoadingState({ sales: false, catalog: false, clients: false });
       }
     });
     return () => unsubscribe();
   }, []); 
 
-  // 2. SINCRONIZACIÓN DE DATOS (Real-time)
+  // 2. SINCRONIZACIÓN DE DATOS
   useEffect(() => {
     if (!user) return;
 
     const userPath = `users/${user.uid}`;
     
-    // Consultas
-    // NOTA: Si tienes miles de ventas, en el futuro podrías necesitar 'limit(100)' aquí.
-    const salesQuery = query(collection(db, userPath, 'sales'), orderBy('createdAt', 'desc'));
+    // --- LISTA NEGRA DE ESTADOS (No suman dinero) ---
+    // Firestore permite máximo 10 valores en 'not-in'. 
+    const IGNORED_STATUSES = [
+        'LIBRE', 
+        'Caída', 'Actualizar', 'Dominio', 'EXPIRED', 
+        'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'
+    ];
+
+    // --- QUERY PRINCIPAL (Visual) ---
+    // Traemos hasta 3000 para que el buscador funcione bien en tu volumen actual (1800 clientes).
+    const salesQuery = query(
+        collection(db, userPath, 'sales'), 
+        orderBy('createdAt', 'desc'), 
+        limit(3000) 
+    );
+
     const catalogRef = collection(db, userPath, 'catalog');
     const clientsRef = collection(db, userPath, 'clients');
 
+    // --- CÁLCULO DE DINERO SERVIDOR (CORREGIDO) ---
+    // Sumamos solo lo que tiene costo y NO es un estado problemático o administrativo.
+    const calculateTotal = async () => {
+        try {
+            const coll = collection(db, userPath, 'sales');
+            const q = query(
+                coll, 
+                where('cost', '>', 0),
+                where('client', 'not-in', IGNORED_STATUSES) // ✅ Aquí está la magia
+            ); 
+            
+            const snapshot = await getAggregateFromServer(q, {
+                totalCost: sum('cost')
+            });
+            setTotalRevenue(snapshot.data().totalCost || 0);
+        } catch (e) {
+            console.error("Error calculando total:", e);
+        }
+    };
+    
+    // Ejecutamos el cálculo inicial
+    calculateTotal();
+
     // A. Suscripción a VENTAS
     const salesUnsub = onSnapshot(salesQuery, (snapshot) => {
-      setSales(snapshot.docs.map(sanitizeData));
+      const docs = snapshot.docs.map(sanitizeData);
+      setSales(docs);
+      
+      // Si tenemos pocos datos (menos del límite), calculamos la suma en local para que sea tiempo real
+      // PERO aplicando el mismo filtro de ignorar estados basura.
+      if(snapshot.size < 3000) {
+          const localTotal = docs
+            .filter(d => !IGNORED_STATUSES.includes(d.client)) // ✅ Filtro local idéntico al servidor
+            .reduce((acc, doc) => acc + (Number(doc.cost) || 0), 0);
+          setTotalRevenue(localTotal);
+      }
+      
       setLoadingState(prev => ({ ...prev, sales: false }));
     }, (error) => {
       console.error("Error sync ventas:", error);
@@ -76,26 +131,18 @@ export const useDataSync = () => {
     const catalogUnsub = onSnapshot(catalogRef, (snapshot) => {
       setCatalog(snapshot.docs.map(sanitizeData));
       setLoadingState(prev => ({ ...prev, catalog: false }));
-    }, (error) => {
-        console.error("Error sync catálogo:", error);
-        setLoadingState(prev => ({ ...prev, catalog: false }));
     });
     
     // C. Suscripción a CLIENTES
     const clientsUnsub = onSnapshot(clientsRef, (snapshot) => {
       setClientsDirectory(snapshot.docs.map(sanitizeData));
       setLoadingState(prev => ({ ...prev, clients: false }));
-    }, (error) => {
-        console.error("Error sync clientes:", error);
-        setLoadingState(prev => ({ ...prev, clients: false }));
     });
     
-    // Limpieza al desmontar o cambiar usuario
     return () => { salesUnsub(); catalogUnsub(); clientsUnsub(); };
   }, [user]); 
 
-  // Calculamos bandera global de carga
   const loadingData = authLoading || loadingState.sales || loadingState.catalog || loadingState.clients;
 
-  return { user, authLoading, sales, catalog, clientsDirectory, loadingData };
+  return { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue };
 };
