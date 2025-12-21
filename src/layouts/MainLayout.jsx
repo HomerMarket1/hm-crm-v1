@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, Box, Settings, LogOut, Menu, X, Moon, Sun } from 'lucide-react';
 import Toast from '../components/Toast';
-import { auth } from '../firebase/config'; // Verificación de estado real
+import { auth } from '../firebase/config'; 
 
 const MainLayout = ({ view, setView, handleLogout, children, notification, setNotification, darkMode, setDarkMode }) => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -46,7 +46,7 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
     return (
         <div className={`flex h-screen ${theme.bg} overflow-hidden font-sans selection:bg-indigo-500/30 transition-colors duration-500`}>
             
-            {/* 🔥 SCROLLBARS INVISIBLES GLOBAL (ESTILO MAC) 🔥 */}
+            {/* 🔥 SCROLLBARS INVISIBLES GLOBAL 🔥 */}
             <style>{`
                 ::-webkit-scrollbar { width: 6px; height: 6px; }
                 ::-webkit-scrollbar-track { background: transparent; }
@@ -61,7 +61,7 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
 
             <Toast notification={notification} setNotification={setNotification} />
 
-            {/* ✅ SIDEBAR (ESCRITORIO) - SOLO SI ESTÁ LOGUEADO */}
+            {/* ✅ SIDEBAR (ESCRITORIO) */}
             {isLoggedIn && (
                 <aside className="hidden md:flex flex-col w-64 h-full p-4 z-20">
                     <div className={`flex-1 backdrop-blur-2xl border shadow-xl shadow-black/5 rounded-[2.5rem] flex flex-col p-5 relative overflow-hidden transition-colors duration-500 ${theme.sidebar}`}>
@@ -70,9 +70,8 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                         <div className="flex flex-col items-center mb-8 mt-2">
                             <div className="relative group cursor-pointer">
                                 <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity"/>
-                                <div className={`relative w-24 h-24 rounded-full shadow-lg border-4 flex items-center justify-center transform group-hover:scale-105 transition-transform duration-500 overflow-hidden ${darkMode ? 'bg-[#0B0F19] border-white/10' : 'bg-white border-white'}`}>
-                                    {/* ✅ LOGO OPTIMIZADO */}
-                                    <img src="/Logo.webp" alt="HM Digital" className="w-full h-full object-contain p-2" loading="eager" />
+                                <div className={`relative w-36 h-36 rounded-full shadow-lg border-2 flex items-center justify-center transform group-hover:scale-105 transition-transform duration-500 overflow-hidden ${darkMode ? 'bg-[#0B0F19] border-white/10' : 'bg-white border-white'}`}>
+                                    <img src="/Logo.webp" alt="HM Digital" className="w-full h-full object-contain p-0" loading="eager" />
                                 </div>
                             </div>
                             <h1 className={`mt-3 text-xl font-black tracking-tight transition-colors ${theme.text}`}>HM Digital</h1>
@@ -95,13 +94,13 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                 </aside>
             )}
 
-            {/* ✅ HEADER MÓVIL - SOLO SI ESTÁ LOGUEADO */}
+            {/* ✅ HEADER MÓVIL (CORREGIDO) */}
             {isLoggedIn && (
                 <div className={`md:hidden fixed top-0 left-0 right-0 h-28 pt-8 z-40 px-5 flex items-center justify-between backdrop-blur-md border-b transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/10' : 'bg-[#F2F2F7]/90 border-white/20'}`}>
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full shadow-sm flex items-center justify-center overflow-hidden border ${darkMode ? 'bg-black border-white/20' : 'bg-white border-white'}`}>
-                            {/* ✅ LOGO OPTIMIZADO MÓVIL */}
-                            <img src="/Logo.webp" alt="Logo" className="w-full h-full object-contain p-1" />
+                        {/* 🚀 CAMBIO: w-14 h-14 (más grande) y p-0 (sin borde grueso) */}
+                        <div className={`w-14 h-14 rounded-full shadow-sm flex items-center justify-center overflow-hidden border ${darkMode ? 'bg-black border-white/10' : 'bg-white border-white'}`}>
+                            <img src="/Logo.webp" alt="Logo" className="w-full h-full object-contain p-0" />
                         </div>
                         <div>
                             <h1 className={`text-lg font-black leading-none ${theme.text}`}>HM Digital</h1>
