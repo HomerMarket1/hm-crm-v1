@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { 
     Plus, Trash2, Search, Copy, Check, Shield, Zap, Box, 
     Layers, Mail, Lock, Settings, Eye, EyeOff, AlertTriangle,
-    Download
+    Download, Eraser // ✅ AGREGADO: Icono de Borrador
 } from 'lucide-react';
 
 const StockManager = ({
@@ -12,7 +12,7 @@ const StockManager = ({
     setStockTab, 
     stockForm, 
     setStockForm,
-    catalog = [], // Valor por defecto para evitar crash
+    catalog = [], 
     handleStockServiceChange, 
     handleGenerateStock,      
     triggerDeleteAccount,     
@@ -25,7 +25,7 @@ const StockManager = ({
     const [copiedId, setCopiedId] = useState(null); 
     const [hideEmpty, setHideEmpty] = useState(false); 
     
-    // 🎨 TEMA UNIFICADO (Optimizado)
+    // 🎨 TEMA UNIFICADO
     const theme = {
         card: darkMode ? 'bg-[#161B28] border-white/5' : 'bg-white/80 backdrop-blur-xl border-white/60 shadow-lg shadow-indigo-500/5',
         text: darkMode ? 'text-white' : 'text-slate-900',
@@ -34,9 +34,9 @@ const StockManager = ({
         actionBtn: darkMode ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600',
         accentBtn: darkMode ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border border-indigo-100',
         dangerBtn: darkMode ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 hover:bg-rose-100',
+        separator: darkMode ? 'bg-white/10' : 'bg-slate-200', // ✅ Nuevo color separador
     };
 
-    // --- LÓGICA EXPORTAR ---
     const handleExportCSV = () => {
         const bom = "\uFEFF"; 
         const headers = "Servicio,Email,Contraseña,Total,Libres\n";
@@ -53,7 +53,6 @@ const StockManager = ({
         link.click();
     };
 
-    // --- FILTRADO ---
     const filteredAccounts = useMemo(() => {
         let result = accountsInventory || [];
         if (hideEmpty) {
@@ -75,7 +74,6 @@ const StockManager = ({
         setTimeout(() => setCopiedId(null), 1500); 
     };
 
-    // --- TARJETA DE BÓVEDA ---
     const VaultCard = ({ acc, index }) => {
         const catalogService = catalog.find(s => s.name === acc.service);
         const dbTotal = parseInt(acc.total) || 0;
@@ -84,7 +82,6 @@ const StockManager = ({
         const realFree = parseInt(acc.free) || 0;
         const percentFree = realTotal > 0 ? Math.round((realFree / realTotal) * 100) : 0;
         
-        // Colores de barra
         let barColor = "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]";
         if (realFree > 0 && realFree <= 2) barColor = "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)] animate-pulse";
         else if (percentFree < 50) barColor = "bg-amber-500";
@@ -93,14 +90,12 @@ const StockManager = ({
         return (
             <div className={`group relative w-full p-5 border rounded-[24px] transition-all duration-300 ${theme.card} ${realFree === 0 ? 'opacity-70 grayscale hover:grayscale-0 hover:opacity-100' : 'hover:scale-[1.01]'}`}>
                 
-                {/* Alerta Crítico */}
                 {realFree > 0 && realFree <= 2 && (
                     <div className="absolute -top-2 -right-2 bg-rose-500 text-white text-[9px] font-black px-2 py-1 rounded-full shadow-lg flex items-center gap-1 z-10 animate-bounce">
                         <AlertTriangle size={10} className="fill-white"/> CRÍTICO
                     </div>
                 )}
 
-                {/* Header Tarjeta */}
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg ${darkMode ? 'bg-white/10 text-white' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'}`}>
@@ -114,19 +109,29 @@ const StockManager = ({
                         </div>
                     </div>
                     
-                    {/* Botones Acción */}
-                    <div className="flex gap-1">
+                    {/* ✅ BOTONES DE ACCIÓN MEJORADOS */}
+                    <div className="flex items-center gap-1">
                         <button onClick={() => triggerEditAccount(acc)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${theme.actionBtn}`} title="Editar Contraseña"><Settings size={14} /></button>
+                        
                         {realFree > 0 && (
-                            <button onClick={() => triggerDeleteFreeStock(acc.email, acc.pass)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${darkMode ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Limpiar Libres"><Trash2 size={14} /></button>
+                            <>
+                                {/* Separador visual */}
+                                <div className={`w-px h-3 mx-1 ${theme.separator}`}></div>
+
+                                <button onClick={() => triggerDeleteFreeStock(acc.email, acc.pass)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${darkMode ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Limpiar Libres">
+                                    <Eraser size={14} /> {/* Icono cambiado a Borrador */}
+                                </button>
+                            </>
                         )}
+                        
+                        {/* Separador visual si hay botón de limpiar */}
+                        {realFree > 0 && <div className={`w-px h-3 mx-1 ${theme.separator}`}></div>}
+
                         <button onClick={() => triggerDeleteAccount(acc)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${theme.dangerBtn}`} title="Eliminar cuenta"><Trash2 size={14} /></button>
                     </div>
                 </div>
 
-                {/* Credenciales Copiables */}
                 <div className="space-y-2 mb-5">
-                    {/* EMAIL */}
                     <button onClick={() => handleCopy(acc.email, `email-${index}`)} className={`w-full flex items-center justify-between p-3 rounded-xl border group/btn transition-all text-left ${darkMode ? 'bg-black/20 border-white/5 hover:bg-white/5' : 'bg-slate-50 border-slate-100 hover:bg-white'}`}>
                         <div className="flex items-center gap-2 overflow-hidden">
                             <Mail size={14} className="text-slate-400 shrink-0"/>
@@ -137,7 +142,6 @@ const StockManager = ({
                         </div>
                     </button>
 
-                    {/* PASS */}
                     <div className="flex gap-2">
                         <button onClick={() => handleCopy(acc.pass, `pass-${index}`)} className={`flex-1 flex items-center justify-between p-3 rounded-xl border group/btn transition-all text-left ${darkMode ? 'bg-black/20 border-white/5 hover:bg-white/5' : 'bg-slate-50 border-slate-100 hover:bg-white'}`}>
                             <div className="flex items-center gap-2">
@@ -154,7 +158,6 @@ const StockManager = ({
                     </div>
                 </div>
 
-                {/* Barra de Progreso */}
                 <div className={`rounded-2xl p-3 border ${darkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex justify-between items-end mb-2">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Disponibles</div>
@@ -173,7 +176,6 @@ const StockManager = ({
 
     return (
         <div className="w-full pb-32 space-y-6 animate-in fade-in">
-            {/* TABS HEADER (Sticky) */}
             <div className={`sticky top-0 z-30 backdrop-blur-xl py-2 -mx-1 px-1 ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
                 <div className={`p-1.5 rounded-2xl border shadow-sm flex gap-1 ${darkMode ? 'bg-[#161B28]/80 border-white/10' : 'bg-white/80 border-white/50'}`}>
                     <button onClick={() => setStockTab('manage')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all ${stockTab === 'manage' ? (darkMode ? 'bg-[#2A303C] text-white shadow-sm ring-1 ring-white/10' : 'bg-white text-indigo-600 shadow-sm') : 'text-slate-400 hover:text-slate-500'}`}>
@@ -186,7 +188,6 @@ const StockManager = ({
             </div>
 
             {stockTab === 'add' ? (
-                // --- VISTA: AGREGAR STOCK ---
                 <div className="animate-in slide-in-from-bottom-4 duration-300">
                     <div className={`w-full p-6 md:p-8 rounded-[32px] shadow-2xl border relative overflow-hidden ${darkMode ? 'bg-[#161B28] border-white/10' : 'bg-white border-white/60'}`}>
                         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-10 -mt-10"/>
@@ -219,7 +220,7 @@ const StockManager = ({
 
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold ml-3 text-slate-400 uppercase">Perfiles / Slots</label>
-                                        <div className={`p-4 rounded-2xl border flex flex-col items-center justify-center h-full ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                                        <div className={`p-4 h-32 rounded-2xl border flex flex-col items-center justify-center ${darkMode ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
                                             <input type="number" min="1" className={`bg-transparent text-4xl font-black text-center w-full outline-none ${darkMode ? 'text-indigo-400 placeholder-indigo-900' : 'text-indigo-600 placeholder-indigo-200'}`} value={stockForm.slots} onChange={e => { const val = parseInt(e.target.value); setStockForm({...stockForm, slots: isNaN(val) || val < 1 ? 1 : val}) }}/>
                                         </div>
                                     </div>
@@ -234,7 +235,6 @@ const StockManager = ({
                 </div>
 
             ) : (
-                // --- VISTA: GESTIÓN DE BÓVEDA ---
                 <div className="animate-in slide-in-from-bottom-4 duration-300 space-y-4">
                     <div className="flex gap-2 items-center">
                         <div className="relative flex-1 group">
