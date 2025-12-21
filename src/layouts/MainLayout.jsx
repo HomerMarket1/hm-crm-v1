@@ -2,30 +2,27 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, Box, Settings, LogOut, Menu, X, Moon, Sun } from 'lucide-react';
 import Toast from '../components/Toast';
-import logoImg from '../assets/Logo.png';
-import { auth } from '../firebase/config'; // Importamos auth para verificar estado real
+import { auth } from '../firebase/config'; // Verificación de estado real
 
 const MainLayout = ({ view, setView, handleLogout, children, notification, setNotification, darkMode, setDarkMode }) => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     // 🕵️ DETECCIÓN DE USUARIO LOGUEADO
-    // Si auth.currentUser existe, mostramos el menú. Si no, mostramos solo el contenido (Login).
     const isLoggedIn = auth.currentUser; 
 
     // Colores dinámicos
     const theme = {
         bg: darkMode ? 'bg-[#0B0F19]' : 'bg-[#F2F2F7]',
         text: darkMode ? 'text-slate-200' : 'text-slate-800',
-        card: darkMode ? 'bg-[#161B28]/60 border-white/5' : 'bg-white/40 border-white/60',
         sidebar: darkMode ? 'bg-[#161B28]/60 border-white/5' : 'bg-white/40 border-white/60',
         hover: darkMode ? 'hover:bg-white/5' : 'hover:bg-white/40',
         activeBtn: darkMode ? 'bg-white/10 text-white shadow-none' : 'bg-white shadow-lg shadow-indigo-100/50',
     };
 
     const menuItems = [
-        { id: 'dashboard', label: 'Tablero', icon: LayoutDashboard, color: 'text-indigo-400', bg: 'bg-indigo-500' },
-        { id: 'add_stock', label: 'Stock / Bóveda', icon: Box, color: 'text-emerald-400', bg: 'bg-emerald-500' },
-        { id: 'config', label: 'Ajustes', icon: Settings, color: 'text-slate-400', bg: 'bg-slate-500' },
+        { id: 'dashboard', label: 'Tablero', icon: LayoutDashboard, bg: 'bg-indigo-500' },
+        { id: 'add_stock', label: 'Stock / Bóveda', icon: Box, bg: 'bg-emerald-500' },
+        { id: 'config', label: 'Ajustes', icon: Settings, bg: 'bg-slate-500' },
     ];
 
     const NavButton = ({ item, isMobile = false }) => {
@@ -64,7 +61,7 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
 
             <Toast notification={notification} setNotification={setNotification} />
 
-            {/* ✅ SOLO MOSTRAMOS SIDEBAR SI ESTÁ LOGUEADO */}
+            {/* ✅ SIDEBAR (ESCRITORIO) - SOLO SI ESTÁ LOGUEADO */}
             {isLoggedIn && (
                 <aside className="hidden md:flex flex-col w-64 h-full p-4 z-20">
                     <div className={`flex-1 backdrop-blur-2xl border shadow-xl shadow-black/5 rounded-[2.5rem] flex flex-col p-5 relative overflow-hidden transition-colors duration-500 ${theme.sidebar}`}>
@@ -74,7 +71,8 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                             <div className="relative group cursor-pointer">
                                 <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity"/>
                                 <div className={`relative w-24 h-24 rounded-full shadow-lg border-4 flex items-center justify-center transform group-hover:scale-105 transition-transform duration-500 overflow-hidden ${darkMode ? 'bg-[#0B0F19] border-white/10' : 'bg-white border-white'}`}>
-                                    <img src={logoImg} alt="Logo" className="w-full h-full object-cover" />
+                                    {/* ✅ LOGO OPTIMIZADO */}
+                                    <img src="/Logo.webp" alt="HM Digital" className="w-full h-full object-contain p-2" loading="eager" />
                                 </div>
                             </div>
                             <h1 className={`mt-3 text-xl font-black tracking-tight transition-colors ${theme.text}`}>HM Digital</h1>
@@ -97,12 +95,13 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                 </aside>
             )}
 
-            {/* ✅ SOLO MOSTRAMOS HEADER MÓVIL SI ESTÁ LOGUEADO */}
+            {/* ✅ HEADER MÓVIL - SOLO SI ESTÁ LOGUEADO */}
             {isLoggedIn && (
                 <div className={`md:hidden fixed top-0 left-0 right-0 h-28 pt-8 z-40 px-5 flex items-center justify-between backdrop-blur-md border-b transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/10' : 'bg-[#F2F2F7]/90 border-white/20'}`}>
                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full shadow-sm flex items-center justify-center overflow-hidden border ${darkMode ? 'bg-black border-white/20' : 'bg-white border-white'}`}>
-                            <img src={logoImg} alt="Logo" className="w-full h-full object-cover" />
+                            {/* ✅ LOGO OPTIMIZADO MÓVIL */}
+                            <img src="/Logo.webp" alt="Logo" className="w-full h-full object-contain p-1" />
                         </div>
                         <div>
                             <h1 className={`text-lg font-black leading-none ${theme.text}`}>HM Digital</h1>
@@ -120,7 +119,7 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                 </div>
             )}
 
-            {/* MOBILE MENU */}
+            {/* MOBILE MENU OVERLAY */}
             {isLoggedIn && mobileMenuOpen && (
                 <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setMobileMenuOpen(false)}>
                     <div className={`absolute right-0 top-0 bottom-0 w-3/4 max-w-sm p-6 pt-16 shadow-2xl animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-[#0B0F19]' : 'bg-[#F2F2F7]'}`} onClick={e => e.stopPropagation()}>
@@ -140,7 +139,6 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
             )}
 
             {/* ✅ MAIN CONTENT */}
-            {/* Si no está logueado, quitamos el padding superior (pt-28) para que el Login quede centrado perfecto */}
             <main className={`flex-1 h-full overflow-y-auto overflow-x-hidden relative ${isLoggedIn ? 'pt-28 md:pt-0' : 'pt-0'}`}>
                 <div className="max-w-[1600px] mx-auto p-4 md:p-6 h-full">
                     {children}

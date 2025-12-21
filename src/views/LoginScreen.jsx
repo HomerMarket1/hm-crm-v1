@@ -1,4 +1,4 @@
-// src/components/LoginScreen.jsx (DISEÑO FINAL: LOGO FLOTANTE CON LUZ DE FONDO)
+// src/views/LoginScreen.jsx
 
 import React from 'react';
 import { Mail, Lock, ArrowRight, Zap } from 'lucide-react';
@@ -31,10 +31,11 @@ const LoginScreen = ({
                         {/* 1. Luz/Glow trasero para integrar el logo (sin cuadro gris) */}
                         <div className="absolute w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl animate-pulse" />
                         
-                        {/* 2. El Logo: Altura controlada, ancho auto, sombra suave */}
+                        {/* 2. El Logo: Apuntando a public/Logo.webp con carga inmediata */}
                         <img 
-                            src="/Logo.png" 
-                            alt="Logo" 
+                            src="/Logo.webp" // ✅ CORREGIDO: Apunta al archivo en public
+                            alt="HM Digital" 
+                            loading="eager" // 🚀 Carga prioritaria (soluciona la lentitud)
                             className="relative h-full w-auto object-contain filter drop-shadow-lg transform hover:scale-105 transition-transform duration-500" 
                         />
                     </div>
