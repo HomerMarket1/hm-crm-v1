@@ -22,16 +22,16 @@ const safeGetDays = (dateString) => {
     return Math.ceil((new Date(y, m - 1, d) - today) / (1000 * 60 * 60 * 24));
 };
 
-// --- HELPER DE ESTILOS (Alto Contraste Corregido) ---
+// --- HELPER DE ESTILOS (Alto Contraste) ---
 const getCardStyles = (sale, days, darkMode) => {
     const isFree = sale.client === 'LIBRE';
     const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
     const isAdmin = sale.client === 'Admin';
 
-    // 1. Estilos Base (Normal)
+    // 1. Estilos Base
     let bg = darkMode ? 'bg-[#161B28] border-white/5' : 'bg-white/60 border-white/40';
     let text = darkMode ? 'text-white' : 'text-slate-800';
-    let subText = darkMode ? 'text-slate-400' : 'text-slate-500'; // Color para servicio/correo
+    let subText = darkMode ? 'text-slate-400' : 'text-slate-500';
 
     // 2. Estados Especiales
     if (isFree) {
@@ -39,17 +39,16 @@ const getCardStyles = (sale, days, darkMode) => {
         text = darkMode ? "text-emerald-400" : "text-emerald-900";
         subText = darkMode ? "text-emerald-400/70" : "text-emerald-700/70";
     } else if (isProblem) {
-        // CORRECCIÓN DARK MODE: Fondo rojo oscuro, pero texto CLARO para leerse
         bg = darkMode ? "bg-rose-900/10 border-rose-500/20" : "bg-rose-50/50 border-rose-100";
         text = darkMode ? "text-rose-300" : "text-rose-900"; 
-        subText = darkMode ? "text-rose-200/60" : "text-rose-800/60"; // Asegura legibilidad
+        subText = darkMode ? "text-rose-200/60" : "text-rose-800/60";
     } else if (isAdmin) {
         bg = darkMode ? "bg-slate-800 border-white/10" : "bg-slate-900 text-white";
         text = "text-white";
         subText = "text-slate-300";
     }
 
-    // 3. Color del Icono (Letra N, D, S...)
+    // 3. Color del Icono
     let statusColor = darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600';
     if (isFree) statusColor = darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-600';
     else if (isProblem) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-500';
@@ -59,10 +58,9 @@ const getCardStyles = (sale, days, darkMode) => {
     return { bg, text, subText, statusColor, isFree, isProblem, isAdmin };
 };
 
-// --- COMPONENTE TARJETA (MEMOIZADO) ---
+// --- COMPONENTE TARJETA ---
 const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
     const days = safeGetDays(sale.endDate);
-    // Usamos el helper corregido
     const { bg, text, subText, statusColor, isFree, isProblem, isAdmin } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
 
@@ -71,14 +69,14 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
         return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
     }, [sale.service]);
 
-    // Formateo de fecha para usar en móvil y desktop (Ej: 08/01)
+    // Formateo de fecha para usar en móvil y desktop
     const formattedDate = sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--';
 
     return (
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
             <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center">
                 
-                {/* COL 1: Info Principal */}
+                {/* COL 1: Info */}
                 <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 ${statusColor}`}>
                         {iconLetter}
@@ -87,31 +85,27 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         <div className="flex justify-between items-start">
                             <div>
                                 <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>{isFree ? 'Espacio Libre' : sale.client}</div>
-                                {/* Aquí aplicamos subText para asegurar que se lea en modo oscuro */}
                                 <div className={`text-[11px] md:text-xs font-medium truncate mt-0.5 ${subText}`}>{sale.service}</div>
                             </div>
                             
-                            {/* Vista Móvil: Precio, Días y FECHA EXACTA */}
+                            {/* Vista Móvil */}
                             {!isFree && !isProblem && (
                                 <div className="text-right md:hidden leading-tight flex flex-col items-end">
                                     {cost > 0 && <span className={`text-xs font-black ${isAdmin ? 'text-white/80' : (darkMode ? 'text-white' : 'text-slate-800')}`}>${cost}</span>}
-                                    
                                     <div className={`text-[9px] font-bold ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>
                                         {days}d
                                     </div>
-                                    {/* ✅ FECHA EN MOVIL AÑADIDA */}
                                     <div className={`text-[9px] font-bold opacity-60 uppercase ${subText}`}>
                                         {formattedDate}
                                     </div>
                                 </div>
                             )}
                         </div>
-                        {/* Teléfono móvil visible con color corregido */}
                         {!isFree && !isProblem && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
                     </div>
                 </div>
 
-                {/* COL 2: Credenciales (Click to Copy) */}
+                {/* COL 2: Credenciales */}
                 <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-2">
                     <div className={`rounded-xl px-3 py-2 border md:border-none ${darkMode ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/20 md:bg-transparent'}`}>
                         <div className={`flex items-center justify-between gap-2 mb-1 ${subText}`}>
@@ -119,7 +113,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                             <button onClick={(e) => handlers.copy(e, sale.email, sale.pass)} className={`hover:text-indigo-500 active:scale-90 transition-transform ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><Copy size={10}/></button>
                         </div>
                         <div className="flex items-center gap-2">
-                            {/* Forzamos color claro en la contraseña en Dark Mode */}
                             <span className={`text-[11px] font-mono font-bold select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{sale.pass}</span>
                             {!isFree && (
                                 <div className="flex gap-1 ml-auto">
@@ -136,7 +129,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                     {!isFree && !isProblem ? (
                         <div className="text-center leading-none">
                             <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
-                            {/* Fecha formateada en PC */}
                             <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
                         </div>
                     ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : <span className={`opacity-40 text-xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>---</span>)}
@@ -153,9 +145,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                             {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
                             
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
-                            
                             <div className="w-px h-4 bg-white/10 mx-1"></div>
-                            
                             {!isProblem && <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}><CalendarPlus size={14}/></button>}
                             <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><RotateCcw size={14}/></button>
                         </div>
@@ -271,7 +261,7 @@ const Dashboard = ({
         if (node) observer.current.observe(node);
     }, [loadingData, displayLimit, filteredSales.length]);
 
-    // --- THEME MEMOIZADO ---
+    // --- THEME ---
     const theme = useMemo(() => ({
         inputBg: darkMode ? 'bg-black/20 text-white placeholder-slate-600 border-white/5' : 'bg-transparent text-slate-800 placeholder-slate-400',
         activeBtn: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
@@ -349,7 +339,7 @@ const Dashboard = ({
                 {displayLimit < filteredSales.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODAL BULK (Optimizado) */}
+            {/* MODAL BULK (Optimizado para marcar todos) */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
@@ -367,7 +357,16 @@ const Dashboard = ({
                                             <p className="text-[10px] font-bold text-slate-400">{sale.service} • {sale.phone}</p>
                                         </div>
                                         {isSent ? <span className="flex items-center gap-1 text-xs font-black text-emerald-500"><CheckCircle2 size={12}/> Listo</span> : 
-                                            <button onClick={() => { handleUnifiedWhatsApp(sale, 'reminder'); saveSentIds([sale.id]); }} className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 ${darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'}`}>Enviar <Send size={12}/></button>
+                                            <button 
+                                                onClick={() => { 
+                                                    handleUnifiedWhatsApp(sale, 'reminder'); 
+                                                    const relatedIds = bulkModal.list.filter(item => item.client === sale.client && item.phone === sale.phone).map(item => item.id);
+                                                    saveSentIds(relatedIds); 
+                                                }} 
+                                                className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 ${darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'}`}
+                                            >
+                                                Enviar <Send size={12}/>
+                                            </button>
                                         }
                                     </div>
                                 );
