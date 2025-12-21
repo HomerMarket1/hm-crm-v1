@@ -1,172 +1,264 @@
 // src/views/Dashboard.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
-import { Search, Smartphone, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Loader } from 'lucide-react';
+import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
-// --- HELPERS GLOBALES ---
+// --- CONSTANTES & HELPERS ---
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 
-const cleanServiceName = (name) => {
-    if (!name) return '';
-    return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
-};
+const cleanServiceName = (name) => name ? name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim() : '';
 
 const getWhatsAppUrl = (phone, message) => {
     if (!phone) return '#';
     const cleanPhone = phone.replace(/\D/g, '');
-    const encodedMessage = encodeURIComponent(message);
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-        ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`
-        : `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`;
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    return `https://${isMobile ? 'api' : 'web'}.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
 };
 
 const safeGetDays = (dateString) => {
-    if (!dateString || typeof dateString !== 'string' || !dateString.includes('-')) return 0;
-    try {
-        const today = new Date(); today.setHours(0,0,0,0);
-        const [y, m, d] = dateString.split('-').map(Number);
-        const end = new Date(y, m - 1, d); 
-        const diffTime = end - today;
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    } catch(e) { return 0; }
+    if (!dateString || !dateString.includes('-')) return 0;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const [y, m, d] = dateString.split('-').map(Number);
+    return Math.ceil((new Date(y, m - 1, d) - today) / (1000 * 60 * 60 * 24));
 };
 
-const safeGetStatusColor = (endDate, client, darkMode) => {
-    if (client === 'LIBRE') return darkMode ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-100 text-emerald-600 border-emerald-200';
-    if (NON_BILLABLE_STATUSES.includes(client)) return darkMode ? 'bg-white/5 text-slate-500 border-white/5' : 'bg-gray-100 text-gray-500 border-gray-200';
-    if (!endDate) return 'text-slate-500';
-    
-    const days = safeGetDays(endDate);
-    if (days < 0) return darkMode ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-100 text-rose-600 border-rose-200';
-    if (days <= 3) return darkMode ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-100 text-amber-600 border-amber-200';
-    return darkMode ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-600 border-blue-200';
-};
-
-const safeGetStatusIcon = (serviceName) => {
-    const lower = serviceName ? serviceName.toLowerCase() : '';
-    return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
-};
-
-// TARJETA MEMOIZADA (Optimizada)
-const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
+// --- HELPER DE ESTILOS (Alto Contraste Corregido) ---
+const getCardStyles = (sale, days, darkMode) => {
     const isFree = sale.client === 'LIBRE';
     const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
     const isAdmin = sale.client === 'Admin';
+
+    // 1. Estilos Base (Normal)
+    let bg = darkMode ? 'bg-[#161B28] border-white/5' : 'bg-white/60 border-white/40';
+    let text = darkMode ? 'text-white' : 'text-slate-800';
+    let subText = darkMode ? 'text-slate-400' : 'text-slate-500'; // Color para servicio/correo
+
+    // 2. Estados Especiales
+    if (isFree) {
+        bg = darkMode ? "bg-emerald-900/10 border-emerald-500/20" : "bg-emerald-50/50 border-emerald-100";
+        text = darkMode ? "text-emerald-400" : "text-emerald-900";
+        subText = darkMode ? "text-emerald-400/70" : "text-emerald-700/70";
+    } else if (isProblem) {
+        // CORRECCIÓN DARK MODE: Fondo rojo oscuro, pero texto CLARO para leerse
+        bg = darkMode ? "bg-rose-900/10 border-rose-500/20" : "bg-rose-50/50 border-rose-100";
+        text = darkMode ? "text-rose-300" : "text-rose-900"; 
+        subText = darkMode ? "text-rose-200/60" : "text-rose-800/60"; // Asegura legibilidad
+    } else if (isAdmin) {
+        bg = darkMode ? "bg-slate-800 border-white/10" : "bg-slate-900 text-white";
+        text = "text-white";
+        subText = "text-slate-300";
+    }
+
+    // 3. Color del Icono (Letra N, D, S...)
+    let statusColor = darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600';
+    if (isFree) statusColor = darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-600';
+    else if (isProblem) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-500';
+    else if (days < 0) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-600';
+    else if (days <= 3) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-600';
+
+    return { bg, text, subText, statusColor, isFree, isProblem, isAdmin };
+};
+
+// --- COMPONENTE TARJETA (MEMOIZADO) ---
+const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
     const days = safeGetDays(sale.endDate);
-    const cost = (isFree || isProblem || isAdmin) ? 0 : Math.round(sale.cost);
+    // Usamos el helper corregido
+    const { bg, text, subText, statusColor, isFree, isProblem, isAdmin } = getCardStyles(sale, days, darkMode);
+    const cost = Math.round(sale.cost || 0);
 
-    const cardStyle = isFree 
-        ? (darkMode ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-emerald-50/30 border border-emerald-100/50")
-        : isProblem 
-            ? (darkMode ? "bg-rose-500/5 border border-rose-500/10" : "bg-rose-50/30 border border-rose-100/50")
-            : isAdmin 
-                ? (darkMode ? "bg-black border border-white/10" : "bg-slate-900/90 text-white")
-                : (darkMode ? 'bg-[#161B28]/60 backdrop-blur-md border border-white/5 shadow-sm hover:bg-[#161B28]' : 'bg-white/40 backdrop-blur-md border border-white/40 shadow-sm hover:bg-white/60');
+    const iconLetter = useMemo(() => {
+        const lower = sale.service ? sale.service.toLowerCase() : '';
+        return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
+    }, [sale.service]);
 
-    const primaryColor = isFree 
-        ? (darkMode ? "text-emerald-400" : "text-emerald-900")
-        : isProblem
-            ? (darkMode ? "text-rose-400" : "text-rose-900")
-            : isAdmin
-                ? "text-white"
-                : (darkMode ? "text-slate-200" : "text-slate-800");
-
-    const priceColor = isAdmin ? "text-white/80" : (darkMode ? "text-slate-300" : "text-slate-700");
-    const textSecondary = darkMode ? "text-slate-400" : "text-slate-500";
+    // Formateo de fecha para usar en móvil y desktop (Ej: 08/01)
+    const formattedDate = sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--';
 
     return (
-        <div className={`p-2.5 md:p-4 rounded-[18px] md:rounded-[24px] transition-all duration-300 w-full relative group ${cardStyle}`}>
-            <div className="flex flex-col gap-1 md:grid md:grid-cols-12 md:gap-4 items-center">
-                <div className="col-span-12 md:col-span-4 w-full flex items-start gap-2.5">
-                    <div className={`w-9 h-9 md:w-14 md:h-14 rounded-[12px] md:rounded-[18px] flex items-center justify-center text-base md:text-2xl shadow-inner flex-shrink-0 border ${darkMode ? 'border-white/5' : 'border-transparent'} ${safeGetStatusColor(sale.endDate, sale.client, darkMode)}`}>
-                        {safeGetStatusIcon(sale.service)}
+        <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
+            <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center">
+                
+                {/* COL 1: Info Principal */}
+                <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
+                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 ${statusColor}`}>
+                        {iconLetter}
                     </div>
-                    <div className="flex-1 min-w-0 relative pt-0.5">
+                    <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start">
-                            <div className='pr-1'>
-                                <div className={`font-bold text-sm md:text-lg tracking-tight truncate ${primaryColor} leading-none mb-0.5`}>{isFree ? 'Espacio Libre' : sale.client}</div>
-                                <div className={`text-[10px] md:text-xs font-semibold truncate flex items-center gap-1 ${textSecondary}`}>{sale.service}</div>
+                            <div>
+                                <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>{isFree ? 'Espacio Libre' : sale.client}</div>
+                                {/* Aquí aplicamos subText para asegurar que se lea en modo oscuro */}
+                                <div className={`text-[11px] md:text-xs font-medium truncate mt-0.5 ${subText}`}>{sale.service}</div>
                             </div>
+                            
+                            {/* Vista Móvil: Precio, Días y FECHA EXACTA */}
                             {!isFree && !isProblem && (
-                                <div className="text-right md:hidden flex flex-col items-end leading-none">
-                                    {cost > 0 && <span className={`text-sm font-black tracking-tight ${priceColor}`}>${cost}</span>}
-                                    <div className={`text-[9px] font-bold mt-0.5 ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
+                                <div className="text-right md:hidden leading-tight flex flex-col items-end">
+                                    {cost > 0 && <span className={`text-xs font-black ${isAdmin ? 'text-white/80' : (darkMode ? 'text-white' : 'text-slate-800')}`}>${cost}</span>}
+                                    
+                                    <div className={`text-[9px] font-bold ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>
+                                        {days}d
+                                    </div>
+                                    {/* ✅ FECHA EN MOVIL AÑADIDA */}
+                                    <div className={`text-[9px] font-bold opacity-60 uppercase ${subText}`}>
+                                        {formattedDate}
+                                    </div>
                                 </div>
                             )}
                         </div>
-                        {!isFree && !isProblem && <div className="md:hidden mt-0.5 flex items-center gap-1 opacity-70"><Smartphone size={9} className="text-slate-400"/> <span className="text-[9px] font-medium text-slate-500">{sale.phone}</span></div>}
+                        {/* Teléfono móvil visible con color corregido */}
+                        {!isFree && !isProblem && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
                     </div>
                 </div>
 
-                <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-4 mt-0.5 md:mt-0">
-                    <div className={`flex flex-col justify-center rounded-lg px-2 py-1.5 md:p-0 border md:border-none ${darkMode ? 'bg-black/20 border-white/5' : 'bg-white/40 border-white/20 md:bg-transparent'}`}>
-                        <div className={`flex items-start justify-between gap-1 mb-1 ${textSecondary}`}>
-                            <div className="flex items-start gap-1 min-w-0"><div className="text-[10px] md:text-[11px] font-medium truncate select-all">{sale.email}</div></div>
-                            <button onClick={(e) => handlers.copy(e, sale.email, sale.pass)} className={`p-0.5 rounded-full transition-colors active:scale-90 flex-shrink-0 -mt-0.5 ${darkMode ? 'text-slate-500 hover:text-indigo-400' : 'text-slate-400 hover:text-indigo-600'}`}><Copy size={12}/></button>
+                {/* COL 2: Credenciales (Click to Copy) */}
+                <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-2">
+                    <div className={`rounded-xl px-3 py-2 border md:border-none ${darkMode ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/20 md:bg-transparent'}`}>
+                        <div className={`flex items-center justify-between gap-2 mb-1 ${subText}`}>
+                            <span className="text-[10px] truncate select-all opacity-90">{sale.email}</span>
+                            <button onClick={(e) => handlers.copy(e, sale.email, sale.pass)} className={`hover:text-indigo-500 active:scale-90 transition-transform ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><Copy size={10}/></button>
                         </div>
-                        <div className={`flex items-center justify-between gap-2 pt-1 md:pt-0 md:border-none ${darkMode ? 'border-white/5' : 'border-black/5'}`}>
-                            <div className="flex items-center gap-1"><div className={`text-[10px] md:text-xs font-mono font-bold truncate select-all ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{sale.pass}</div></div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                                {!isFree && (<><span className={`px-1 py-0.5 rounded text-[9px] font-bold uppercase border border-white/10 ${isAdmin ? 'bg-white/10 text-white' : (darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white/60 text-indigo-600')}`}>{sale.profile || 'Gral'}</span><span className={`font-mono text-[9px] tracking-widest px-1 py-0.5 rounded border border-white/10 ${isAdmin ? 'bg-white/5 text-slate-300' : (darkMode ? 'bg-white/5 text-slate-500' : 'bg-slate-100/50 text-slate-500')}`}>{sale.pin || '••••'}</span></>)}
-                            </div>
+                        <div className="flex items-center gap-2">
+                            {/* Forzamos color claro en la contraseña en Dark Mode */}
+                            <span className={`text-[11px] font-mono font-bold select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{sale.pass}</span>
+                            {!isFree && (
+                                <div className="flex gap-1 ml-auto">
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border border-white/10 ${isAdmin ? 'bg-white/10' : (darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white text-indigo-600')}`}>{sale.profile || 'Gral'}</span>
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 ${darkMode ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{sale.pin || '•••'}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
 
+                {/* COL 3: Estado Desktop */}
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center">
                     {!isFree && !isProblem ? (
-                        <div className="text-center">
-                            <div className={`text-xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : primaryColor}`}>{days} <span className="text-[10px] font-bold uppercase text-slate-400 align-top">días</span></div>
-                            <div className={`text-[10px] font-bold uppercase tracking-wider ${textSecondary}`}>{sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--'}</div>
+                        <div className="text-center leading-none">
+                            <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
+                            {/* Fecha formateada en PC */}
+                            <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
                         </div>
-                    ) : (isFree ? <span className="text-xs font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-lg">LIBRE</span> : <span className="text-xs font-black text-slate-500 uppercase tracking-widest">---</span>)}
-                    {!isProblem && cost > 0 && <div className={`hidden md:block text-sm font-black tracking-tight ${priceColor} mt-1`}>${cost}</div>}
+                    ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : <span className={`opacity-40 text-xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>---</span>)}
                 </div>
 
-                <div className="col-span-12 md:col-span-2 w-full flex flex-col md:flex-row items-center justify-end gap-1 mt-1 md:mt-0 pt-1 md:pt-0 border-t md:border-none border-white/5">
-                    <div className="flex justify-end gap-1 w-full md:w-auto">
-                        {isFree ? (
-                            <button onClick={() => handlers.assign(sale)} className={`w-full md:w-auto px-4 h-8 md:h-9 rounded-full font-bold text-xs shadow-lg flex items-center justify-center gap-1 ${darkMode ? 'bg-emerald-500 text-white shadow-emerald-500/30' : 'bg-emerald-500 text-white shadow-emerald-500/30'}`}>Asignar <ChevronRight size={14}/></button>
-                        ) : (
-                            <div className="flex items-center gap-1 w-full justify-end">
-                                <div className="flex gap-1">
-                                    {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 ${days <= 0 ? (darkMode ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600') : (darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600')}`}><XCircle size={12}/></button>}
-                                    {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-white/5 text-slate-400 hover:bg-indigo-500/20 hover:text-indigo-300' : 'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-600'}`}><Lock size={12}/></button>}
-                                    <button onClick={() => handlers.edit(sale)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center hover:bg-slate-200 ${darkMode ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'}`}><Edit2 size={12}/></button>
-                                </div>
-                                <div className={`flex gap-1 pl-1 border-l ml-1 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                                    {!isProblem && <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center shadow-sm ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}><CalendarPlus size={12}/></button>}
-                                    <button onClick={() => handlers.liberate(sale.id)} className={`w-7 h-7 md:w-8 md:h-8 rounded-full border flex items-center justify-center shadow-sm ${darkMode ? 'bg-transparent border-white/10 text-slate-500 hover:bg-rose-500/20 hover:text-rose-400' : 'bg-white border-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500'}`}><RotateCcw size={12}/></button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                {/* COL 4: Acciones */}
+                <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
+                    {isFree ? (
+                        <button onClick={() => handlers.assign(sale)} className="w-full md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">Asignar <ChevronRight size={14}/></button>
+                    ) : (
+                        <div className="flex items-center gap-1 w-full justify-end">
+                            {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
+                            
+                            {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
+                            
+                            <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
+                            
+                            <div className="w-px h-4 bg-white/10 mx-1"></div>
+                            
+                            {!isProblem && <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}><CalendarPlus size={14}/></button>}
+                            <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><RotateCcw size={14}/></button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     );
 });
 
-
+// --- DASHBOARD PRINCIPAL ---
 const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
     handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles,
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
-    getDaysRemaining, darkMode
+    darkMode
 }) => {
 
-    const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [], msgType: '' });
+    const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [] });
     const [sentIds, setSentIds] = useState([]); 
-
-    // SCROLL INFINITO
     const [displayLimit, setDisplayLimit] = useState(50);
     const observer = useRef();
 
+    // Reset scroll infinito al filtrar
+    useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo]);
+
+    // Recuperar IDs enviados hoy
     useEffect(() => {
-        setDisplayLimit(50);
-    }, [filterClient, filterService, filterStatus, dateFrom, dateTo]);
+        const today = new Date().toISOString().split('T')[0];
+        try {
+            const saved = JSON.parse(localStorage.getItem('crm_sent_ids') || '{}');
+            if (saved.date === today) setSentIds(saved.ids || []);
+            else localStorage.removeItem('crm_sent_ids');
+        } catch (e) {}
+    }, []);
+
+    const saveSentIds = (newIds) => {
+        setSentIds(prev => {
+            const updated = [...new Set([...prev, ...newIds])];
+            localStorage.setItem('crm_sent_ids', JSON.stringify({ date: new Date().toISOString().split('T')[0], ids: updated }));
+            return updated;
+        });
+    };
+
+    // --- LOGICA WHATSAPP ---
+    const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
+        const { client, phone, endDate } = sale;
+        const targetDays = safeGetDays(endDate);
+        let message = '';
+
+        if (actionType === 'reminder') {
+            const related = sales.filter(s => 
+                s.client === client && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE' &&
+                (Math.abs(safeGetDays(s.endDate) - targetDays) <= 1)
+            );
+
+            const summary = Object.entries(related.reduce((acc, curr) => {
+                const name = cleanServiceName(curr.service);
+                const isFull = curr.type === 'Cuenta' || curr.service?.toLowerCase().includes('completa');
+                const key = `${name}-${isFull ? 'C' : 'P'}`;
+                if(!acc[key]) acc[key] = { name, isFull, count: 0 };
+                acc[key].count++;
+                return acc;
+            }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Ctas Completas':'Cuenta Completa') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
+
+            if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.`;
+            else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
+            else if (targetDays === 1) message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
+            else message = `Hola ${client}, recordatorio: ${summary} vence en ${targetDays} días.`;
+
+        } else if (actionType === 'data') {
+            const cleanName = cleanServiceName(sale.service);
+            const dateStr = endDate ? endDate.split('-').reverse().join('/') : '--';
+            const isFull = sale.type === 'Cuenta';
+            message = `${cleanName.toUpperCase()} ${isFull ? 'CUENTA COMPLETA' : '1 PERFIL'}\n\nUSER: ${sale.email}\nPASS: ${sale.pass}\n${!isFull ? `PERFIL: ${sale.profile}\nPIN: ${sale.pin||'N/A'}\n` : ''}\nVence: ${dateStr}`;
+        }
+        
+        window.open(getWhatsAppUrl(phone, message), '_blank');
+    }, [sales]);
+
+    // --- HANDLERS MEMOIZADOS ---
+    const handlers = useMemo(() => ({
+        whatsapp: handleUnifiedWhatsApp,
+        copy: (e, email, pass) => {
+            e.preventDefault(); navigator.clipboard.writeText(`${email}:${pass}`);
+            const btn = e.currentTarget; 
+            const original = btn.innerHTML;
+            btn.innerHTML = `<span class="text-emerald-500 text-[10px] font-bold">OK</span>`;
+            setTimeout(() => btn.innerHTML = original, 1500);
+        },
+        assign: (sale) => { setFormData(sale); setView('form'); },
+        edit: (sale) => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); },
+        renew: handleQuickRenew,
+        liberate: triggerLiberate
+    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles]);
+
+    // --- SCROLL INFINITO & ORDENAMIENTO ---
+    const visibleSales = useMemo(() => {
+        const sorted = [...(filteredSales || [])].sort((a, b) => (a.client || '').localeCompare(b.client || ''));
+        return sorted.slice(0, displayLimit);
+    }, [filteredSales, displayLimit]);
 
     const lastElementRef = useCallback(node => {
         if (loadingData) return;
@@ -179,205 +271,104 @@ const Dashboard = ({
         if (node) observer.current.observe(node);
     }, [loadingData, displayLimit, filteredSales.length]);
 
-    useEffect(() => {
-        const today = new Date().toISOString().split('T')[0];
-        const savedData = localStorage.getItem('crm_sent_ids');
-        if (savedData) {
-            const parsed = JSON.parse(savedData);
-            if (parsed.date === today) { setSentIds(parsed.ids); } 
-            else { localStorage.removeItem('crm_sent_ids'); }
-        }
-    }, []);
-
-    const saveSentIds = (newIds) => {
-        setSentIds(prev => {
-            const updated = [...new Set([...prev, ...newIds])];
-            const today = new Date().toISOString().split('T')[0];
-            localStorage.setItem('crm_sent_ids', JSON.stringify({ date: today, ids: updated }));
-            return updated;
-        });
-    };
-
-    const handleUnifiedWhatsApp = (sale, actionType) => {
-        const { client, phone, endDate } = sale;
-        const targetDays = safeGetDays(endDate);
-        
-        let message = '';
-        if (actionType === 'reminder') {
-            let relatedSales = [];
-            if (targetDays < 0) {
-                relatedSales = sales.filter(s => s.client === client && safeGetDays(s.endDate) < 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
-            } else if (targetDays === 0) {
-                relatedSales = sales.filter(s => s.client === client && safeGetDays(s.endDate) === 0 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
-            } else if (targetDays === 1) {
-                relatedSales = sales.filter(s => s.client === client && safeGetDays(s.endDate) === 1 && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
-            } else {
-                relatedSales = sales.filter(s => s.client === client && s.endDate === endDate && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE');
-            }
-
-            const groups = {};
-            relatedSales.forEach(s => {
-                const cleanName = cleanServiceName(s.service);
-                const isFull = s.type === 'Cuenta' || (s.service && s.service.toLowerCase().includes('cuenta completa'));
-                const key = `${cleanName}-${isFull ? 'C' : 'P'}`;
-                if (!groups[key]) { groups[key] = { name: cleanName, isFull: isFull, count: 0 }; }
-                groups[key].count += 1;
-            });
-
-            const descriptionParts = Object.values(groups).map(g => {
-                if (g.isFull) { return `${g.count} ${g.count > 1 ? 'cuentas completas' : 'cuenta completa'} de ${g.name}`; } 
-                else { return `${g.count} ${g.count > 1 ? 'perfiles' : 'perfil'} de ${g.name}`; }
-            });
-            const servicesString = descriptionParts.join(' y ');
-
-            if (targetDays < 0) message = `🔴 Hola, recordatorio de pago pendiente por: ${servicesString}`;
-            else if (targetDays === 0) message = `❌ Hola, el vencimiento de ${servicesString} es HOY. Por favor, realiza tu pago para no perder tu cupo ❌`;
-            else if (targetDays === 1) message = `⚠️ Buen Día ${client}⚠️\nMañana vence: ${servicesString}.\n¿Renuevas un mes más?`;
-            else message = `Hola ${client}, recordatorio: ${servicesString} vence en ${targetDays} días.`;
-        } 
-        else if (actionType === 'data') {
-            let readableDate = endDate ? endDate.split('-').reverse().join('/') : '---';
-            const pinValue = (sale.pin && sale.pin.trim() !== "") ? sale.pin : "No Tiene";
-            const cleanName = cleanServiceName(sale.service);
-            const isFullAccount = sale.type === 'Cuenta' || (sale.service && sale.service.toLowerCase().includes('cuenta completa'));
-            if (isFullAccount) message = `${cleanName.toUpperCase()} CUENTA COMPLETA\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n\n☑️Su Cuenta Vence el día ${readableDate}☑️`;
-            else message = `${cleanName.toUpperCase()} 1 PERFIL\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\nPERFIL:\n${sale.profile}\nPIN:\n${pinValue}\n\n☑️Su Perfil Vence el día ${readableDate}☑️`;
-        }
-        window.open(getWhatsAppUrl(phone, message), '_blank');
-    };
-
-    const handleCopyCredentials = (e, email, pass) => {
-        e.preventDefault(); navigator.clipboard.writeText(`${email}:${pass}`);
-        const btn = e.currentTarget; const originalContent = btn.innerHTML;
-        btn.innerHTML = `<span class="text-emerald-500 flex items-center gap-1">Copiado</span>`;
-        setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
-    };
-
-    const handlers = useMemo(() => ({
-        whatsapp: handleUnifiedWhatsApp,
-        copy: handleCopyCredentials,
-        assign: (sale) => { setFormData(sale); setView('form'); },
-        edit: (sale) => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); },
-        renew: (id, endDate) => handleQuickRenew(id, endDate),
-        liberate: (id) => triggerLiberate(id)
-    }), [sales, handleQuickRenew, triggerLiberate]); 
-
-    const openBulkModal = (type) => {
-        let list = []; let title = '';
-        if (type === 'today') { list = expiringToday; title = 'Vencen Hoy'; }
-        else if (type === 'tomorrow') { list = expiringTomorrow; title = 'Vencen Mañana'; }
-        else if (type === 'overdue') { list = overdueSales; title = 'Vencidas (Pago)'; }
-        if (list.length === 0) return;
-        setBulkModal({ show: true, title, list });
-    };
-
-    const theme = {
-        filterContainer: darkMode ? 'bg-[#161B28]/60 border-white/5 shadow-black/20' : 'bg-white/60 shadow-indigo-500/5 border-white/50',
+    // --- THEME MEMOIZADO ---
+    const theme = useMemo(() => ({
         inputBg: darkMode ? 'bg-black/20 text-white placeholder-slate-600 border-white/5' : 'bg-transparent text-slate-800 placeholder-slate-400',
-        filterBtnActive: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
-        filterBtnInactive: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700',
-        textPrimary: darkMode ? "text-slate-200" : "text-slate-800",
-    };
+        activeBtn: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
+        inactiveBtn: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700'
+    }), [darkMode]);
 
-    if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh]"><div className="w-16 h-16 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin mb-4"/><p className="text-slate-400 font-bold tracking-widest text-xs uppercase animate-pulse">Sincronizando...</p></div>;
-
-    const safeSalesList = filteredSales || [];
-    const sortedSales = safeSalesList.slice().sort((a, b) => {
-        const clientA = a.client ? a.client.toUpperCase() : '';
-        const clientB = b.client ? b.client.toUpperCase() : '';
-        return clientA < clientB ? -1 : clientA > clientB ? 1 : 0; 
-    });
-
-    const visibleSales = sortedSales.slice(0, displayLimit);
+    if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400"><div className="w-12 h-12 rounded-full border-4 border-current border-t-transparent animate-spin mb-4"/>Sincronizando...</div>;
 
     return (
-        <div className="w-full pb-32 space-y-3 md:space-y-8 animate-in fade-in">
-            {/* ALERTAS */}
+        <div className="w-full pb-32 space-y-4 animate-in fade-in">
+            {/* ALERTAS SUPERIORES */}
             {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
-                    {overdueSales.length > 0 && (<button onClick={() => openBulkModal('overdue')} className="flex-1 flex items-center justify-between p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Ban size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Vencidas</p><p className="text-xs font-black">{overdueSales.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
-                    {expiringToday.length > 0 && (<button onClick={() => openBulkModal('today')} className="flex-1 flex items-center justify-between p-2 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Bell size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Hoy</p><p className="text-xs font-black">{expiringToday.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
-                    {expiringTomorrow.length > 0 && (<button onClick={() => openBulkModal('tomorrow')} className="flex-1 flex items-center justify-between p-2 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition-all group"><div className="flex items-center gap-2"><div className="p-1 bg-white/20 rounded-lg"><Calendar size={14} className="fill-white"/></div><div className="text-left leading-none"><p className="text-[9px] font-bold opacity-80 uppercase">Mañana</p><p className="text-xs font-black">{expiringTomorrow.length} Clientes</p></div></div><ChevronRight size={14} className="opacity-60 group-hover:translate-x-1 transition-transform"/></button>)}
+                    {overdueSales.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencidas', list: overdueSales })} className="flex-1 p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Ban size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Vencidas</span><p className="text-sm font-black">{overdueSales.length}</p></div></div><ChevronRight size={14}/></button>)}
+                    {expiringToday.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencen Hoy', list: expiringToday })} className="flex-1 p-2 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Bell size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Hoy</span><p className="text-sm font-black">{expiringToday.length}</p></div></div><ChevronRight size={14}/></button>)}
+                    {expiringTomorrow.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencen Mañana', list: expiringTomorrow })} className="flex-1 p-2 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Calendar size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Mañana</span><p className="text-sm font-black">{expiringTomorrow.length}</p></div></div><ChevronRight size={14}/></button>)}
                 </div>
             )}
 
-            {/* BARRA FILTROS */}
-            <div className={`sticky top-0 z-40 px-1 py-2 md:py-3 -mx-1 backdrop-blur-xl transition-all ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
-                <div className={`backdrop-blur-md rounded-[1.5rem] md:rounded-[2rem] p-2 shadow-lg border flex flex-col gap-2 ${theme.filterContainer}`}>
+            {/* FILTROS (STICKY) */}
+            <div className={`sticky top-0 z-40 px-1 -mx-1 py-2 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
+                <div className={`p-2 rounded-[24px] shadow-xl border flex flex-col gap-2 ${darkMode ? 'bg-[#161B28]/90 border-white/5 shadow-black/20' : 'bg-white/80 border-white/50 shadow-indigo-500/5'}`}>
+                    <div className="relative group w-full">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input type="text" placeholder="Buscar cliente, servicio..." className={`w-full pl-10 pr-4 py-2.5 rounded-xl font-bold text-sm outline-none transition-all ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} />
+                    </div>
                     
-                    {/* Buscador */}
-                    <div className="relative group w-full"><div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none"><Search className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} /></div><input type="text" placeholder="Buscar..." className={`block w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 border-none font-medium rounded-2xl transition-all outline-none focus:ring-0 ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
-                    
-                    <div className="flex flex-col md:flex-row gap-2 w-full">
-                        {/* Filtros de Servicio y Estado */}
-                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1 w-full md:w-auto"><div className="relative flex-shrink-0"><select className={`appearance-none font-bold text-[10px] md:text-xs py-2 pl-3 pr-6 rounded-xl border border-transparent transition-all cursor-pointer outline-none ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-white/10' : 'bg-slate-100/80 text-slate-600 hover:bg-white'}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}><option value="Todos">Todos</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select><Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div><div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>{['Todos', 'Libres', 'Ocupados', 'Problemas', 'Vencidos'].map((status) => (<button key={status} onClick={() => setFilter('filterStatus', status)} className={`px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${filterStatus === status ? theme.filterBtnActive : theme.filterBtnInactive}`}>{status}</button>))}</div></div>
-                        
-                        {/* ✅ FECHAS MINIMALISTAS (Contenedor Cápsula) */}
-                        <div className={`flex items-center gap-1 px-1 py-1 rounded-xl border w-full md:w-auto flex-shrink-0 ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}>
-                            <div className="w-24 md:w-28">
-                                {/* El label "Desde" se mostrará dentro del botón si no hay fecha */}
-                                <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
+                    <div className="flex flex-col md:flex-row gap-2">
+                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1">
+                            <div className="relative flex-shrink-0">
+                                <select className={`appearance-none font-bold text-xs py-2 pl-3 pr-8 rounded-xl border border-transparent outline-none cursor-pointer ${theme.activeBtn}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}>
+                                    <option value="Todos">Servicios</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                </select>
+                                <Filter size={10} className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"/>
                             </div>
-                            <span className="text-slate-400 text-xs shrink-0">-</span>
-                            <div className="w-24 md:w-28">
-                                <AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} />
+                            <div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>
+                                {['Todos', 'Libres', 'Ocupados', 'Problemas', 'Vencidos'].map((st) => (
+                                    <button key={st} onClick={() => setFilter('filterStatus', st)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === st ? theme.activeBtn : theme.inactiveBtn}`}>{st}</button>
+                                ))}
                             </div>
-                            
-                            {/* Botón limpiar */}
-                            {(dateFrom || dateTo) && (
-                                <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="ml-1 p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-100 transition-colors shrink-0">
-                                    <X size={14}/>
-                                </button>
-                            )}
+                        </div>
+                        <div className={`flex items-center gap-1 px-1 py-1 rounded-xl border w-full md:w-auto ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}>
+                            <div className="w-24 md:w-28"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div>
+                            <span className="opacity-30">-</span>
+                            <div className="w-24 md:w-28"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
+                            {(dateFrom || dateTo) && <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="p-1 text-rose-500 hover:bg-rose-500/10 rounded-md"><X size={14}/></button>}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* HEADER METRICAS */}
-            <div className="flex items-end justify-between px-2 md:px-4"><div><h1 className={`text-3xl md:text-6xl font-black tracking-tighter mb-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] md:text-xs uppercase tracking-widest pl-1">Ingresos Mensuales</p></div><div className="text-right pb-1 md:pb-2"><div className={`text-xl md:text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalItems}</div><div className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Activos</div></div></div>
-
-            {/* LISTA */}
-            <div className="grid grid-cols-1 gap-2 md:gap-4">
-                {visibleSales.length > 0 ? (
-                    visibleSales.map((sale, index) => {
-                        if (visibleSales.length === index + 1) {
-                            return (
-                                <div ref={lastElementRef} key={sale.id}>
-                                    <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} />
-                                </div>
-                            );
-                        } else {
-                            return <SaleCard key={sale.id} sale={sale} darkMode={darkMode} handlers={handlers} />;
-                        }
-                    })
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-20 opacity-50"><div className="w-24 h-24 bg-slate-200 rounded-full mb-4 animate-pulse"/><p className="text-slate-400 font-bold">Sin resultados</p></div>
-                )}
-                {displayLimit < sortedSales.length && (
-                    <div className="py-4 text-center text-xs font-bold text-slate-400 animate-pulse">Cargando más...</div>
-                )}
+            {/* HEADER DINERO */}
+            <div className="flex items-end justify-between px-2 md:px-4">
+                <div>
+                    <h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span>
+                    </h1>
+                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p>
+                </div>
+                <div className="text-right">
+                    <div className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalItems}</div>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Activos</div>
+                </div>
             </div>
 
-            {/* ✅ MODAL MASIVO (CORREGIDO PARA EVITAR PANTALLA BLANCA) */}
+            {/* LISTA VIRTUALIZADA */}
+            <div className="space-y-3">
+                {visibleSales.length > 0 ? visibleSales.map((sale, i) => (
+                    <div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}>
+                        <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} />
+                    </div>
+                )) : (
+                    <div className="py-20 text-center opacity-40"><p className="font-bold">Sin resultados</p></div>
+                )}
+                {displayLimit < filteredSales.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
+            </div>
+
+            {/* MODAL BULK (Optimizado) */}
             {bulkModal.show && (
-                <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-0 md:p-4">
+                <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
-                        <div className={`p-6 border-b flex justify-between items-center ${darkMode ? 'border-white/5' : 'border-slate-100'}`}>
-                            <div><h3 className={`text-xl font-black ${theme.textPrimary}`}>{bulkModal.title}</h3><p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Cola: {bulkModal.list.length}</p></div>
-                            <button onClick={() => setBulkModal({ ...bulkModal, show: false })} className={`p-2 rounded-full ${darkMode ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}`}><X size={20}/></button>
+                        <div className={`p-5 border-b flex justify-between items-center ${darkMode ? 'border-white/5' : 'border-slate-100'}`}>
+                            <div><h3 className={`text-lg font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{bulkModal.title}</h3><p className="text-xs font-bold text-slate-400 uppercase">Cola: {bulkModal.list.length}</p></div>
+                            <button onClick={() => setBulkModal({ ...bulkModal, show: false })} className={`p-2 rounded-full ${darkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}><X size={18}/></button>
                         </div>
-                        <div className={`flex-1 overflow-y-auto p-4 space-y-3 pb-24 ${darkMode ? 'bg-[#0B0F19]/50' : 'bg-slate-50/50'}`}>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
                             {bulkModal.list.map((sale) => {
-                                const isClientSent = bulkModal.list.filter(item => item.client === sale.client && item.phone === sale.phone).every(item => sentIds.includes(item.id));
+                                const isSent = sentIds.includes(sale.id);
                                 return (
-                                    <div key={sale.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isClientSent ? (darkMode ? 'bg-emerald-500/10 border-emerald-500/20 opacity-50' : 'bg-emerald-50 border-emerald-100 opacity-50') : (darkMode ? 'bg-[#161B28] border-white/5 shadow-sm' : 'bg-white border-slate-100 shadow-sm')}`}>
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            {/* ✅ CORRECCIÓN: Usamos las funciones seguras safeGet... */}
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${safeGetStatusColor(sale.endDate, sale.client, darkMode)}`}>{safeGetStatusIcon(sale.service)}</div>
-                                            <div className="min-w-0"><p className={`font-bold text-sm truncate ${theme.textPrimary}`}>{sale.client}</p><p className="text-[10px] font-bold text-slate-400 truncate">{sale.phone}</p></div>
+                                    <div key={sale.id} className={`flex items-center justify-between p-3 rounded-2xl border ${isSent ? (darkMode ? 'bg-emerald-500/10 border-emerald-500/20 opacity-50' : 'bg-emerald-50 border-emerald-100 opacity-50') : (darkMode ? 'bg-black/20 border-white/5' : 'bg-white border-slate-100')}`}>
+                                        <div className="min-w-0">
+                                            <p className={`font-bold text-sm truncate ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{sale.client}</p>
+                                            <p className="text-[10px] font-bold text-slate-400">{sale.service} • {sale.phone}</p>
                                         </div>
-                                        {isClientSent ? <span className="flex items-center gap-1 text-xs font-black text-emerald-600 px-3 py-2 bg-emerald-100/50 rounded-xl"><CheckCircle2 size={14}/> Listo</span> : <button onClick={() => { handleUnifiedWhatsApp(sale, 'reminder'); const allClientIdsInQueue = bulkModal.list.filter(item => item.client === sale.client && item.phone === sale.phone).map(item => item.id); saveSentIds(allClientIdsInQueue); }} className="px-4 py-2 bg-black text-white rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center">Enviar <Send size={12}/></button>}
+                                        {isSent ? <span className="flex items-center gap-1 text-xs font-black text-emerald-500"><CheckCircle2 size={12}/> Listo</span> : 
+                                            <button onClick={() => { handleUnifiedWhatsApp(sale, 'reminder'); saveSentIds([sale.id]); }} className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 ${darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'}`}>Enviar <Send size={12}/></button>
+                                        }
                                     </div>
                                 );
                             })}
