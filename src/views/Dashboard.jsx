@@ -192,17 +192,27 @@ const Dashboard = ({
         });
     };
 
-    // --- LOGICA WHATSAPP ---
+    // --- LOGICA WHATSAPP (CORREGIDA PARA SER ESTRICTA) ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
         let message = '';
 
         if (actionType === 'reminder') {
-            const related = sales.filter(s => 
-                s.client === client && !NON_BILLABLE_STATUSES.includes(s.client) && s.client !== 'LIBRE' &&
-                (Math.abs(safeGetDays(s.endDate) - targetDays) <= 1)
-            );
+            // ✅ FILTRO ESTRICTO: No mezclamos vencidos con hoy/mañana
+            const related = sales.filter(s => {
+                if (s.client !== client) return false;
+                if (NON_BILLABLE_STATUSES.includes(s.client)) return false;
+                if (s.client === 'LIBRE') return false;
+
+                const currentDays = safeGetDays(s.endDate);
+
+                // Si la tarjeta original es "VENCIDA" (negativa), agrupamos TODAS las vencidas de ese cliente.
+                if (targetDays < 0) return currentDays < 0; 
+                
+                // Si no, agrupamos solo las que tienen EXACTAMENTE los mismos días (0 o 1).
+                return currentDays === targetDays;
+            });
 
             const summary = Object.entries(related.reduce((acc, curr) => {
                 const name = cleanServiceName(curr.service);
@@ -339,7 +349,7 @@ const Dashboard = ({
                 {displayLimit < filteredSales.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODAL BULK (Optimizado para marcar todos) */}
+            {/* MODAL BULK (OPTIMIZADO PARA MARCAR TODOS) */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
@@ -360,7 +370,10 @@ const Dashboard = ({
                                             <button 
                                                 onClick={() => { 
                                                     handleUnifiedWhatsApp(sale, 'reminder'); 
-                                                    const relatedIds = bulkModal.list.filter(item => item.client === sale.client && item.phone === sale.phone).map(item => item.id);
+                                                    // ✅ MARCAR TODOS LOS DEL MISMO CLIENTE Y TELÉFONO
+                                                    const relatedIds = bulkModal.list
+                                                        .filter(item => item.client === sale.client && item.phone === sale.phone)
+                                                        .map(item => item.id);
                                                     saveSentIds(relatedIds); 
                                                 }} 
                                                 className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 ${darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'}`}
