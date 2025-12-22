@@ -69,7 +69,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
         return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
     }, [sale.service]);
 
-    // Formateo de fecha para usar en móvil y desktop
     const formattedDate = sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--';
 
     return (
@@ -171,10 +170,8 @@ const Dashboard = ({
     const [displayLimit, setDisplayLimit] = useState(50);
     const observer = useRef();
 
-    // Reset scroll infinito al filtrar
     useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo]);
 
-    // Recuperar IDs enviados hoy
     useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
         try {
@@ -192,25 +189,20 @@ const Dashboard = ({
         });
     };
 
-    // --- LOGICA WHATSAPP (CORREGIDA PARA SER ESTRICTA) ---
+    // --- LOGICA WHATSAPP MEJORADA ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
         let message = '';
 
         if (actionType === 'reminder') {
-            // ✅ FILTRO ESTRICTO: No mezclamos vencidos con hoy/mañana
             const related = sales.filter(s => {
                 if (s.client !== client) return false;
                 if (NON_BILLABLE_STATUSES.includes(s.client)) return false;
                 if (s.client === 'LIBRE') return false;
 
                 const currentDays = safeGetDays(s.endDate);
-
-                // Si la tarjeta original es "VENCIDA" (negativa), agrupamos TODAS las vencidas de ese cliente.
                 if (targetDays < 0) return currentDays < 0; 
-                
-                // Si no, agrupamos solo las que tienen EXACTAMENTE los mismos días (0 o 1).
                 return currentDays === targetDays;
             });
 
@@ -229,10 +221,23 @@ const Dashboard = ({
             else message = `Hola ${client}, recordatorio: ${summary} vence en ${targetDays} días.`;
 
         } else if (actionType === 'data') {
+            // ✅ ESTRUCTURA EXACTA PEDIDA
             const cleanName = cleanServiceName(sale.service);
-            const dateStr = endDate ? endDate.split('-').reverse().join('/') : '--';
             const isFull = sale.type === 'Cuenta';
-            message = `${cleanName.toUpperCase()} ${isFull ? 'CUENTA COMPLETA' : '1 PERFIL'}\n\nUSER: ${sale.email}\nPASS: ${sale.pass}\n${!isFull ? `PERFIL: ${sale.profile}\nPIN: ${sale.pin||'N/A'}\n` : ''}\nVence: ${dateStr}`;
+            
+            // Formatear fecha: "22 de Diciembre"
+            const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            let dateText = "Indefinido";
+            if (endDate) {
+                const [y, m, d] = endDate.split('-').map(Number);
+                dateText = `${d} de ${months[m-1]}`;
+            }
+
+            message = `${cleanName.toUpperCase()} ${isFull ? 'CUENTA COMPLETA' : '1 PERFIL'}\n\n` +
+                      `CORREO:\n${sale.email}\n` +
+                      `CONTRASEÑA:\n${sale.pass}\n` +
+                      `${!isFull ? `PERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n` : ''}` +
+                      `\n☑️Su Perfil Vence el día ${dateText}☑️`;
         }
         
         window.open(getWhatsAppUrl(phone, message), '_blank');
@@ -349,7 +354,7 @@ const Dashboard = ({
                 {displayLimit < filteredSales.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODAL BULK (OPTIMIZADO PARA MARCAR TODOS) */}
+            {/* MODAL BULK */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
@@ -370,7 +375,6 @@ const Dashboard = ({
                                             <button 
                                                 onClick={() => { 
                                                     handleUnifiedWhatsApp(sale, 'reminder'); 
-                                                    // ✅ MARCAR TODOS LOS DEL MISMO CLIENTE Y TELÉFONO
                                                     const relatedIds = bulkModal.list
                                                         .filter(item => item.client === sale.client && item.phone === sale.phone)
                                                         .map(item => item.id);

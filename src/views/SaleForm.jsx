@@ -1,9 +1,9 @@
 // src/views/SaleForm.jsx
-import React, { useMemo } from 'react';
-import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save } from 'lucide-react';
+import React, { useMemo, useEffect } from 'react';
+import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2 } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
-// Helper local para categorizar servicios (Mantener aquí para portabilidad)
+// Helper local para categorizar servicios
 const getServiceCategory = (serviceName) => {
     if (!serviceName) return 'UNKNOWN';
     const lower = serviceName.toLowerCase();
@@ -23,7 +23,7 @@ const getServiceCategory = (serviceName) => {
 const SaleForm = ({
     formData, setFormData,
     bulkProfiles, setBulkProfiles,
-    maxAvailableSlots,
+    maxAvailableSlots = [], // ✅ BLINDAJE 1: Valor por defecto para evitar crash
     handleClientNameChange,
     handleBulkProfileChange,
     handleSingleProfileChange,
@@ -34,16 +34,33 @@ const SaleForm = ({
     darkMode 
 }) => {
 
-    // 🎨 TEMA UNIFICADO (Optimizado para legibilidad)
+    // 🧠 LÓGICA INTELIGENTE: Calculadora de Precio Automática
+    useEffect(() => {
+        if ((formData.client === 'LIBRE' || !formData.id) && formData.service && catalog.length > 0) {
+            const catalogItem = catalog.find(c => c.name === formData.service);
+            
+            if (catalogItem) {
+                const qty = parseInt(formData.profilesToBuy || 1);
+                const totalCost = (parseInt(catalogItem.cost) || 0) * qty;
+                
+                if (parseInt(formData.cost) !== totalCost) {
+                    setFormData(prev => ({ ...prev, cost: totalCost }));
+                }
+            }
+        }
+    }, [formData.service, formData.profilesToBuy, catalog, formData.client, formData.id]);
+
+    // 🎨 TEMA UNIFICADO
     const theme = {
         bg: darkMode ? 'bg-[#161B28]' : 'bg-white',
         text: darkMode ? 'text-white' : 'text-slate-900',
         subtext: darkMode ? 'text-slate-400' : 'text-slate-500',
-        inputBg: darkMode ? 'bg-black/40' : 'bg-slate-50', // Fondo más oscuro en input para contraste
+        inputBg: darkMode ? 'bg-black/40' : 'bg-slate-50',
         border: darkMode ? 'border-white/10' : 'border-slate-100',
         focusRing: 'focus:ring-2 focus:ring-indigo-500/50',
         iconColor: 'text-slate-400',
         sectionBg: darkMode ? 'bg-white/5' : 'bg-slate-50',
+        activeChip: darkMode ? 'bg-[#2A303C] text-white shadow-sm ring-1 ring-white/10' : 'bg-white text-indigo-600 shadow-sm'
     };
 
     const INPUT_CLASS = `w-full h-12 pl-11 pr-4 rounded-xl text-sm font-bold outline-none border transition-all ${theme.inputBg} ${theme.border} ${theme.text} ${theme.focusRing} placeholder:font-medium placeholder:text-slate-500`;
@@ -52,7 +69,7 @@ const SaleForm = ({
     // Lógica de Negocio
     const baseService = getServiceCategory(formData.service);
     
-    // Filtrar servicios compatibles para conversión (mismo proveedor)
+    // Filtrar servicios compatibles
     const filteredConversionCatalog = useMemo(() => {
         if (!catalog.length) return [];
         return catalog.filter(s => {
@@ -61,22 +78,25 @@ const SaleForm = ({
         });
     }, [catalog, baseService, formData.service]); 
 
-    // Clientes exentos de validación de pago
+    // ✅ BLINDAJE 2: Filtrar slots libres con seguridad
+    const freeSlots = useMemo(() => {
+        // Aseguramos que sea un array antes de filtrar
+        const safeSlots = Array.isArray(maxAvailableSlots) ? maxAvailableSlots : [];
+        
+        return formData.service 
+            ? safeSlots.filter(s => s.service === formData.service && s.client === 'LIBRE')
+            : [];
+    }, [maxAvailableSlots, formData.service]);
+
+    // Clientes exentos
     const EXEMPT_STATUSES = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
     const isExempt = useMemo(() => {
         if (!formData.client) return false;
         return EXEMPT_STATUSES.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
     }, [formData.client]);
 
-    // Handler para clicks en cantidad (chips)
     const handleQuantityClick = (num) => {
-        let newCost = formData.cost;
-        if (formData.client === 'LIBRE' && num > 0) {
-            // Intenta calcular costo automáticamente si es venta nueva
-            const individualService = catalog.find(s => s.type === 'Perfil' && s.defaultSlots === 1 && getServiceCategory(s.name) === baseService);
-            if (individualService) newCost = Number(individualService.cost) * num; 
-        }
-        setFormData({ ...formData, profilesToBuy: num, cost: newCost });
+        setFormData({ ...formData, profilesToBuy: num });
     };
 
     const copyCredentials = (e) => {
@@ -122,23 +142,44 @@ const SaleForm = ({
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6 custom-scrollbar">
                     <form id="sale-form" onSubmit={handleSaveSale} className="space-y-6">
                         
-                        {/* 1. SELECTOR CANTIDAD (Solo si es venta nueva o edición con ID) */}
+                        {/* 1. SELECTOR CANTIDAD Y VISOR STOCK */}
                         {(formData.client === 'LIBRE' || formData.id) && (
-                            <div className="space-y-2">
-                                <label className={`text-[10px] font-bold uppercase tracking-wider ml-1 ${theme.subtext}`}>Cantidad de Perfiles</label>
-                                <div className={`flex p-1 rounded-xl gap-1 ${darkMode ? 'bg-black/40' : 'bg-slate-100'}`}>
-                                    {[1,2,3,4,5].map(num => {
-                                        const isDisabled = num > maxAvailableSlots && formData.client === 'LIBRE';
-                                        const isActive = formData.profilesToBuy === num;
-                                        return (
-                                            <button key={num} type="button" onClick={() => handleQuantityClick(num)} disabled={isDisabled} 
-                                                className={`flex-1 h-9 rounded-lg text-sm font-black transition-all 
-                                                ${isActive ? (darkMode ? 'bg-[#2A303C] text-white shadow-sm ring-1 ring-white/10' : 'bg-white text-indigo-600 shadow-sm') : (isDisabled ? 'opacity-20 cursor-not-allowed text-slate-500' : 'text-slate-500 hover:text-slate-400')}`}>
-                                                {num}
-                                            </button>
-                                        );
-                                    })}
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className={`text-[10px] font-bold uppercase tracking-wider ml-1 ${theme.subtext}`}>Cantidad de Perfiles</label>
+                                    <div className={`flex p-1 rounded-xl gap-1 ${darkMode ? 'bg-black/40' : 'bg-slate-100'}`}>
+                                        {[1,2,3,4,5].map(num => {
+                                            const availableCount = freeSlots.length; // Usamos freeSlots que ya está filtrado
+                                            // Solo deshabilitamos si es venta nueva (LIBRE) y pedimos más de lo que hay
+                                            // IMPORTANTE: Si estamos editando (id existe), no limitamos por stock libre
+                                            const isDisabled = formData.client === 'LIBRE' && num > availableCount && availableCount > 0;
+                                            
+                                            const isActive = parseInt(formData.profilesToBuy) === num;
+                                            return (
+                                                <button key={num} type="button" onClick={() => handleQuantityClick(num)} 
+                                                    className={`flex-1 h-9 rounded-lg text-sm font-black transition-all 
+                                                    ${isActive ? theme.activeChip : 'text-slate-500 hover:text-slate-400'}`}>
+                                                    {num}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
+
+                                {/* 👁️ VISUALIZADOR DE SLOTS LIBRES */}
+                                {freeSlots.length > 0 && formData.client === 'LIBRE' && (
+                                    <div className={`p-3 rounded-2xl border ${darkMode ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-emerald-50/50 border-emerald-100'}`}>
+                                        <p className="text-[10px] font-bold text-emerald-500 uppercase mb-2 flex items-center gap-1.5"><CheckCircle2 size={12}/> Disponibles en esta cuenta:</p>
+                                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                            {freeSlots.slice(0, 5).map((slot, i) => (
+                                                <div key={i} className={`flex-shrink-0 p-2 px-3 rounded-lg border w-32 ${darkMode ? 'bg-[#0B0F19] border-white/10' : 'bg-white border-slate-200'}`}>
+                                                    <div className={`text-[9px] font-bold truncate ${theme.text}`}>{slot.email}</div>
+                                                    <div className="text-[10px] font-mono opacity-60">PIN: {slot.pin || '--'}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -181,24 +222,24 @@ const SaleForm = ({
                             <div className="flex items-center gap-2 mb-3">
                                 <Layers size={16} className="text-indigo-500"/>
                                 <span className={`text-xs font-black uppercase ${theme.text}`}>
-                                    {formData.profilesToBuy > 1 ? `Asignar ${formData.profilesToBuy} Perfiles` : 'Datos del Perfil'}
+                                    {parseInt(formData.profilesToBuy) > 1 ? `Asignar ${formData.profilesToBuy} Perfiles` : 'Datos del Perfil'}
                                 </span>
                             </div>
                             <div className="space-y-2">
-                                {(formData.profilesToBuy > 1 ? bulkProfiles : [bulkProfiles[0] || {profile: formData.profile, pin: formData.pin}]).map((p, i) => (
-                                    <div key={i} className="flex gap-2">
+                                {(parseInt(formData.profilesToBuy) > 1 ? bulkProfiles : [bulkProfiles[0] || {profile: formData.profile, pin: formData.pin}]).map((p, i) => (
+                                    <div key={i} className="flex gap-2 animate-in slide-in-from-left-2" style={{animationDelay: `${i*50}ms`}}>
                                         <input 
                                             className={`flex-1 p-3 rounded-xl text-xs font-bold outline-none border focus:border-indigo-500 transition-colors ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`}
                                             placeholder={`Nombre Perfil ${i+1}`} 
-                                            value={formData.profilesToBuy > 1 ? p.profile : formData.profile} 
-                                            onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} 
+                                            value={parseInt(formData.profilesToBuy) > 1 ? p.profile : formData.profile} 
+                                            onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} 
                                             list="suggested-profiles"
                                         />
                                         <input 
                                             className={`w-20 p-3 text-center rounded-xl text-xs font-mono font-bold outline-none border focus:border-indigo-500 transition-colors ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`}
                                             placeholder="PIN" 
-                                            value={formData.profilesToBuy > 1 ? p.pin : formData.pin} 
-                                            onChange={(e) => formData.profilesToBuy > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}
+                                            value={parseInt(formData.profilesToBuy) > 1 ? p.pin : formData.pin} 
+                                            onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}
                                         />
                                     </div>
                                 ))}
