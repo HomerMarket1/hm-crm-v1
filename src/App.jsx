@@ -11,7 +11,8 @@ import { useClientManagement } from './hooks/useClientManagement';
 
 // Firebase y Utils
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from './firebase/config';
+import { auth, db } from './firebase/config'; // 👈 Importamos db
+import { doc, setDoc, getDoc } from 'firebase/firestore'; // 👈 Importamos funciones de Firestore
 import { sendWhatsApp } from './utils/helpers';
 
 // Layout y Componentes
@@ -26,13 +27,13 @@ const Dashboard = lazy(() => import('./views/Dashboard'));
 const StockManager = lazy(() => import('./views/StockManager'));
 const Config = lazy(() => import('./views/Config'));
 const SaleForm = lazy(() => import('./views/SaleForm'));
+const ClientPortal = lazy(() => import('./views/ClientPortal'));
 
 // CONSTANTES
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 
 const App = () => {
     // 1. DATA & AUTH
-    // ✅ CAMBIO 1: Extraemos 'totalRevenue' del hook actualizado
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue } = useDataSync();
 
     // 2. UI STATE
@@ -61,7 +62,7 @@ const App = () => {
 
     // Formularios
     const [bulkProfiles, setBulkProfiles] = useState([{ profile: '', pin: '' }]);
-    const [formData, setFormData] = useState({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1 });
+    const [formData, setFormData] = useState({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1, lastCode: '' });
     const [stockForm, setStockForm] = useState({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
     const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
     const [packageForm, setPackageForm] = useState({ name: '', cost: '', slots: 2 });
@@ -75,11 +76,6 @@ const App = () => {
     } = useSalesData(sales, catalog, clientManagement.allClients, uiState, formData);
 
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name));
-
-    // --- LOGICA DE DINERO ---
-    // ✅ CAMBIO 2: Decidimos qué total mostrar. 
-    // Si hay filtros activos, mostramos la suma de lo visible (totalFilteredMoney).
-    // Si NO hay filtros, mostramos el Total Global del Servidor (totalRevenue) para máxima precisión.
     const hasActiveFilters = filterClient || (filterService && filterService !== 'Todos') || (filterStatus && filterStatus !== 'Todos') || dateFrom || dateTo;
     const moneyToShow = hasActiveFilters ? totalFilteredMoney : (totalRevenue || totalFilteredMoney);
 
@@ -127,12 +123,17 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // Sales Handlers
+    // 🛡️ SALES HANDLER (CON NORMALIZACIÓN DE TELÉFONO)
     const handleSaveSale = async (e) => {
-        e.preventDefault(); if (!user) return;
+        e.preventDefault(); 
+        if (!user) return;
+
+        // 1. Validaciones normales
         if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
             await clientManagement.saveClientIfNew(formData.client, formData.phone);
         }
+        
+        // Calcular fecha
         let finalEndDate = formData.endDate;
         const EXEMPT_FROM_AUTO_DATE = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         const isExempt = EXEMPT_FROM_AUTO_DATE.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
@@ -144,6 +145,7 @@ const App = () => {
         const quantity = parseInt(formData.profilesToBuy || 1);
         let success = false;
 
+        // 2. GUARDADO NORMAL (Privado en 'sales')
         if (formData.id) {
             const originalSale = sales.find(s => s.id === formData.id);
             success = await crmActions.processSale(dataToSave, originalSale, catalog, sales, quantity, bulkProfiles);
@@ -151,6 +153,62 @@ const App = () => {
             const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
             success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
         }
+
+        // 🔒 3. GUARDADO ESPECIAL PARA PORTAL (Anti-Hackeo + Normalización)
+        if (success && formData.phone && formData.phone.length > 5 && formData.client !== 'LIBRE') {
+            try {
+                // 👇 LÓGICA DE NORMALIZACIÓN URUGUAY/INTERNACIONAL 👇
+                let cleanPhone = formData.phone.trim().replace(/\D/g, ''); // Quita espacios y símbolos
+                
+                // Uruguay: Si empieza con 09 (9 dígitos) -> 5989...
+                if (cleanPhone.startsWith('09') && cleanPhone.length === 9) {
+                    cleanPhone = '598' + cleanPhone.substring(1);
+                } 
+                // Uruguay: Si empieza con 9 (8 dígitos) -> 5989...
+                else if (cleanPhone.startsWith('9') && cleanPhone.length === 8) {
+                    cleanPhone = '598' + cleanPhone;
+                }
+                
+                const phoneId = cleanPhone; // ID Universal
+                const portalRef = doc(db, 'client_portal', phoneId);
+                
+                // Obtenemos los datos actuales
+                const portalSnap = await getDoc(portalRef);
+                let existingServices = portalSnap.exists() ? portalSnap.data().services : [];
+
+                // Creamos el objeto del nuevo servicio
+                const newService = {
+                    id: formData.id || Date.now().toString(),
+                    service: formData.service,
+                    type: formData.type || 'Suscripción',
+                    email: formData.email,
+                    pass: formData.pass,
+                    profile: formData.profile || '',
+                    pin: formData.pin || '',
+                    endDate: finalEndDate,
+                    lastCode: formData.lastCode || '' // Enlace de Netflix
+                };
+
+                // Actualizamos lista de servicios
+                const updatedServices = [
+                    ...existingServices.filter(s => 
+                        s.service !== newService.service || 
+                        (s.service === newService.service && s.email !== newService.email)
+                    ), 
+                    newService
+                ];
+
+                await setDoc(portalRef, { 
+                    client: formData.client,
+                    updatedAt: new Date(),
+                    services: updatedServices
+                });
+                
+            } catch (err) {
+                console.error("Error actualizando portal público:", err);
+            }
+        }
+
         if (success) { setView('dashboard'); resetForm(); }
     };
 
@@ -160,7 +218,7 @@ const App = () => {
         const related = sales.filter(s => s.email === sale.email && s.pass === sale.pass && s.client === sale.client && s.client !== 'LIBRE');
         sendWhatsApp(related.length > 1 ? related : [sale], actionType);
     };
-    const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1 }); setBulkProfiles([{ profile: '', pin: '' }]); };
+    const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1, lastCode: '' }); setBulkProfiles([{ profile: '', pin: '' }]); };
     const handleClientNameChange = (e) => {
         const name = e.target.value;
         const existing = clientManagement.allClients.find(c => c.name.toLowerCase() === name.toLowerCase());
@@ -176,7 +234,6 @@ const App = () => {
         setFormData({ ...formData, profile: val, pin: m?.pin || formData.pin });
     };
 
-    // Triggers
     const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
     const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
     const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
@@ -197,9 +254,31 @@ const App = () => {
         setBulkProfiles(prev => { const n = [...prev]; while (n.length < c) n.push({ profile: '', pin: '' }); return n.length > c ? n.slice(0, c) : n; });
     }, [formData.profilesToBuy]);
 
-    // RENDER
+    // RENDER PRINCIPAL
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7] dark:bg-gray-900"><Loader className="animate-spin text-blue-500" /></div>;
 
+    if (view === 'portal') {
+        return (
+            <Suspense fallback={<div className="h-screen flex items-center justify-center bg-[#0B0F19]"><Loader className="text-indigo-500 animate-spin"/></div>}>
+                <ClientPortal onBack={() => setView('login')} />
+            </Suspense>
+        );
+    }
+
+    if (!user) {
+        return (
+            <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader className="text-indigo-500 animate-spin"/></div>}>
+                <LoginScreen
+                    loginEmail={loginEmail} setLoginEmail={setLoginEmail}
+                    loginPass={loginPass} setLoginPass={setLoginPass}
+                    loginError={loginError} handleLogin={handleLogin}
+                    onGoToPortal={() => setView('portal')} 
+                />
+            </Suspense>
+        );
+    }
+
+    // VISTAS DEL ADMIN
     return (
         <MainLayout
             view={view} setView={setView} handleLogout={handleLogout}
@@ -215,58 +294,48 @@ const App = () => {
             {editClientModal.show && <EditClientModal modal={editClientModal} setModal={setEditClientModal} onConfirm={handleSaveEditClient} darkMode={darkMode} />}
 
             <Suspense fallback={<div className="flex h-full items-center justify-center min-h-[60vh]"><Loader className="animate-spin text-indigo-500 w-10 h-10" /></div>}>
-                {!user ? (
-                    <LoginScreen
-                        loginEmail={loginEmail} setLoginEmail={setLoginEmail}
-                        loginPass={loginPass} setLoginPass={setLoginPass}
-                        loginError={loginError} handleLogin={handleLogin}
-                    />
-                ) : (
-                    <>
-                        {view === 'dashboard' && <Dashboard
-                            sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
-                            filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
-                            totalItems={totalItems} 
-                            // ✅ CAMBIO 3: Pasamos el dinero calculado
-                            totalFilteredMoney={moneyToShow} 
-                            getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
-                            NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare}
-                            handleQuickRenew={(id) => { const s = sales.find(i => i.id === id); crmActions.quickRenew(id, s?.endDate); }}
-                            triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView}
-                            openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
-                            expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
-                            darkMode={darkMode}
-                        />}
+                {view === 'dashboard' && <Dashboard
+                    sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
+                    filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
+                    totalItems={totalItems} 
+                    totalFilteredMoney={moneyToShow} 
+                    getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
+                    NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare}
+                    handleQuickRenew={(id) => { const s = sales.find(i => i.id === id); crmActions.quickRenew(id, s?.endDate); }}
+                    triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView}
+                    openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
+                    expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
+                    darkMode={darkMode}
+                />}
 
-                        {view === 'config' && <Config
-                            sales={sales}
-                            catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
-                            handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
-                            handleEditCatalogService={handleEditCatalogService}
-                            triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients}
-                            triggerDeleteClient={clientManagement.triggerDeleteClient}
-                            triggerEditClient={triggerOpenEditClient}
-                            setNotification={setNotification} formData={formData} setFormData={setFormData}
-                            darkMode={darkMode}
-                        />}
+                {view === 'config' && <Config
+                    sales={sales}
+                    catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
+                    handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
+                    handleEditCatalogService={handleEditCatalogService}
+                    triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients}
+                    triggerDeleteClient={clientManagement.triggerDeleteClient}
+                    triggerEditClient={triggerOpenEditClient}
+                    setNotification={setNotification} formData={formData} setFormData={setFormData}
+                    darkMode={darkMode}
+                />}
 
-                        {view === 'add_stock' && <StockManager
-                            accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab} stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
-                            handleStockServiceChange={handleStockServiceChange} handleGenerateStock={handleGenerateStock}
-                            triggerDeleteAccount={triggerDeleteAccount} triggerDeleteFreeStock={triggerDeleteFreeStock} triggerEditAccount={triggerEditAccount}
-                            darkMode={darkMode}
-                        />}
+                {view === 'add_stock' && <StockManager
+                    accountsInventory={accountsInventory} stockTab={stockTab} setStockTab={setStockTab} stockForm={stockForm} setStockForm={setStockForm} catalog={sortedCatalog}
+                    handleStockServiceChange={handleStockServiceChange} handleGenerateStock={handleGenerateStock}
+                    triggerDeleteAccount={triggerDeleteAccount} triggerDeleteFreeStock={triggerDeleteFreeStock} triggerEditAccount={triggerEditAccount}
+                    darkMode={darkMode}
+                />}
 
-                        {view === 'form' && <SaleForm
-                            formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
-                            allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={sales}
-                            getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
-                            handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
-                            handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}
-                            darkMode={darkMode}
-                        />}
-                    </>
-                )}
+                {view === 'form' && <SaleForm
+                    formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
+                    allClients={clientManagement.allClients} packageCatalog={packageCatalog} 
+                    maxAvailableSlots={sales} 
+                    getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
+                    handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
+                    handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}
+                    darkMode={darkMode}
+                />}
             </Suspense>
         </MainLayout>
     );

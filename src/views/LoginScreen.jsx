@@ -1,7 +1,7 @@
 // src/views/LoginScreen.jsx
 
 import React from 'react';
-import { Mail, Lock, ArrowRight, Zap } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Zap, Search } from 'lucide-react';
 
 const LoginScreen = ({ 
     loginEmail, 
@@ -9,7 +9,8 @@ const LoginScreen = ({
     loginPass, 
     setLoginPass, 
     handleLogin, 
-    loginError 
+    loginError,
+    onGoToPortal // 👈 Nueva prop para cambiar de vista al Portal
 }) => {
     
     const INPUT_WRAPPER = "relative group";
@@ -28,14 +29,14 @@ const LoginScreen = ({
                 <div className="text-center mb-6">
                     {/* ✅ LOGO ESTÉTICO CON LUZ DE FONDO */}
                     <div className="relative mx-auto mb-6 flex justify-center items-center h-32">
-                        {/* 1. Luz/Glow trasero para integrar el logo (sin cuadro gris) */}
+                        {/* 1. Luz/Glow trasero */}
                         <div className="absolute w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl animate-pulse" />
                         
-                        {/* 2. El Logo: Apuntando a public/Logo.webp con carga inmediata */}
+                        {/* 2. El Logo */}
                         <img 
-                            src="/Logo.webp" // ✅ CORREGIDO: Apunta al archivo en public
+                            src="/Logo.webp" 
                             alt="HM Digital" 
-                            loading="eager" // 🚀 Carga prioritaria (soluciona la lentitud)
+                            loading="eager" 
                             className="relative h-full w-auto object-contain filter drop-shadow-lg transform hover:scale-105 transition-transform duration-500" 
                         />
                     </div>
@@ -86,6 +87,19 @@ const LoginScreen = ({
                         <ArrowRight size={18} className="text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-all"/>
                     </button>
                 </form>
+
+                {/* 👇 SECCIÓN ACCESO CLIENTES (NUEVO) 👇 */}
+                <div className="mt-8 pt-6 border-t border-slate-200/60 text-center">
+                    <p className="text-xs font-bold text-slate-400 mb-3">¿Eres cliente?</p>
+                    <button 
+                        type="button"
+                        onClick={onGoToPortal} 
+                        className="w-full py-3.5 rounded-2xl bg-white border-2 border-slate-100 text-slate-600 font-black text-xs hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-100 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        <Search size={16} className="opacity-70"/>
+                        Consultar mis Servicios
+                    </button>
+                </div>
 
                 <div className="mt-8 text-center">
                     <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest flex items-center justify-center gap-1">

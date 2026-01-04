@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2, MousePointerClick, Database, Lock, Star, History } from 'lucide-react';
+import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2, MousePointerClick, Database, Lock, Star, History, Link as LinkIcon } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
 // Helper local para categorizar servicios
@@ -60,22 +60,17 @@ const SaleForm = ({
         }
     }, [formData.service, formData.profilesToBuy, catalog, formData.client, formData.id, stockMode]);
 
-    // 🧠 FILTRO DE STOCK INTELIGENTE (Corregido para Paquetes)
+    // 🧠 FILTRO DE STOCK
     const freeSlotsInThisAccount = useMemo(() => {
         const safeSlots = Array.isArray(maxAvailableSlots) ? maxAvailableSlots : [];
         const normalize = (text) => text ? text.toString().trim().toLowerCase() : '';
-        
-        // 1. Obtenemos la CATEGORÍA de lo que queremos vender (ej: "Netflix")
-        // Así no importa si vendemos "Paquete" y tenemos "Perfil", ambos son "Netflix"
         const targetCategory = getServiceCategory(formData.service); 
         const currentEmail = normalize(formData.email);
-
-        // Helper interno para ver si un slot coincide en categoría
         const matchesCategory = (slotService) => getServiceCategory(slotService) === targetCategory;
 
         if (formData.email) {
             return safeSlots.filter(s => 
-                matchesCategory(s.service) && // Compara categoría, no nombre exacto
+                matchesCategory(s.service) && 
                 normalize(s.email) === currentEmail &&
                 isClientFree(s.client)
             );
@@ -213,7 +208,6 @@ const SaleForm = ({
                                 <div className={`flex p-1 rounded-xl gap-1 ${darkMode ? 'bg-black/40' : 'bg-slate-100'}`}>
                                     {[1,2,3,4,5].map(num => {
                                         const availableCount = freeSlotsInThisAccount.length;
-                                        // 🔓 AHORA SÍ: Si hay 2 libres individuales, te dejará seleccionar "2" aunque sea paquete
                                         const isDisabled = isNewSale && num > availableCount;
                                         const isActive = parseInt(formData.profilesToBuy) === num;
                                         return (
@@ -223,7 +217,6 @@ const SaleForm = ({
                                     })}
                                 </div>
                                 
-                                {/* Tarjetas Interactivas */}
                                 {freeSlotsInThisAccount.length > 0 && isNewSale && (
                                     <div className={`p-2 rounded-xl border transition-colors ${darkMode ? 'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30' : 'bg-emerald-50/50 border-emerald-100 hover:border-emerald-300'}`}>
                                         <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
@@ -231,7 +224,6 @@ const SaleForm = ({
                                                 const qty = parseInt(formData.profilesToBuy || 1);
                                                 const isSelected = qty > 1 ? bulkProfiles.some(p => p.profile === slot.profile && p.profile !== '') : formData.profile === slot.profile && formData.profile !== '';
                                                 const isFavorite = favoriteProfile && slot.profile === favoriteProfile.profile;
-
                                                 return (
                                                     <button key={i} type="button" onClick={() => handleQuickSelectSlot(slot)} className={`flex-shrink-0 p-1.5 px-2 rounded-lg border w-28 text-left transition-all active:scale-95 group relative ${isSelected ? (darkMode ? 'bg-emerald-500/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-emerald-100 border-emerald-500 ring-1 ring-emerald-500') : (isFavorite ? (darkMode ? 'bg-amber-500/10 border-amber-500/50 ring-1 ring-amber-500/30' : 'bg-amber-50 border-amber-200 ring-1 ring-amber-300') : (darkMode ? 'bg-[#0B0F19] border-white/10 hover:bg-emerald-900/20' : 'bg-white border-slate-200 hover:bg-emerald-50'))}`}>
                                                         {isSelected && <div className="absolute top-1 right-1 text-emerald-500"><CheckCircle2 size={10} fill="currentColor" className={darkMode ? "text-emerald-900" : "text-white"}/></div>}
@@ -270,9 +262,27 @@ const SaleForm = ({
                             )}
 
                             {!stockMode && (
-                                <div className="relative group">
-                                    <Smartphone size={16} className={ICON_CLASS}/>
-                                    <input type="tel" className={INPUT_CLASS} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="WhatsApp (Opcional)"/>
+                                <div className="space-y-2">
+                                    <div className="relative group">
+                                        <Smartphone size={16} className={ICON_CLASS}/>
+                                        <input type="tel" className={INPUT_CLASS} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="WhatsApp (Opcional)"/>
+                                    </div>
+                                    
+                                    {/* 👇 AQUÍ ESTÁ EL CAMPO NUEVO PARA EL LINK 👇 */}
+                                    <div className="relative group animate-in slide-in-from-top-1">
+                                        <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${theme.iconColor}`}>
+                                            <LinkIcon size={16}/>
+                                        </div>
+                                        <input 
+                                            className={INPUT_CLASS} 
+                                            value={formData.lastCode || ''} 
+                                            onChange={e => setFormData({...formData, lastCode: e.target.value})} 
+                                            placeholder="Pegar Enlace Netflix Aquí" 
+                                        />
+                                        <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                                            Info Cliente
+                                        </span>
+                                    </div>
                                 </div>
                             )}
                         </div>
