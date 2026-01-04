@@ -259,7 +259,7 @@ const App = () => {
 
                         {view === 'form' && <SaleForm
                             formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
-                            allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={maxAvailableSlots}
+                            allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={sales}
                             getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
                             handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
                             handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}

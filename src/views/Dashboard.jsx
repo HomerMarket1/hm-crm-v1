@@ -1,4 +1,3 @@
-// src/views/Dashboard.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
 import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
@@ -24,7 +23,10 @@ const safeGetDays = (dateString) => {
 
 // --- HELPER DE ESTILOS (Alto Contraste) ---
 const getCardStyles = (sale, days, darkMode) => {
-    const isFree = sale.client === 'LIBRE';
+    // Detectamos "Libre" incluso si dice "Espacio Libre" o variaciones
+    const clientName = sale.client ? sale.client.toLowerCase() : '';
+    const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
+    
     const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
     const isAdmin = sale.client === 'Admin';
 
@@ -100,6 +102,14 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                                 </div>
                             )}
                         </div>
+                        {/* Info extra para libres: Muestra si ya tiene perfil asignado */}
+                        {isFree && (sale.profile || sale.pin) && (
+                            <div className="md:hidden mt-1 flex items-center gap-2">
+                                {sale.profile && <span className="text-[9px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded font-bold">{sale.profile}</span>}
+                                {sale.pin && <span className="text-[9px] opacity-60 font-mono">PIN: {sale.pin}</span>}
+                            </div>
+                        )}
+                        
                         {!isFree && !isProblem && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
                     </div>
                 </div>
@@ -113,7 +123,9 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                         <div className="flex items-center gap-2">
                             <span className={`text-[11px] font-mono font-bold select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{sale.pass}</span>
-                            {!isFree && (
+                            
+                            {/* Mostrar Perfil/PIN incluso si es libre */}
+                            {(sale.profile || sale.pin || !isFree) && (
                                 <div className="flex gap-1 ml-auto">
                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border border-white/10 ${isAdmin ? 'bg-white/10' : (darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white text-indigo-600')}`}>{sale.profile || 'Gral'}</span>
                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 ${darkMode ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{sale.pin || '•••'}</span>
@@ -136,7 +148,15 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                 {/* COL 4: Acciones */}
                 <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
                     {isFree ? (
-                        <button onClick={() => handlers.assign(sale)} className="w-full md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">Asignar <ChevronRight size={14}/></button>
+                        // ✅ AHORA LAS TARJETAS LIBRES TIENEN BOTÓN DE EDITAR
+                        <div className="flex w-full md:w-auto gap-2 justify-end">
+                            <button onClick={() => handlers.edit(sale)} className={`w-9 h-9 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 border ${darkMode ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-white border-slate-200 text-emerald-600 shadow-sm'}`}>
+                                <Edit2 size={14}/>
+                            </button>
+                            <button onClick={() => handlers.assign(sale)} className="flex-1 md:flex-none md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">
+                                Asignar <ChevronRight size={14}/>
+                            </button>
+                        </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
                             {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
@@ -221,11 +241,9 @@ const Dashboard = ({
             else message = `Hola ${client}, recordatorio: ${summary} vence en ${targetDays} días.`;
 
         } else if (actionType === 'data') {
-            // ✅ ESTRUCTURA EXACTA PEDIDA
             const cleanName = cleanServiceName(sale.service);
             const isFull = sale.type === 'Cuenta';
             
-            // Formatear fecha: "22 de Diciembre"
             const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
             let dateText = "Indefinido";
             if (endDate) {
