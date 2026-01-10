@@ -160,24 +160,22 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
-                            {/* 1. WHATSAPP */}
                             {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
                             {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
                             
-                            {/* 2. MUDANZA */}
+                            {/* BOTÓN MUDANZA */}
                             <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
                             
-                            {/* 3. EDITAR */}
+                            {/* BOTÓN EDITAR */}
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
                             
-                            {/* 4. RENOVAR (¡RESTAURADO!) */}
+                            {/* BOTÓN RENOVAR */}
                             {!isProblem && (
                                 <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes">
                                     <CalendarPlus size={14}/>
                                 </button>
                             )}
 
-                            {/* 5. LIBERAR */}
                             <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><RotateCcw size={14}/></button>
                         </div>
                     )}
@@ -192,7 +190,7 @@ const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
-    handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, saveSale, onMigrate,
+    handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, saveSale, onMigrate, 
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
     darkMode
 }) => {
@@ -242,11 +240,15 @@ const Dashboard = ({
         const sourceSale = migrationModal.sale;
         if (!sourceSale || !targetSale) return;
 
-        // ✅ LÓGICA ATÓMICA: Usamos onMigrate para evitar el problema de borrado
+        // ✅ 1. EJECUTAR MIGRACIÓN ATÓMICA
         if (onMigrate) {
             await onMigrate(sourceSale, targetSale, migrationSourceStatus);
+            
+            // ✅ 2. AUTO-ENFOQUE: Ir a Activos y Buscar al Cliente
+            setActiveTab('healthy');
+            setFilter('filterClient', sourceSale.client); // Esto hace que aparezca solo él en pantalla
         } else {
-            console.error("Falta la función onMigrate en Dashboard");
+            console.error("Falta onMigrate");
         }
 
         setMigrationModal({ show: false, sale: null, matches: [] });
@@ -314,7 +316,7 @@ const Dashboard = ({
         liberate: triggerLiberate
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles]);
 
-    // --- LÓGICA DE CLASIFICACIÓN (FILTRO RESTAURADO) ---
+    // --- LÓGICA DE CLASIFICACIÓN (FILTRO ESTRICTO GARANTÍA) ---
     const { healthySales, freeSales, warrantySales } = useMemo(() => {
         const groups = {};
         const healthy = [];
@@ -335,15 +337,13 @@ const Dashboard = ({
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
 
-            // REGLA ESTRICTA DE GARANTÍA: Problema + >1 Perfil + No Cuenta Completa
+            // Regla: >1 ficha y NO Cuenta Completa
             const isLargeGroup = realItems.length > 1; 
             const isFullAccount = realItems.some(s => (s.type || '').toLowerCase().includes('completa') || (s.service || '').toLowerCase().includes('completa'));
 
             if (hasProblem && isLargeGroup && !isFullAccount) {
-                // Si cumple, todo el grupo a Garantía
                 warranty.push(...group);
             } else {
-                // Si no, separamos uno por uno
                 group.forEach(sale => {
                     const clientName = sale.client ? sale.client.toLowerCase() : '';
                     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
@@ -351,7 +351,7 @@ const Dashboard = ({
                     if (isFree) {
                         free.push(sale);
                     } else {
-                        // "Activos" = Lista principal de gestión.
+                        // "Activos" = Lista principal (incluye todo lo ocupado que no es garantía masiva)
                         healthy.push(sale);
                     }
                 });
@@ -371,7 +371,7 @@ const Dashboard = ({
         if (activeTab === 'warranty') {
             sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
         } else {
-            // Activos y Libres: Nombres de sistema al final
+            // Nombres de sistema al final
             sorted.sort((a, b) => {
                 const clientA = (a.client || '').toLowerCase();
                 const clientB = (b.client || '').toLowerCase();
@@ -472,7 +472,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* MODAL MIGRACIÓN (CON HEADER DE ORIGEN MEJORADO & COLORES DARK MODE) */}
+            {/* MODAL MIGRACIÓN (CON COLORES DARK MODE CORREGIDOS) */}
             {migrationModal.show && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
@@ -482,7 +482,7 @@ const Dashboard = ({
                             <div className="flex justify-between items-start">
                                 <div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div>
                             </div>
-                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) - Colores corregidos */}
+                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) */}
                             <div className={`mt-4 p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
                                 <p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}>
                                     <User size={12}/> Datos a trasladar:
