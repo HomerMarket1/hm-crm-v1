@@ -160,13 +160,24 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
+                            {/* 1. WHATSAPP */}
                             {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
                             {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
                             
-                            {/* BOTÓN MUDANZA */}
+                            {/* 2. MUDANZA */}
                             <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
                             
+                            {/* 3. EDITAR */}
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
+                            
+                            {/* 4. RENOVAR (¡RESTAURADO!) */}
+                            {!isProblem && (
+                                <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes">
+                                    <CalendarPlus size={14}/>
+                                </button>
+                            )}
+
+                            {/* 5. LIBERAR */}
                             <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><RotateCcw size={14}/></button>
                         </div>
                     )}
@@ -181,7 +192,7 @@ const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
-    handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, saveSale, onMigrate, // onMigrate recibido
+    handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, saveSale, onMigrate,
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
     darkMode
 }) => {
@@ -461,7 +472,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* MODAL MIGRACIÓN (VISIBILIDAD CORREGIDA EN DARK MODE) */}
+            {/* MODAL MIGRACIÓN (CON HEADER DE ORIGEN MEJORADO & COLORES DARK MODE) */}
             {migrationModal.show && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
