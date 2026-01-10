@@ -11,8 +11,8 @@ import { useClientManagement } from './hooks/useClientManagement';
 
 // Firebase y Utils
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth, db } from './firebase/config'; // 👈 Importamos db
-import { doc, setDoc, getDoc } from 'firebase/firestore'; // 👈 Importamos funciones de Firestore
+import { auth, db } from './firebase/config';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { sendWhatsApp } from './utils/helpers';
 
 // Layout y Componentes
@@ -123,73 +123,38 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // 🛡️ SALES HANDLER (CON NORMALIZACIÓN DE TELÉFONO)
-    const handleSaveSale = async (e) => {
-        e.preventDefault(); 
-        if (!user) return;
+    // --- 🚀 FUNCIÓN GENÉRICA PARA GUARDAR (Soporte para acciones directas) ---
+    const handleGenericSave = async (saleData) => {
+        if (!user) return false;
 
-        // 1. Validaciones normales
-        if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
-            await clientManagement.saveClientIfNew(formData.client, formData.phone);
-        }
-        
-        // Calcular fecha
-        let finalEndDate = formData.endDate;
-        const EXEMPT_FROM_AUTO_DATE = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
-        const isExempt = EXEMPT_FROM_AUTO_DATE.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
-        if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
-            const d = new Date(); d.setDate(d.getDate() + 30); finalEndDate = d.toISOString().split('T')[0];
-        }
+        // 1. Guardar en CRM (Firestore Sales)
+        const originalSale = sales.find(s => s.id === saleData.id);
+        const success = await crmActions.processSale(saleData, originalSale, catalog, sales, 1, []); 
 
-        const dataToSave = { ...formData, endDate: finalEndDate };
-        const quantity = parseInt(formData.profilesToBuy || 1);
-        let success = false;
-
-        // 2. GUARDADO NORMAL (Privado en 'sales')
-        if (formData.id) {
-            const originalSale = sales.find(s => s.id === formData.id);
-            success = await crmActions.processSale(dataToSave, originalSale, catalog, sales, quantity, bulkProfiles);
-        } else {
-            const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
-            success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
-        }
-
-        // 🔒 3. GUARDADO ESPECIAL PARA PORTAL (Anti-Hackeo + Normalización)
-        if (success && formData.phone && formData.phone.length > 5 && formData.client !== 'LIBRE') {
+        // 2. Actualizar Portal del Cliente (Si aplica)
+        if (success && saleData.phone && saleData.phone.length > 5 && saleData.client !== 'LIBRE') {
             try {
-                // 👇 LÓGICA DE NORMALIZACIÓN URUGUAY/INTERNACIONAL 👇
-                let cleanPhone = formData.phone.trim().replace(/\D/g, ''); // Quita espacios y símbolos
+                let cleanPhone = saleData.phone.trim().replace(/\D/g, '');
+                if (cleanPhone.startsWith('09') && cleanPhone.length === 9) cleanPhone = '598' + cleanPhone.substring(1);
+                else if (cleanPhone.startsWith('9') && cleanPhone.length === 8) cleanPhone = '598' + cleanPhone;
                 
-                // Uruguay: Si empieza con 09 (9 dígitos) -> 5989...
-                if (cleanPhone.startsWith('09') && cleanPhone.length === 9) {
-                    cleanPhone = '598' + cleanPhone.substring(1);
-                } 
-                // Uruguay: Si empieza con 9 (8 dígitos) -> 5989...
-                else if (cleanPhone.startsWith('9') && cleanPhone.length === 8) {
-                    cleanPhone = '598' + cleanPhone;
-                }
-                
-                const phoneId = cleanPhone; // ID Universal
+                const phoneId = cleanPhone;
                 const portalRef = doc(db, 'client_portal', phoneId);
-                
-                // Obtenemos los datos actuales
                 const portalSnap = await getDoc(portalRef);
                 let existingServices = portalSnap.exists() ? portalSnap.data().services : [];
 
-                // Creamos el objeto del nuevo servicio
                 const newService = {
-                    id: formData.id || Date.now().toString(),
-                    service: formData.service,
-                    type: formData.type || 'Suscripción',
-                    email: formData.email,
-                    pass: formData.pass,
-                    profile: formData.profile || '',
-                    pin: formData.pin || '',
-                    endDate: finalEndDate,
-                    lastCode: formData.lastCode || '' // Enlace de Netflix
+                    id: saleData.id || Date.now().toString(),
+                    service: saleData.service,
+                    type: saleData.type || 'Suscripción',
+                    email: saleData.email,
+                    pass: saleData.pass,
+                    profile: saleData.profile || '',
+                    pin: saleData.pin || '',
+                    endDate: saleData.endDate,
+                    lastCode: saleData.lastCode || ''
                 };
 
-                // Actualizamos lista de servicios
                 const updatedServices = [
                     ...existingServices.filter(s => 
                         s.service !== newService.service || 
@@ -199,13 +164,45 @@ const App = () => {
                 ];
 
                 await setDoc(portalRef, { 
-                    client: formData.client,
+                    client: saleData.client,
                     updatedAt: new Date(),
                     services: updatedServices
                 });
-                
             } catch (err) {
-                console.error("Error actualizando portal público:", err);
+                console.error("Error update portal:", err);
+            }
+        }
+        return success;
+    };
+
+    // 🛡️ SALES HANDLER (Formulario Normal)
+    const handleSaveSale = async (e) => {
+        e.preventDefault(); 
+        if (!user) return;
+
+        if (formData.client !== 'LIBRE' && !NON_BILLABLE_STATUSES.includes(formData.client) && formData.client !== 'Admin') {
+            await clientManagement.saveClientIfNew(formData.client, formData.phone);
+        }
+        
+        let finalEndDate = formData.endDate;
+        const EXEMPT = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
+        const isExempt = EXEMPT.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
+        if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
+            const d = new Date(); d.setDate(d.getDate() + 30); finalEndDate = d.toISOString().split('T')[0];
+        }
+
+        const dataToSave = { ...formData, endDate: finalEndDate };
+        
+        let success = false;
+        if (formData.id) {
+            success = await handleGenericSave(dataToSave);
+        } else {
+            const quantity = parseInt(formData.profilesToBuy || 1);
+            const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
+            success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
+            
+            if (success && quantity === 1) { 
+                 await handleGenericSave(dataToSave); // Actualizar portal si es venta unitaria
             }
         }
 
@@ -306,6 +303,10 @@ const App = () => {
                     openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
                     expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
                     darkMode={darkMode}
+                    
+                    // 👇 LAS DOS FUNCIONES CLAVE CONECTADAS 👇
+                    saveSale={handleGenericSave}
+                    onMigrate={crmActions.migrateService}
                 />}
 
                 {view === 'config' && <Config
