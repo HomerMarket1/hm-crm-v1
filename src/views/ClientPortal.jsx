@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Key, ChevronLeft, Tv, ExternalLink, AlertTriangle, Smartphone, User, CheckCircle2 } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
+import { Search, Key, ChevronLeft, Tv, AlertTriangle, Smartphone, User, CheckCircle2 } from 'lucide-react';
+import { collectionGroup, query, where, getDocs } from 'firebase/firestore'; // 👈 CAMBIO IMPORTANTE
 import { db } from '../firebase/config';
 
 const ClientPortal = ({ onBack }) => {
@@ -9,9 +9,9 @@ const ClientPortal = ({ onBack }) => {
     const [results, setResults] = useState(null);
     const [error, setError] = useState('');
 
-    // 🎨 SISTEMA DE TEMAS INTELIGENTE
+    // 🎨 SISTEMA DE TEMAS INTELIGENTE (Conservado de tu código original)
     const getServiceTheme = (serviceName) => {
-        const lower = serviceName.toLowerCase();
+        const lower = serviceName ? serviceName.toLowerCase() : '';
         if (lower.includes('netflix')) return {
             color: 'text-rose-500',
             bg: 'from-rose-500/10 to-transparent',
@@ -61,6 +61,7 @@ const ClientPortal = ({ onBack }) => {
         let rawInput = searchTerm.trim().replace(/\D/g, ''); 
         if (rawInput.length < 6) return setError('Ingresa un número válido.');
         
+        // Normalización de número (Ajustar según país si es necesario)
         let targetId = rawInput;
         if (rawInput.startsWith('09') && rawInput.length === 9) targetId = '598' + rawInput.substring(1);
         else if (rawInput.startsWith('9') && rawInput.length === 8) targetId = '598' + rawInput;
@@ -70,25 +71,48 @@ const ClientPortal = ({ onBack }) => {
         setResults(null);
 
         try {
-            const docRef = doc(db, 'client_portal', targetId);
-            const docSnap = await getDoc(docRef);
-            
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const services = data.services || [];
-                const active = services.filter(s => {
+            // 🔍 BÚSQUEDA GLOBAL (Collection Group)
+            // Busca en todas las subcolecciones 'client_portal' de TODOS los usuarios
+            const q = query(
+                collectionGroup(db, 'client_portal'), 
+                where('phone', '==', targetId)
+            );
+
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                setError('No encontramos servicios activos para este número.');
+            } else {
+                // Unificar resultados de múltiples vendedores si existieran
+                let allServices = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (data.services && Array.isArray(data.services)) {
+                        allServices = [...allServices, ...data.services];
+                    }
+                });
+
+                // Filtrar activos (últimos 10 días vencidos máximo)
+                const active = allServices.filter(s => {
                     const days = Math.ceil((new Date(s.endDate) - new Date()) / (86400000));
                     return days >= -10; 
                 });
 
+                // Ordenar por fecha de vencimiento
+                active.sort((a, b) => new Date(a.endDate) - new Date(b.endDate));
+
                 if (active.length > 0) setResults(active);
-                else setError('Tu número está registrado, pero no tienes servicios activos.');
-            } else {
-                setError(`No encontramos servicios para el número ingresado.`);
+                else setError('Tu número está registrado, pero tus servicios han expirado hace mucho.');
             }
+
         } catch (err) {
-            console.error(err);
-            setError('Error de conexión.');
+            console.error("Error Portal:", err);
+            // Mensaje amigable si falta el índice
+            if (err.message.includes('requires an index')) {
+                setError('Sistema actualizándose. Intenta en 5 minutos.');
+            } else {
+                setError('Error de conexión. Verifica tu internet.');
+            }
         }
         setLoading(false);
     };

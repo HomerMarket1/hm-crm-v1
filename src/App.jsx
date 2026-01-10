@@ -12,7 +12,7 @@ import { useClientManagement } from './hooks/useClientManagement';
 // Firebase y Utils
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, db } from './firebase/config';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore'; // 👈 Asegúrate de importar esto
 import { sendWhatsApp } from './utils/helpers';
 
 // Layout y Componentes
@@ -123,23 +123,25 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // --- 🚀 FUNCIÓN GENÉRICA PARA GUARDAR (Soporte para acciones directas) ---
+    // --- 🚀 FUNCIÓN GENÉRICA PARA GUARDAR (ACTUALIZADA: "PROPIA CARPETA DE NÚMEROS") ---
     const handleGenericSave = async (saleData) => {
         if (!user) return false;
 
-        // 1. Guardar en CRM (Firestore Sales)
+        // 1. Guardar en CRM (Firestore Sales - Carpeta Privada del Usuario)
         const originalSale = sales.find(s => s.id === saleData.id);
         const success = await crmActions.processSale(saleData, originalSale, catalog, sales, 1, []); 
 
-        // 2. Actualizar Portal del Cliente (Si aplica)
+        // 2. Actualizar Portal del Cliente (AHORA DENTRO DE LA CARPETA DEL USUARIO)
         if (success && saleData.phone && saleData.phone.length > 5 && saleData.client !== 'LIBRE') {
             try {
                 let cleanPhone = saleData.phone.trim().replace(/\D/g, '');
                 if (cleanPhone.startsWith('09') && cleanPhone.length === 9) cleanPhone = '598' + cleanPhone.substring(1);
                 else if (cleanPhone.startsWith('9') && cleanPhone.length === 8) cleanPhone = '598' + cleanPhone;
                 
-                const phoneId = cleanPhone;
-                const portalRef = doc(db, 'client_portal', phoneId);
+                // 👇 CAMBIO CLAVE: Usamos una subcolección dentro del usuario
+                // Ruta: users/{uid}/client_portal/{telefono}
+                const portalRef = doc(db, `users/${user.uid}/client_portal`, cleanPhone);
+                
                 const portalSnap = await getDoc(portalRef);
                 let existingServices = portalSnap.exists() ? portalSnap.data().services : [];
 
@@ -152,7 +154,8 @@ const App = () => {
                     profile: saleData.profile || '',
                     pin: saleData.pin || '',
                     endDate: saleData.endDate,
-                    lastCode: saleData.lastCode || ''
+                    lastCode: saleData.lastCode || '',
+                    phone: cleanPhone // Guardamos el teléfono dentro para facilitar búsquedas futuras
                 };
 
                 const updatedServices = [
@@ -164,8 +167,9 @@ const App = () => {
                 ];
 
                 await setDoc(portalRef, { 
-                    client: saleData.client,
+                    client: saleData.client, // Aquí va "Juan Lalo" (Tu versión del nombre)
                     updatedAt: new Date(),
+                    phone: cleanPhone,       // Indexable
                     services: updatedServices
                 });
             } catch (err) {
@@ -303,8 +307,6 @@ const App = () => {
                     openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
                     expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
                     darkMode={darkMode}
-                    
-                    // 👇 LAS DOS FUNCIONES CLAVE CONECTADAS 👇
                     saveSale={handleGenericSave}
                     onMigrate={crmActions.migrateService}
                 />}
