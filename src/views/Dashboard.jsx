@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
-import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone } from 'lucide-react';
+import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
 // --- CONSTANTES & HELPERS ---
-const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
+
+// 1. Palabras que activan la ALERTA DE GARANTÍA
+const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
+
+// 2. Nombres DE SISTEMA (Se irán al final de la lista de Activos)
+const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin', 'Stock', 'Reposicion'];
 
 const cleanServiceName = (name) => name ? name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim() : '';
 
@@ -23,11 +28,13 @@ const safeGetDays = (dateString) => {
 
 // --- HELPER DE ESTILOS (Alto Contraste) ---
 const getCardStyles = (sale, days, darkMode) => {
-    // Detectamos "Libre" incluso si dice "Espacio Libre" o variaciones
     const clientName = sale.client ? sale.client.toLowerCase() : '';
     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
     
-    const isProblem = NON_BILLABLE_STATUSES.includes(sale.client);
+    // Detectamos problema buscando en todo el texto de la venta
+    const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
+    const isProblem = PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
+    
     const isAdmin = sale.client === 'Admin';
 
     // 1. Estilos Base
@@ -41,9 +48,10 @@ const getCardStyles = (sale, days, darkMode) => {
         text = darkMode ? "text-emerald-400" : "text-emerald-900";
         subText = darkMode ? "text-emerald-400/70" : "text-emerald-700/70";
     } else if (isProblem) {
-        bg = darkMode ? "bg-rose-900/10 border-rose-500/20" : "bg-rose-50/50 border-rose-100";
-        text = darkMode ? "text-rose-300" : "text-rose-900"; 
-        subText = darkMode ? "text-rose-200/60" : "text-rose-800/60";
+        // Estilo Ámbar/Rojo para problemas
+        bg = darkMode ? "bg-amber-900/10 border-amber-500/20" : "bg-amber-50/50 border-amber-100";
+        text = darkMode ? "text-amber-300" : "text-amber-900"; 
+        subText = darkMode ? "text-amber-200/60" : "text-amber-800/60";
     } else if (isAdmin) {
         bg = darkMode ? "bg-slate-800 border-white/10" : "bg-slate-900 text-white";
         text = "text-white";
@@ -53,7 +61,7 @@ const getCardStyles = (sale, days, darkMode) => {
     // 3. Color del Icono
     let statusColor = darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600';
     if (isFree) statusColor = darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-600';
-    else if (isProblem) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-500';
+    else if (isProblem) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-500';
     else if (days < 0) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-600';
     else if (days <= 3) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-600';
 
@@ -102,11 +110,17 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                                 </div>
                             )}
                         </div>
-                        {/* Info extra para libres: Muestra si ya tiene perfil asignado */}
+                        {/* Info extra para libres */}
                         {isFree && (sale.profile || sale.pin) && (
                             <div className="md:hidden mt-1 flex items-center gap-2">
                                 {sale.profile && <span className="text-[9px] bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded font-bold">{sale.profile}</span>}
                                 {sale.pin && <span className="text-[9px] opacity-60 font-mono">PIN: {sale.pin}</span>}
+                            </div>
+                        )}
+                        {/* Alerta Visual de Problema Móvil */}
+                        {isProblem && (
+                            <div className="md:hidden mt-1 flex items-center gap-1 text-amber-500 font-bold text-[10px] animate-pulse">
+                                <AlertTriangle size={10} /> <span>Modo Garantía</span>
                             </div>
                         )}
                         
@@ -123,8 +137,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                         <div className="flex items-center gap-2">
                             <span className={`text-[11px] font-mono font-bold select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{sale.pass}</span>
-                            
-                            {/* Mostrar Perfil/PIN incluso si es libre */}
                             {(sale.profile || sale.pin || !isFree) && (
                                 <div className="flex gap-1 ml-auto">
                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border border-white/10 ${isAdmin ? 'bg-white/10' : (darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white text-indigo-600')}`}>{sale.profile || 'Gral'}</span>
@@ -142,13 +154,16 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                             <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
                             <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
                         </div>
-                    ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : <span className={`opacity-40 text-xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>---</span>)}
+                    ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : 
+                        <span className={`flex items-center gap-2 text-xs font-black px-3 py-1 rounded-full ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                            <ShieldAlert size={14}/> GARANTÍA
+                        </span>
+                    )}
                 </div>
 
                 {/* COL 4: Acciones */}
                 <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
                     {isFree ? (
-                        // ✅ AHORA LAS TARJETAS LIBRES TIENEN BOTÓN DE EDITAR
                         <div className="flex w-full md:w-auto gap-2 justify-end">
                             <button onClick={() => handlers.edit(sale)} className={`w-9 h-9 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 border ${darkMode ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-white border-slate-200 text-emerald-600 shadow-sm'}`}>
                                 <Edit2 size={14}/>
@@ -188,9 +203,11 @@ const Dashboard = ({
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [] });
     const [sentIds, setSentIds] = useState([]); 
     const [displayLimit, setDisplayLimit] = useState(50);
+    // TABS: 'healthy' (Activos), 'free' (Disponibles), 'warranty' (Garantía)
+    const [activeTab, setActiveTab] = useState('healthy'); 
     const observer = useRef();
 
-    useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo]);
+    useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo, activeTab]);
 
     useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
@@ -209,7 +226,7 @@ const Dashboard = ({
         });
     };
 
-    // --- LOGICA WHATSAPP MEJORADA ---
+    // --- LOGICA WHATSAPP UNIFICADA ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
@@ -261,7 +278,7 @@ const Dashboard = ({
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
-    // --- HANDLERS MEMOIZADOS ---
+    // --- HANDLERS ---
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
         copy: (e, email, pass) => {
@@ -277,22 +294,106 @@ const Dashboard = ({
         liberate: triggerLiberate
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles]);
 
-    // --- SCROLL INFINITO & ORDENAMIENTO ---
+    // --- LÓGICA DE CLASIFICACIÓN (3 LISTAS) ---
+    const { healthySales, freeSales, warrantySales } = useMemo(() => {
+        const groups = {};
+        const healthy = [];
+        const free = [];
+        const warranty = [];
+
+        // 1. Agrupamos todo por CORREO (Email)
+        (filteredSales || []).forEach(sale => {
+            const key = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(sale);
+        });
+
+        // 2. Analizamos cada grupo
+        Object.values(groups).forEach(group => {
+            // A. Detectamos si hay problemas en el grupo (Ignoramos Admin)
+            const realItems = group.filter(s => s.client !== 'Admin');
+            
+            const hasProblem = realItems.some(sale => {
+                const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
+                return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
+            });
+
+            // B. Reglas de Contagio (> 1 item y NO Full)
+            const isLargeGroup = realItems.length > 1; 
+            const isFullAccount = realItems.some(s => 
+                (s.type || '').toLowerCase().includes('completa') || 
+                (s.service || '').toLowerCase().includes('completa')
+            );
+
+            // C. DECISIÓN:
+            if (hasProblem && isLargeGroup && !isFullAccount) {
+                // -> A GARANTÍA (Todo el grupo se contagia)
+                warranty.push(...group);
+            } else {
+                // -> A ACTIVOS O DISPONIBLES
+                group.forEach(sale => {
+                    const clientName = sale.client ? sale.client.toLowerCase() : '';
+                    const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
+                    
+                    if (isFree) {
+                        free.push(sale);
+                    } else {
+                        // AQUÍ ENTRAN TODOS LOS OCUPADOS (Sanos y Enfermos Solitarios)
+                        healthy.push(sale);
+                    }
+                });
+            }
+        });
+
+        return { healthySales: healthy, freeSales: free, warrantySales: warranty };
+    }, [filteredSales]);
+
+    // Elegimos qué lista mostrar
+    let currentList = [];
+    if (activeTab === 'healthy') currentList = healthySales;
+    else if (activeTab === 'free') currentList = freeSales;
+    else currentList = warrantySales;
+
+    // --- SCROLL INFINITO & ORDENAMIENTO (CON ORDEN PERSONALIZADO) ---
     const visibleSales = useMemo(() => {
-        const sorted = [...(filteredSales || [])].sort((a, b) => (a.client || '').localeCompare(b.client || ''));
+        const sorted = [...currentList];
+
+        if (activeTab === 'warranty') {
+            // GARANTÍA: Agrupado por Cuenta (Email)
+            sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+        } else {
+            // ACTIVOS Y DISPONIBLES:
+            // Regla: Nombres "basura" (Admin, Actualizar, Caída...) AL FINAL.
+            sorted.sort((a, b) => {
+                const clientA = (a.client || '').toLowerCase();
+                const clientB = (b.client || '').toLowerCase();
+
+                // Verificamos si son nombres de sistema (usamos la lista de NON_BILLABLE)
+                // Usamos .some() para búsqueda insensible a mayúsculas exacta
+                const isBadA = NON_BILLABLE_STATUSES.some(s => s.toLowerCase() === clientA);
+                const isBadB = NON_BILLABLE_STATUSES.some(s => s.toLowerCase() === clientB);
+
+                if (isBadA && !isBadB) return 1; // A es malo, B es bueno -> A al fondo
+                if (!isBadA && isBadB) return -1; // A es bueno, B es malo -> A arriba
+
+                // Si ambos son iguales (ambos buenos o ambos malos), orden alfabético
+                return clientA.localeCompare(clientB);
+            });
+        }
+
         return sorted.slice(0, displayLimit);
-    }, [filteredSales, displayLimit]);
+    }, [currentList, displayLimit, activeTab]);
 
     const lastElementRef = useCallback(node => {
         if (loadingData) return;
         if (observer.current) observer.current.disconnect();
         observer.current = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && displayLimit < filteredSales.length) {
+            if (entries[0].isIntersecting && displayLimit < currentList.length) {
                 setDisplayLimit(prev => prev + 50);
             }
         });
         if (node) observer.current.observe(node);
-    }, [loadingData, displayLimit, filteredSales.length]);
+    }, [loadingData, displayLimit, currentList.length]);
 
     // --- THEME ---
     const theme = useMemo(() => ({
@@ -302,6 +403,12 @@ const Dashboard = ({
     }), [darkMode]);
 
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400"><div className="w-12 h-12 rounded-full border-4 border-current border-t-transparent animate-spin mb-4"/>Sincronizando...</div>;
+
+    const getPlaceholder = () => {
+        if (activeTab === 'healthy') return "Buscar Cliente Activo...";
+        if (activeTab === 'free') return "Buscar Espacio Libre...";
+        return "Buscar Cuenta en Garantía...";
+    };
 
     return (
         <div className="w-full pb-32 space-y-4 animate-in fade-in">
@@ -314,12 +421,51 @@ const Dashboard = ({
                 </div>
             )}
 
+            {/* SECCIÓN DE TABS: ACTIVOS | DISPONIBLES | GARANTÍA */}
+            <div className="px-1 grid grid-cols-3 gap-2">
+                <button 
+                    onClick={() => setActiveTab('healthy')} 
+                    className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' 
+                        ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30') 
+                        : (darkMode ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-white text-slate-500 hover:bg-slate-50')}`}
+                >
+                    <Activity size={18} className={`mb-1 ${activeTab === 'healthy' ? 'animate-pulse' : ''}`} />
+                    <span className="text-[9px] font-bold uppercase opacity-80">Activos</span>
+                    <span className="text-xs font-black">{healthySales.length}</span>
+                </button>
+
+                <button 
+                    onClick={() => setActiveTab('free')} 
+                    className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' 
+                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30' 
+                        : (darkMode ? 'bg-white/5 text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-400' : 'bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-600')}`}
+                >
+                    <Box size={18} className={`mb-1 ${activeTab === 'free' ? 'animate-bounce' : ''}`} />
+                    <span className="text-[9px] font-bold uppercase opacity-80">Disponibles</span>
+                    <span className="text-xs font-black">{freeSales.length}</span>
+                </button>
+
+                <button 
+                    onClick={() => setActiveTab('warranty')} 
+                    className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'warranty' 
+                        ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30' 
+                        : (darkMode ? 'bg-white/5 text-slate-400 hover:bg-amber-500/10 hover:text-amber-400' : 'bg-white text-slate-500 hover:bg-amber-50 hover:text-amber-600')}`}
+                >
+                    <ShieldAlert size={18} className={`mb-1 ${activeTab === 'warranty' ? 'animate-pulse' : ''}`} />
+                    <span className="text-[9px] font-bold uppercase opacity-80">Garantía</span>
+                    <span className="text-xs font-black">{warrantySales.length}</span>
+                    {activeTab !== 'warranty' && warrantySales.length > 0 && (
+                        <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>
+                    )}
+                </button>
+            </div>
+
             {/* FILTROS (STICKY) */}
             <div className={`sticky top-0 z-40 px-1 -mx-1 py-2 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
                 <div className={`p-2 rounded-[24px] shadow-xl border flex flex-col gap-2 ${darkMode ? 'bg-[#161B28]/90 border-white/5 shadow-black/20' : 'bg-white/80 border-white/50 shadow-indigo-500/5'}`}>
                     <div className="relative group w-full">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input type="text" placeholder="Buscar cliente, servicio..." className={`w-full pl-10 pr-4 py-2.5 rounded-xl font-bold text-sm outline-none transition-all ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} />
+                        <input type="text" placeholder={getPlaceholder()} className={`w-full pl-10 pr-4 py-2.5 rounded-xl font-bold text-sm outline-none transition-all ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} />
                     </div>
                     
                     <div className="flex flex-col md:flex-row gap-2">
@@ -331,7 +477,7 @@ const Dashboard = ({
                                 <Filter size={10} className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"/>
                             </div>
                             <div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>
-                                {['Todos', 'Libres', 'Ocupados', 'Problemas', 'Vencidos'].map((st) => (
+                                {['Todos', 'Libres', 'Ocupados', 'Vencidos'].map((st) => (
                                     <button key={st} onClick={() => setFilter('filterStatus', st)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === st ? theme.activeBtn : theme.inactiveBtn}`}>{st}</button>
                                 ))}
                             </div>
@@ -346,19 +492,37 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {/* HEADER DINERO */}
-            <div className="flex items-end justify-between px-2 md:px-4">
-                <div>
-                    <h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span>
-                    </h1>
-                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p>
+            {/* HEADER DINERO (Solo visible en Activos para no confundir) */}
+            {activeTab === 'healthy' && (
+                <div className="flex items-end justify-between px-2 md:px-4 animate-in fade-in">
+                    <div>
+                        <h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span>
+                        </h1>
+                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p>
+                    </div>
+                    <div className="text-right">
+                        <div className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalItems}</div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Activos</div>
+                    </div>
                 </div>
-                <div className="text-right">
-                    <div className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalItems}</div>
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Activos</div>
+            )}
+
+            {/* MENSAJES DE ESTADO VACÍO */}
+            {activeTab === 'warranty' && warrantySales.length === 0 && (
+                <div className="py-10 text-center flex flex-col items-center opacity-50 animate-in zoom-in">
+                    <CheckCircle2 size={48} className="text-emerald-500 mb-2"/>
+                    <p className={`font-black text-xl ${darkMode ? 'text-white' : 'text-slate-800'}`}>¡Todo Excelente!</p>
+                    <p className="text-sm font-medium text-slate-400">No hay cuentas en Garantía por ahora.</p>
                 </div>
-            </div>
+            )}
+            {activeTab === 'free' && freeSales.length === 0 && (
+                <div className="py-10 text-center flex flex-col items-center opacity-50 animate-in zoom-in">
+                    <Box size={48} className="text-slate-500 mb-2"/>
+                    <p className={`font-black text-xl ${darkMode ? 'text-white' : 'text-slate-800'}`}>Sin Stock</p>
+                    <p className="text-sm font-medium text-slate-400">No hay espacios libres disponibles.</p>
+                </div>
+            )}
 
             {/* LISTA VIRTUALIZADA */}
             <div className="space-y-3">
@@ -367,9 +531,9 @@ const Dashboard = ({
                         <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} />
                     </div>
                 )) : (
-                    <div className="py-20 text-center opacity-40"><p className="font-bold">Sin resultados</p></div>
+                    activeTab === 'healthy' && <div className="py-20 text-center opacity-40"><p className="font-bold">Sin resultados</p></div>
                 )}
-                {displayLimit < filteredSales.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
+                {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
             {/* MODAL BULK */}
