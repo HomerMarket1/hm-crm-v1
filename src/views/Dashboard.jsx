@@ -1,3 +1,4 @@
+// src/views/Dashboard.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
 import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
@@ -160,22 +161,24 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
+                            {/* 1. WHATSAPP */}
                             {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
                             {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
                             
-                            {/* BOTÓN MUDANZA */}
+                            {/* 2. MUDANZA */}
                             <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
                             
-                            {/* BOTÓN EDITAR */}
+                            {/* 3. EDITAR */}
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
                             
-                            {/* BOTÓN RENOVAR */}
+                            {/* 4. RENOVAR */}
                             {!isProblem && (
                                 <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes">
                                     <CalendarPlus size={14}/>
                                 </button>
                             )}
 
+                            {/* 5. LIBERAR */}
                             <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><RotateCcw size={14}/></button>
                         </div>
                     )}
@@ -223,15 +226,22 @@ const Dashboard = ({
         });
     };
 
-    // --- LOGICA DE MIGRACIÓN EXPRESS ---
+    // --- LOGICA DE MIGRACIÓN EXPRESS (FILTRADA SOLO PERFILES) ---
     const openMigration = (sale) => {
         const cleanTargetService = cleanServiceName(sale.service).toLowerCase();
+        
+        // 🔍 FILTRO MEJORADO: Solo mostrar destinos que sean "Perfil"
         const matches = sales.filter(s => {
             const sName = (s.client || '').toLowerCase();
             const sService = cleanServiceName(s.service).toLowerCase();
+            const sType = (s.type || '').toLowerCase(); // Verificar el tipo
+            
             const isFree = sName === 'libre' || sName === 'espacio libre' || sName === 'disponible';
-            return isFree && sService.includes(cleanTargetService);
+            const isProfile = sType === 'perfil'; // 👈 ¡CLAVE! Solo perfiles individuales
+            
+            return isFree && isProfile && sService.includes(cleanTargetService);
         });
+        
         setMigrationSourceStatus('Caída'); 
         setMigrationModal({ show: true, sale, matches });
     };
@@ -240,15 +250,13 @@ const Dashboard = ({
         const sourceSale = migrationModal.sale;
         if (!sourceSale || !targetSale) return;
 
-        // ✅ 1. EJECUTAR MIGRACIÓN ATÓMICA
+        // ✅ LÓGICA ATÓMICA + AUTO-ENFOQUE
         if (onMigrate) {
             await onMigrate(sourceSale, targetSale, migrationSourceStatus);
-            
-            // ✅ 2. AUTO-ENFOQUE: Ir a Activos y Buscar al Cliente
             setActiveTab('healthy');
-            setFilter('filterClient', sourceSale.client); // Esto hace que aparezca solo él en pantalla
+            setFilter('filterClient', sourceSale.client); 
         } else {
-            console.error("Falta onMigrate");
+            console.error("Falta la función onMigrate en Dashboard");
         }
 
         setMigrationModal({ show: false, sale: null, matches: [] });
@@ -351,7 +359,6 @@ const Dashboard = ({
                     if (isFree) {
                         free.push(sale);
                     } else {
-                        // "Activos" = Lista principal (incluye todo lo ocupado que no es garantía masiva)
                         healthy.push(sale);
                     }
                 });
@@ -429,16 +436,82 @@ const Dashboard = ({
                 <button onClick={() => setActiveTab('warranty')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'warranty' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><ShieldAlert size={18} className={`mb-1 ${activeTab === 'warranty' ? 'animate-pulse' : ''}`} /><span className="text-[9px] font-bold uppercase opacity-80">Garantía</span><span className="text-xs font-black">{warrantySales.length}</span></button>
             </div>
 
-            {/* FILTROS */}
-            <div className={`sticky top-0 z-40 px-1 -mx-1 py-2 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/80' : 'bg-[#F2F2F7]/80'}`}>
-                <div className={`p-2 rounded-[24px] shadow-xl border flex flex-col gap-2 ${darkMode ? 'bg-[#161B28]/90 border-white/5' : 'bg-white/80 border-white/50'}`}>
-                    <div className="relative group w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder={getPlaceholder()} className={`w-full pl-10 pr-4 py-2.5 rounded-xl font-bold text-sm outline-none transition-all ${theme.inputBg}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} /></div>
-                    <div className="flex flex-col md:flex-row gap-2">
-                        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center px-1">
-                            <div className="relative flex-shrink-0"><select className={`appearance-none font-bold text-xs py-2 pl-3 pr-8 rounded-xl border border-transparent outline-none cursor-pointer ${theme.activeBtn}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}><option value="Todos">Servicios</option>{catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select><Filter size={10} className="absolute right-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"/></div>
-                            <div className={`flex p-1 rounded-xl flex-shrink-0 ${darkMode ? 'bg-black/20' : 'bg-slate-200/50'}`}>{['Todos', 'Libres', 'Ocupados', 'Vencidos'].map((st) => (<button key={st} onClick={() => setFilter('filterStatus', st)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === st ? theme.activeBtn : theme.inactiveBtn}`}>{st}</button>))}</div>
+            {/* FILTROS (STICKY - DISEÑO IOS PREMIUM CON WRAP PARA CELULAR) */}
+            <div className={`sticky top-0 z-40 -mx-4 px-4 py-3 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-b border-white/5' : 'bg-[#F2F2F7]/90 border-b border-slate-200/50'}`}>
+                <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
+                    
+                    {/* 1. BUSCADOR */}
+                    <div className="relative group w-full shadow-sm">
+                        <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}>
+                            <Search size={18} weight="bold" />
                         </div>
-                        <div className={`flex items-center gap-1 px-1 py-1 rounded-xl border w-full md:w-auto ${darkMode ? 'bg-white/5 border-white/5' : 'bg-white/50 border-white/50'}`}><div className="w-24 md:w-28"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div><span className="opacity-30">-</span><div className="w-24 md:w-28"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>{(dateFrom || dateTo) && <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); }} className="p-1 text-rose-500 hover:bg-rose-500/10 rounded-md"><X size={14}/></button>}</div>
+                        <input 
+                            type="text" 
+                            placeholder={getPlaceholder()} 
+                            className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${
+                                darkMode 
+                                ? 'bg-[#1C1C1E] text-white placeholder-slate-600 border border-white/5 focus:border-indigo-500/50 focus:bg-[#2C2C2E]' 
+                                : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10'
+                            }`} 
+                            value={filterClient} 
+                            onChange={e => setFilter('filterClient', e.target.value)} 
+                        />
+                    </div>
+                    
+                    {/* 2. CHIPS CON WRAP (Solución para calendario en móvil) */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        
+                        {/* SERVICIOS */}
+                        <div className="relative flex-grow md:flex-grow-0 md:w-auto min-w-[140px]">
+                            <select 
+                                className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${
+                                    filterService !== 'Todos'
+                                    ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-500/20' : 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-500/20')
+                                    : (darkMode ? 'bg-[#2C2C2E] text-slate-200 border-white/5 hover:bg-[#3A3A3C]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
+                                }`} 
+                                value={filterService} 
+                                onChange={e => setFilter('filterService', e.target.value)}
+                            >
+                                <option value="Todos">Todos los Servicios</option>
+                                {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                            </select>
+                            <Filter size={10} className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${filterService !== 'Todos' ? 'text-white' : 'text-slate-400'}`}/>
+                        </div>
+
+                        {/* VENCIDOS (Solo Activos) */}
+                        {activeTab === 'healthy' && (
+                            <button 
+                                onClick={() => setFilter('filterStatus', filterStatus === 'Vencidos' ? 'Todos' : 'Vencidos')} 
+                                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${
+                                    filterStatus === 'Vencidos'
+                                    ? 'bg-rose-500 text-white border-rose-500 shadow-rose-500/20'
+                                    : (darkMode ? 'bg-[#2C2C2E] text-slate-200 border-white/5 hover:bg-[#3A3A3C]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
+                                }`}
+                            >
+                                Vencidos
+                            </button>
+                        )}
+
+                        {/* FECHAS (Cápsula visible) */}
+                        <div className={`flex items-center bg-transparent rounded-xl border shadow-sm p-1 gap-1 ${darkMode ? 'bg-[#2C2C2E] border-white/5' : 'bg-white border-slate-200'}`}>
+                            <div className="w-24">
+                                <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
+                            </div>
+                            <ArrowRight size={10} className={darkMode ? 'text-slate-500' : 'text-slate-300'} />
+                            <div className="w-24">
+                                <AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} />
+                            </div>
+                        </div>
+
+                        {/* LIMPIAR */}
+                        {(dateFrom || dateTo || filterService !== 'Todos' || filterStatus === 'Vencidos') && (
+                            <button 
+                                onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); setFilter('filterService', 'Todos'); setFilter('filterStatus', 'Todos'); }} 
+                                className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all ml-auto md:ml-0"
+                            >
+                                <X size={14} strokeWidth={3}/>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -472,7 +545,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* MODAL MIGRACIÓN (CON COLORES DARK MODE CORREGIDOS) */}
+            {/* MODAL MIGRACIÓN (CON HEADER DE ORIGEN MEJORADO & COLORES DARK MODE) */}
             {migrationModal.show && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
@@ -482,7 +555,7 @@ const Dashboard = ({
                             <div className="flex justify-between items-start">
                                 <div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div>
                             </div>
-                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) */}
+                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) - Colores corregidos */}
                             <div className={`mt-4 p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
                                 <p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}>
                                     <User size={12}/> Datos a trasladar:
