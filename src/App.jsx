@@ -1,4 +1,3 @@
-// src/App.jsx
 import React, { useState, useReducer, useEffect, Suspense, lazy } from 'react';
 import { Loader } from 'lucide-react';
 
@@ -33,7 +32,7 @@ const ClientPortal = lazy(() => import('./views/ClientPortal'));
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 
 const App = () => {
-    // 1. DATA & AUTH (Agregamos 'branding' aquí 👇)
+    // 1. DATA & AUTH
     const { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue, branding } = useDataSync();
 
     // 2. UI STATE
@@ -123,12 +122,67 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // FUNCION DE GUARDADO GENERAL
+    // 🔥 ACTUALIZADO: Limpia teléfono para Admin/Caída/etc
+    const handleClientNameChange = (e) => {
+        const name = e.target.value;
+        const lowerName = name.toLowerCase().trim();
+        
+        const SYSTEM_CLIENTS = [
+            'admin', 'caída', 'caida', 'actualizar', 
+            'dominio', 'garantía', 'garantia', 'problemas', 
+            'vencido', 'cancelado'
+        ];
+        
+        if (SYSTEM_CLIENTS.includes(lowerName)) {
+             setFormData({ ...formData, client: name, phone: '' });
+             return;
+        }
+
+        const existing = clientManagement.allClients.find(c => c.name.toLowerCase() === lowerName);
+        setFormData({ 
+            ...formData, 
+            client: name, 
+            phone: existing ? existing.phone : formData.phone 
+        });
+    };
+
+    // 🔥 FUNCION DE GUARDADO INTELIGENTE (Unitario vs Paquetes)
     const handleGenericSave = async (saleData) => {
         if (!user) return false;
-        const originalSale = sales.find(s => s.id === saleData.id);
-        const success = await crmActions.processSale(saleData, originalSale, catalog, sales, 1, []); 
+        
+        let originalSale = sales.find(s => s.id === saleData.id);
+        if (!originalSale) {
+            originalSale = { ...saleData, type: saleData.type || 'Perfil' };
+        }
 
+        const qty = parseInt(saleData.profilesToBuy || 1);
+        let finalCost = Number(saleData.cost) || 0;
+        
+        // 🔍 DETECCIÓN DE PAQUETE
+        const isPackage = saleData.service.toLowerCase().includes('paquete') || 
+                          (saleData.type && saleData.type.toLowerCase() === 'paquete');
+
+        // 🔥 CORRECCIÓN: Si NO es paquete y compran más de 1 -> SIEMPRE Multiplicamos
+        // Eliminamos el chequeo de "!isAccount" para que las cuentas completas también puedan vender perfiles sueltos multiplicando
+        if (qty > 1 && !isPackage) { 
+            finalCost = finalCost * qty;
+        }
+
+        const dataToProcess = {
+            ...saleData,
+            cost: finalCost
+        };
+
+        const success = await crmActions.processSale(
+            dataToProcess, 
+            originalSale, 
+            catalog, 
+            sales, 
+            qty, 
+            bulkProfiles 
+        ); 
+
+        // Actualización del Portal
         if (success && saleData.phone && saleData.phone.length > 5 && saleData.client !== 'LIBRE') {
             try {
                 let cleanPhone = saleData.phone.trim().replace(/\D/g, '');
@@ -190,13 +244,29 @@ const App = () => {
 
         const dataToSave = { ...formData, endDate: finalEndDate };
         
+        // --- APLICAMOS LÓGICA EN VENTAS NUEVAS TAMBIÉN ---
+        const quantity = parseInt(formData.profilesToBuy || 1);
+        let batchCost = Number(dataToSave.cost) || 0;
+        
+        const isPackage = dataToSave.service.toLowerCase().includes('paquete') || 
+                          (dataToSave.type && dataToSave.type.toLowerCase() === 'paquete');
+
+        // 🔥 CORRECCIÓN: Mismo ajuste que arriba (Multiplicar si qty > 1 y no es paquete)
+        if (quantity > 1 && !isPackage) {
+            batchCost = batchCost * quantity;
+        }
+        
+        const dataWithCorrectCost = { ...dataToSave, cost: batchCost };
+
         let success = false;
+        
         if (formData.id) {
+            // Edición
             success = await handleGenericSave(dataToSave);
         } else {
-            const quantity = parseInt(formData.profilesToBuy || 1);
+            // Venta Nueva
             const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
-            success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
+            success = await crmActions.processBatchSale(dataWithCorrectCost, quantity, freeRows, bulkProfiles, catalog);
             if (success && quantity === 1) await handleGenericSave(dataToSave); 
         }
 
@@ -209,11 +279,7 @@ const App = () => {
         sendWhatsApp(related.length > 1 ? related : [sale], actionType);
     };
     const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1, lastCode: '' }); setBulkProfiles([{ profile: '', pin: '' }]); };
-    const handleClientNameChange = (e) => {
-        const name = e.target.value;
-        const existing = clientManagement.allClients.find(c => c.name.toLowerCase() === name.toLowerCase());
-        setFormData({ ...formData, client: name, phone: existing ? existing.phone : formData.phone });
-    };
+    
     const handleBulkProfileChange = (idx, field, val) => {
         const arr = [...bulkProfiles]; arr[idx][field] = val;
         if (field === 'profile') { const m = getClientPreviousProfiles.find(p => p.profile === val); if (m?.pin) arr[idx].pin = m.pin; }
@@ -273,7 +339,7 @@ const App = () => {
             notification={notification} setNotification={setNotification}
             darkMode={darkMode} setDarkMode={setDarkMode}
             user={user}
-            branding={branding} // 👈 ¡ESTA ES LA CLAVE! Pasamos los datos al layout
+            branding={branding}
         >
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
@@ -295,7 +361,7 @@ const App = () => {
                     openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
                     expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
                     darkMode={darkMode}
-                    saveSale={handleGenericSave}
+                    saveSale={handleSaveSale}
                     onMigrate={crmActions.migrateService}
                 />}
 

@@ -1,20 +1,38 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2, MousePointerClick, Database, Lock, Star, History, Link as LinkIcon } from 'lucide-react';
+import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2, Database, Lock, Star, History, Link as LinkIcon } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
-// Helper local para categorizar servicios
+// ✅ HELPER PARA CATEGORIZAR SERVICIOS
 const getServiceCategory = (serviceName) => {
     if (!serviceName) return 'UNKNOWN';
     const lower = serviceName.toLowerCase();
+
+    // 1. Separación estricta para Disney
+    if (lower.includes('disney') && lower.includes('basico')) return 'DISNEY_BASICO';
+    if (lower.includes('disney') && lower.includes('vivo')) return 'DISNEY_VIVO';
+    
+    // 2. Si es Disney pero no especifica, es GENÉRICO
+    if (lower.includes('disney')) return 'DISNEY_GENERICO';
+
+    // 3. Reglas generales
     const keywords = {
-        'Netflix': 'Netflix', 'Disney': 'Disney', 'Max': ['max', 'hbo'],
-        'Prime': ['prime', 'amazon'], 'Paramount': 'Paramount',
-        'Crunchyroll': 'Crunchyroll', 'Vix': 'Vix', 'Plex': 'Plex',
-        'IPTV': 'IPTV', 'Magis': 'Magis'
+        'Netflix': 'Netflix', 
+        'Max': ['max', 'hbo'],
+        'Prime': ['prime', 'amazon'], 
+        'Paramount': 'Paramount',
+        'Crunchyroll': 'Crunchyroll', 
+        'Vix': 'Vix', 
+        'Plex': 'Plex',
+        'IPTV': 'IPTV', 
+        'Magis': 'Magis'
     };
+
     for (const [key, val] of Object.entries(keywords)) {
-        if (Array.isArray(val)) { if (val.some(v => lower.includes(v))) return key; }
-        else { if (lower.includes(val.toLowerCase())) return key; }
+        if (Array.isArray(val)) { 
+            if (val.some(v => lower.includes(v))) return key; 
+        } else { 
+            if (lower.includes(val.toLowerCase())) return key; 
+        }
     }
     return serviceName.split(' ')[0];
 };
@@ -46,27 +64,47 @@ const SaleForm = ({
     const isNewSale = isClientFree(formData.client) || !formData.id;
     const isEditingStock = formData.id && isClientFree(formData.client);
 
-    // 🧠 LÓGICA DE PRECIOS
+    // Limpiar nombre al abrir si es Cuenta Completa
+    useEffect(() => {
+        if (!stockMode && formData.profile === 'Cuenta Completa') {
+            setFormData(prev => ({ ...prev, profile: '' }));
+        }
+    }, [formData.id, stockMode]);
+
+    // 🔥 PRECIO VISUAL (CALCULADORA)
+    const qty = parseInt(formData.profilesToBuy || 1);
+    const unitPrice = Number(formData.cost) || 0;
+    
+    const isNamePackage = formData.service.toLowerCase().includes('paquete');
+    const isNameAccount = formData.service.toLowerCase().includes('cuenta completa');
+    const visualTotal = (!isNamePackage && !isNameAccount && qty > 1) ? (unitPrice * qty) : unitPrice;
+
+    // LÓGICA DE PRECIOS AUTOMÁTICA
     useEffect(() => {
         if (isNewSale && formData.service && catalog.length > 0 && !stockMode) {
             const catalogItem = catalog.find(c => c.name === formData.service);
             if (catalogItem) {
-                const qty = parseInt(formData.profilesToBuy || 1);
-                const totalCost = (parseInt(catalogItem.cost) || 0) * qty;
-                if (parseInt(formData.cost) !== totalCost) {
-                    setFormData(prev => ({ ...prev, cost: totalCost }));
+                const costToSet = parseInt(catalogItem.cost) || 0;
+                if (parseInt(formData.cost) !== costToSet) {
+                    setFormData(prev => ({ ...prev, cost: costToSet }));
                 }
             }
         }
-    }, [formData.service, formData.profilesToBuy, catalog, formData.client, formData.id, stockMode]);
+    }, [formData.service, catalog, formData.client, formData.id, stockMode]);
 
-    // 🧠 FILTRO DE STOCK
+    // FILTRO DE STOCK
     const freeSlotsInThisAccount = useMemo(() => {
         const safeSlots = Array.isArray(maxAvailableSlots) ? maxAvailableSlots : [];
         const normalize = (text) => text ? text.toString().trim().toLowerCase() : '';
-        const targetCategory = getServiceCategory(formData.service); 
+        const currentCategory = getServiceCategory(formData.service); 
         const currentEmail = normalize(formData.email);
-        const matchesCategory = (slotService) => getServiceCategory(slotService) === targetCategory;
+        
+        // Match flexible: Si soy "Disney Generico", acepto cualquier cosa que sea Disney
+        const matchesCategory = (slotService) => {
+            const slotCat = getServiceCategory(slotService);
+            if (currentCategory === 'DISNEY_GENERICO') return slotCat.includes('DISNEY');
+            return slotCat === currentCategory;
+        };
 
         if (formData.email) {
             return safeSlots.filter(s => 
@@ -76,19 +114,34 @@ const SaleForm = ({
             );
         }
         return safeSlots.filter(s => matchesCategory(s.service) && isClientFree(s.client));
-    }, [maxAvailableSlots, formData.service, formData.email, formData.pass]);
+    }, [maxAvailableSlots, formData.service, formData.email]);
 
-    // 🧠 FILTRO PARA CAMBIAR PLAN
-    const baseService = getServiceCategory(formData.service);
+    // 🔥 CORRECCIÓN DEL DESPLEGABLE (FILTRO DE CATÁLOGO) 🔥
     const filteredConversionCatalog = useMemo(() => {
         if (!catalog.length) return [];
-        return catalog.filter(s => {
-            const cat = getServiceCategory(s.name);
-            return (cat === baseService && s.name !== formData.service);
-        });
-    }, [catalog, baseService, formData.service]);
+        
+        const currentCat = getServiceCategory(formData.service);
 
-    // 🧠 DETECTAR PERFIL FAVORITO
+        return catalog.filter(s => {
+            // Si es el mismo ítem, lo ocultamos
+            if (s.name === formData.service) return false;
+
+            const itemCat = getServiceCategory(s.name);
+
+            // 1. Coincidencia exacta (Ej: Disney Basico -> Disney Basico Paquete)
+            if (currentCat === itemCat) return true;
+
+            // 2. EXCEPCIÓN: Si estoy en "Disney" (Genérico), muéstrame TODO lo de Disney (Básico y Vivo)
+            // para que pueda elegir a cuál cambiarme.
+            if (currentCat === 'DISNEY_GENERICO' && (itemCat === 'DISNEY_BASICO' || itemCat === 'DISNEY_VIVO')) {
+                return true;
+            }
+
+            return false;
+        });
+    }, [catalog, formData.service]);
+
+    // DETECTAR PERFIL FAVORITO
     const favoriteProfile = useMemo(() => {
         if (!formData.client || isClientFree(formData.client)) return null;
         const match = getClientPreviousProfiles.find(p => p.profile && p.pin);
@@ -173,6 +226,7 @@ const SaleForm = ({
                             </h2>
                             <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 opacity-80 ${theme.subtext}`}>
                                 {formData.service}
+                                {(isNamePackage || isNameAccount) && <span className="ml-2 text-indigo-500 bg-indigo-500/10 px-1 rounded">Precio Total</span>}
                             </p>
                         </div>
                         <button onClick={()=>{setView('dashboard'); resetForm();}} className={`p-1.5 rounded-full transition-colors ${darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-500'}`}>
@@ -267,38 +321,37 @@ const SaleForm = ({
                                         <Smartphone size={16} className={ICON_CLASS}/>
                                         <input type="tel" className={INPUT_CLASS} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="WhatsApp (Opcional)"/>
                                     </div>
-                                    
-                                    {/* 👇 AQUÍ ESTÁ EL CAMPO NUEVO PARA EL LINK 👇 */}
                                     <div className="relative group animate-in slide-in-from-top-1">
                                         <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${theme.iconColor}`}>
                                             <LinkIcon size={16}/>
                                         </div>
-                                        <input 
-                                            className={INPUT_CLASS} 
-                                            value={formData.lastCode || ''} 
-                                            onChange={e => setFormData({...formData, lastCode: e.target.value})} 
-                                            placeholder="Pegar Enlace Netflix Aquí" 
-                                        />
-                                        <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
-                                            Info Cliente
-                                        </span>
+                                        <input className={INPUT_CLASS} value={formData.lastCode || ''} onChange={e => setFormData({...formData, lastCode: e.target.value})} placeholder="Pegar Enlace Netflix Aquí"/>
+                                        <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>Info Cliente</span>
                                     </div>
                                 </div>
                             )}
                         </div>
 
-                        {/* 3. FECHA Y PRECIO */}
+                        {/* 3. FECHA Y PRECIO CON CALCULADORA */}
                         {!stockMode && (
-                            <div className="grid grid-cols-2 gap-2 items-end">
+                            <div className="grid grid-cols-2 gap-2 items-start">
                                 <div className="w-full">
                                     <AppleCalendar value={formData.endDate} onChange={(newDate) => setFormData({...formData, endDate: newDate})} label="Vencimiento" darkMode={darkMode} />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className={`text-[10px] font-bold uppercase tracking-wider ml-1 ${theme.subtext}`}>Precio</label>
+                                    <label className={`text-[10px] font-bold uppercase tracking-wider ml-1 ${theme.subtext}`}>
+                                        {(isNamePackage || isNameAccount) ? 'Precio Total' : 'Precio Unitario'}
+                                    </label>
                                     <div className="relative group">
                                         <DollarSign size={14} className={ICON_CLASS}/>
                                         <input type="number" className={INPUT_CLASS} value={formData.cost} onChange={e=>setFormData({...formData, cost:e.target.value})} placeholder="0.00" required={!isExempt} />
                                     </div>
+                                    
+                                    {!isNamePackage && !isNameAccount && qty > 1 && unitPrice > 0 && (
+                                         <p className={`text-[10px] text-right font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-600'} animate-in slide-in-from-top-1`}>
+                                            Total: ${visualTotal} ({qty} x ${unitPrice})
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -319,7 +372,7 @@ const SaleForm = ({
                             </div>
                         </div>
 
-                        {/* 5. MIGRACIÓN DE SERVICIO */}
+                        {/* 5. MIGRACIÓN DE SERVICIO (CORREGIDA) */}
                         {!stockMode && filteredConversionCatalog.length > 0 && (
                             <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100/50'}`}>
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase mb-1"><Package size={12}/> Cambiar Plan</label>
@@ -341,7 +394,8 @@ const SaleForm = ({
                 <div className={`p-4 border-t flex gap-3 pb-8 md:pb-4 ${darkMode ? 'bg-[#161B28] border-white/10' : 'bg-white border-slate-100'}`}>
                     <button type="button" onClick={()=>{setView('dashboard'); resetForm();}} className={`flex-1 py-3 rounded-xl font-bold text-xs transition-colors ${darkMode ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Cancelar</button>
                     <button type="submit" form="sale-form" className={`flex-[2] py-3 rounded-xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-white ${darkMode ? 'bg-black border border-white/20 hover:bg-white/5 shadow-black/50' : 'bg-slate-900 shadow-slate-900/20 hover:bg-slate-800'}`}>
-                        <Save size={16} className="text-emerald-400"/> {stockMode ? 'Guardar Cambios' : 'Guardar Venta'}
+                        <Save size={16} className="text-emerald-400"/> 
+                        {stockMode ? 'Guardar Cambios' : `Guardar Venta ($${visualTotal})`}
                     </button>
                 </div>
             </div>
