@@ -134,12 +134,26 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                     </div>
                 </div>
 
-                {/* COL 3: Estado Desktop */}
-                <div className="hidden md:flex col-span-3 w-full flex-col items-center">
+                {/* COL 3: Estado Desktop + PRECIO (MODIFICADO) */}
+                <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
                     {!isFree && !isProblem ? (
-                        <div className="text-center leading-none">
-                            <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
-                            <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
+                        <div className="flex items-center gap-6">
+                            {/* SECCIÓN PRECIO */}
+                            {cost > 0 && (
+                                <div className="text-center">
+                                    <div className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</div>
+                                    <div className="text-[9px] font-bold opacity-40 uppercase text-slate-400">Precio</div>
+                                </div>
+                            )}
+
+                            {/* SEPARADOR (Solo si hay precio) */}
+                            {cost > 0 && <div className={`w-px h-8 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>}
+
+                            {/* SECCIÓN DÍAS */}
+                            <div className="text-center leading-none">
+                                <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
+                                <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
+                            </div>
                         </div>
                     ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : 
                         <span className={`flex items-center gap-2 text-xs font-black px-3 py-1 rounded-full ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>

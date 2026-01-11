@@ -1,8 +1,7 @@
-// src/hooks/useCRMActions.js
 import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc, query, where, getDocs, getDoc } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 
-// Helper para limpiar nombres (básico)
+// Helper para limpiar nombres básicos
 const findBaseServiceName = (serviceName) => {
     if (!serviceName) return '';
     return serviceName.split(' ')[0]; 
@@ -28,7 +27,6 @@ export const useCRMActions = (user, setNotification) => {
             else if (modalData.type === 'liberate') {
                 const saleToFree = currentSales.find(i => i.id === modalData.id);
                 if (saleToFree) {
-                    
                     const isPackage = saleToFree.service.toLowerCase().includes('paquete');
                     const isAccount = (saleToFree.type === 'Cuenta' || saleToFree.service.toLowerCase().includes('cuenta completa')) && !isPackage;
 
@@ -43,15 +41,11 @@ export const useCRMActions = (user, setNotification) => {
                     } else {
                         targetType = 'Perfil';
                         targetProfile = ''; 
-                        
-                        // Lógica mejorada para liberar: busca coincidencias exactas primero
                         const cleanName = saleToFree.service.replace(/paquete\s*\d*/gi, '').trim();
                         const originalService = currentCatalog.find(c => c.name === cleanName && c.type === 'Perfil');
-                        
                         if (originalService) {
                             finalServiceName = originalService.name;
                         } else {
-                            // Fallback al sistema antiguo si no encuentra exacto
                             const baseName = findBaseServiceName(saleToFree.service);
                             const fuzzyService = currentCatalog.find(c => c.name.includes(baseName) && c.type === 'Perfil');
                             finalServiceName = fuzzyService ? fuzzyService.name : baseName;
@@ -102,13 +96,12 @@ export const useCRMActions = (user, setNotification) => {
                 });
             }
             await batch.commit();
-            const msg = isAccountType ? `Cuenta completa agregada.` : `Generados ${loops} perfiles.`;
-            notify(msg, 'success');
+            notify(isAccountType ? `Cuenta agregada.` : `Generados ${loops} perfiles.`, 'success');
             return true;
         } catch(e) { return false; }
     };
 
-    // --- 3. PROCESAR VENTA ---
+    // --- 3. PROCESAR VENTA (LÓGICA MAESTRA ACTUALIZADA) ---
     const processSale = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
             if (!originalSale?.id) throw new Error("ID no encontrado");
@@ -122,6 +115,23 @@ export const useCRMActions = (user, setNotification) => {
             const targetType = targetCatalogItem?.type || 'Perfil';
             const originalType = originalSale.type || 'Perfil';
 
+            // 🔥 CORRECCIÓN PARA EDICIÓN INDEPENDIENTE (Evita duplicados al cambiar fechas) 🔥
+            // Si el cliente y servicio coinciden con lo que ya había, es una edición de mantenimiento.
+            const isEditingExisting = formData.id && 
+                                      formData.client === originalSale.client && 
+                                      formData.service === originalSale.service;
+
+            if (isEditingExisting) {
+                batch.update(doc(db, userPath, 'sales', originalSale.id), { 
+                    ...cleanFormData, 
+                    cost: totalCost, 
+                    updatedAt: serverTimestamp() 
+                });
+                await batch.commit();
+                notify('Cambios guardados.', 'success');
+                return true;
+            }
+
             const siblings = sales.filter(s => s.email === originalSale.email && s.pass === originalSale.pass && s.id !== originalSale.id);
 
             // A. UNIFICACIÓN
@@ -133,7 +143,7 @@ export const useCRMActions = (user, setNotification) => {
                 return true;
             }
 
-            // B. FRAGMENTACIÓN
+            // B. FRAGMENTACIÓN / VENTA NUEVA MÚLTIPLE
             const isComplexOperation = targetType === 'Paquete' || originalType === 'Cuenta' || profilesToSell > 1;
 
             if (isComplexOperation) {
@@ -144,28 +154,21 @@ export const useCRMActions = (user, setNotification) => {
                 }
                 const unitCost = totalCost / (slotsToOccupy > 0 ? slotsToOccupy : 1);
 
-                // --- ESCENARIO B1: Vengo de una CUENTA COMPLETA (Reconstrucción Total) ---
                 if (originalType === 'Cuenta') {
                     siblings.forEach(sib => batch.delete(doc(db, userPath, 'sales', sib.id)));
                     
-                    // 🔥 CORRECCIÓN: OBTENER NOMBRE REAL DEL SERVICIO (Respetando "En Vivo")
-                    // 1. Limpiamos sufijos molestos para obtener el nombre base puro
                     let realBaseName = formData.service
-                        .replace(/paquete\s*\d*/gi, '') // Quita "Paquete 2"
-                        .replace(/cuenta\s*completa/gi, '') // Quita "Cuenta Completa"
+                        .replace(/paquete\s*\d*/gi, '')
+                        .replace(/cuenta\s*completa/gi, '')
                         .trim();
 
-                    // 2. Definimos capacidad
                     const isNetflix = realBaseName.toLowerCase().includes('netflix');
                     let defaultCapacity = isNetflix ? 5 : 4;
                     
-                    // Buscamos capacidad en el catálogo (usando el nombre real)
                     const accountCatalogItem = catalog.find(c => c.name === `${realBaseName} Cuenta Completa` || (c.name.includes(realBaseName) && c.type === 'Cuenta'));
-                    
                     if (accountCatalogItem && accountCatalogItem.defaultSlots) {
                         defaultCapacity = Number(accountCatalogItem.defaultSlots);
                     } else {
-                        // Fallback al perfil individual
                         const baseCatalogItem = catalog.find(c => c.name === realBaseName && c.type === 'Perfil');
                         if (baseCatalogItem?.defaultSlots && Number(baseCatalogItem.defaultSlots) > 1) {
                             defaultCapacity = Number(baseCatalogItem.defaultSlots);
@@ -173,8 +176,6 @@ export const useCRMActions = (user, setNotification) => {
                     }
 
                     const accountCapacity = Math.max(siblings.length + 1, defaultCapacity);
-                    
-                    // 3. NOMBRE PARA LOS SLOTS LIBRES (Usamos el nombre real limpiado)
                     const freeServiceName = realBaseName; 
 
                     for (let i = 0; i < accountCapacity; i++) {
@@ -182,19 +183,18 @@ export const useCRMActions = (user, setNotification) => {
                         const pData = bulkProfiles[i] || {}; 
                         let slotData = {};
                         if (isSold) {
-                            const profileName = (profilesToSell === 1) ? (pData.profile || `${cleanFormData.profile} (${i+1})`) : (pData.profile || `Perfil ${i+1}`);
+                            const profileName = (profilesToSell === 1) 
+                                ? (pData.profile || cleanFormData.profile || `Perfil ${i+1}`)
+                                : (pData.profile || `Perfil ${i+1}`);
                             const pinCode = (pData.pin) ? pData.pin : cleanFormData.pin;
                             slotData = { ...cleanFormData, cost: unitCost, profile: profileName, pin: pinCode || '', type: 'Perfil' };
                         } else {
-                            // Aquí se usa freeServiceName ("Disney en Vivo")
                             slotData = { client: 'LIBRE', phone: '', service: freeServiceName, type: 'Perfil', cost: 0, email: cleanFormData.email, pass: cleanFormData.pass, profile: `Perfil ${i+1}`, pin: '', endDate: '' };
                         }
                         if (i === 0) batch.update(doc(db, userPath, 'sales', originalSale.id), { ...slotData, updatedAt: serverTimestamp() });
                         else { const newDoc = doc(collection(db, userPath, 'sales')); batch.set(newDoc, { ...slotData, createdAt: new Date(Date.now() + i*50) }); }
                     }
-                } 
-                // --- ESCENARIO B2: Vengo de PERFILES SUELTOS ---
-                else {
+                } else {
                     const availableSiblings = siblings.filter(s => s.client === 'LIBRE' || s.client === '' || s.client === 'Espacio Libre');
                     if (1 + availableSiblings.length < slotsToOccupy) { notify(`No hay suficientes slots libres.`, 'error'); return false; }
                     const pData0 = bulkProfiles[0] || {};
@@ -214,14 +214,14 @@ export const useCRMActions = (user, setNotification) => {
         } catch (error) { console.error("Error:", error); notify('Error al guardar.', 'error'); return false; }
     };
 
-    // 4. MIGRAR SERVICIO
+    // --- 4. MIGRAR SERVICIO (BLINDADO) ---
     const migrateService = async (sourceInput, targetInput, oldSlotStatus = 'LIBRE') => {
         try {
             const sourceId = (typeof sourceInput === 'object' && sourceInput !== null) ? sourceInput.id : sourceInput;
             const targetId = (typeof targetInput === 'object' && targetInput !== null) ? targetInput.id : targetInput;
 
-            if (!sourceId || !targetId || typeof sourceId !== 'string' || typeof targetId !== 'string') {
-                notify('Error: IDs de migración inválidos.', 'error');
+            if (!sourceId || !targetId || typeof sourceId !== 'string') {
+                notify('IDs de migración inválidos.', 'error');
                 return false;
             }
 
@@ -254,7 +254,7 @@ export const useCRMActions = (user, setNotification) => {
         } catch (error) { console.error(error); notify('Error al migrar.', 'error'); return false; }
     };
 
-    // Auxiliares...
+    // Auxiliares adicionales
     const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio creado.'); return true; } catch(e){ return false; } };
     const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch(e){ return false; } };
     const updateCatalogService = async (id, d) => { try { await updateDoc(doc(db, userPath, 'catalog', id), d); notify('Actualizado.'); return true; } catch(e){ return false; } };
