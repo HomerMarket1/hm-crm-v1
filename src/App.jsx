@@ -12,7 +12,7 @@ import { useClientManagement } from './hooks/useClientManagement';
 // Firebase y Utils
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, db } from './firebase/config';
-import { doc, setDoc, getDoc } from 'firebase/firestore'; // 👈 Asegúrate de importar esto
+import { doc, setDoc, getDoc } from 'firebase/firestore'; 
 import { sendWhatsApp } from './utils/helpers';
 
 // Layout y Componentes
@@ -33,8 +33,8 @@ const ClientPortal = lazy(() => import('./views/ClientPortal'));
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
 
 const App = () => {
-    // 1. DATA & AUTH
-    const { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue } = useDataSync();
+    // 1. DATA & AUTH (Agregamos 'branding' aquí 👇)
+    const { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue, branding } = useDataSync();
 
     // 2. UI STATE
     const [uiState, dispatch] = useReducer(uiReducer, initialUiState);
@@ -123,25 +123,19 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // --- 🚀 FUNCIÓN GENÉRICA PARA GUARDAR (ACTUALIZADA: "PROPIA CARPETA DE NÚMEROS") ---
+    // FUNCION DE GUARDADO GENERAL
     const handleGenericSave = async (saleData) => {
         if (!user) return false;
-
-        // 1. Guardar en CRM (Firestore Sales - Carpeta Privada del Usuario)
         const originalSale = sales.find(s => s.id === saleData.id);
         const success = await crmActions.processSale(saleData, originalSale, catalog, sales, 1, []); 
 
-        // 2. Actualizar Portal del Cliente (AHORA DENTRO DE LA CARPETA DEL USUARIO)
         if (success && saleData.phone && saleData.phone.length > 5 && saleData.client !== 'LIBRE') {
             try {
                 let cleanPhone = saleData.phone.trim().replace(/\D/g, '');
                 if (cleanPhone.startsWith('09') && cleanPhone.length === 9) cleanPhone = '598' + cleanPhone.substring(1);
                 else if (cleanPhone.startsWith('9') && cleanPhone.length === 8) cleanPhone = '598' + cleanPhone;
                 
-                // 👇 CAMBIO CLAVE: Usamos una subcolección dentro del usuario
-                // Ruta: users/{uid}/client_portal/{telefono}
                 const portalRef = doc(db, `users/${user.uid}/client_portal`, cleanPhone);
-                
                 const portalSnap = await getDoc(portalRef);
                 let existingServices = portalSnap.exists() ? portalSnap.data().services : [];
 
@@ -155,7 +149,7 @@ const App = () => {
                     pin: saleData.pin || '',
                     endDate: saleData.endDate,
                     lastCode: saleData.lastCode || '',
-                    phone: cleanPhone // Guardamos el teléfono dentro para facilitar búsquedas futuras
+                    phone: cleanPhone 
                 };
 
                 const updatedServices = [
@@ -167,9 +161,9 @@ const App = () => {
                 ];
 
                 await setDoc(portalRef, { 
-                    client: saleData.client, // Aquí va "Juan Lalo" (Tu versión del nombre)
+                    client: saleData.client, 
                     updatedAt: new Date(),
-                    phone: cleanPhone,       // Indexable
+                    phone: cleanPhone,       
                     services: updatedServices
                 });
             } catch (err) {
@@ -179,7 +173,6 @@ const App = () => {
         return success;
     };
 
-    // 🛡️ SALES HANDLER (Formulario Normal)
     const handleSaveSale = async (e) => {
         e.preventDefault(); 
         if (!user) return;
@@ -204,16 +197,12 @@ const App = () => {
             const quantity = parseInt(formData.profilesToBuy || 1);
             const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
             success = await crmActions.processBatchSale(dataToSave, quantity, freeRows, bulkProfiles, catalog);
-            
-            if (success && quantity === 1) { 
-                 await handleGenericSave(dataToSave); // Actualizar portal si es venta unitaria
-            }
+            if (success && quantity === 1) await handleGenericSave(dataToSave); 
         }
 
         if (success) { setView('dashboard'); resetForm(); }
     };
 
-    // Helpers
     const handleWhatsAppShare = (sale, actionType) => {
         if (sale.client === 'LIBRE') return;
         const related = sales.filter(s => s.email === sale.email && s.pass === sale.pass && s.client === sale.client && s.client !== 'LIBRE');
@@ -255,7 +244,6 @@ const App = () => {
         setBulkProfiles(prev => { const n = [...prev]; while (n.length < c) n.push({ profile: '', pin: '' }); return n.length > c ? n.slice(0, c) : n; });
     }, [formData.profilesToBuy]);
 
-    // RENDER PRINCIPAL
     if (authLoading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7] dark:bg-gray-900"><Loader className="animate-spin text-blue-500" /></div>;
 
     if (view === 'portal') {
@@ -279,13 +267,13 @@ const App = () => {
         );
     }
 
-    // VISTAS DEL ADMIN
     return (
         <MainLayout
             view={view} setView={setView} handleLogout={handleLogout}
             notification={notification} setNotification={setNotification}
             darkMode={darkMode} setDarkMode={setDarkMode}
-            user={user} 
+            user={user}
+            branding={branding} // 👈 ¡ESTA ES LA CLAVE! Pasamos los datos al layout
         >
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
