@@ -3,9 +3,13 @@ import React, { useState, useRef, useMemo } from 'react';
 import { 
     Settings, Trash2, Package, Users, Search, Edit2, 
     Database, UploadCloud, Download, Save, Archive 
-} from 'lucide-react'; // 🧹 LIMPIEZA: Se eliminaron 7 iconos no utilizados
+} from 'lucide-react';
 import { useCRMActions } from '../hooks/useCRMActions'; 
 import { useDataSync } from '../hooks/useDataSync';
+
+// 👇 Imports necesarios para Marca Blanca
+import { doc, setDoc } from 'firebase/firestore'; 
+import { db } from '../firebase/config';
 
 const Config = ({ 
     sales, 
@@ -15,7 +19,7 @@ const Config = ({
     setNotification, darkMode 
 }) => {
     
-    const { user } = useDataSync();
+    const { user, branding } = useDataSync(); // Recibimos branding actual para mostrarlo
     const crmActions = useCRMActions(user, setNotification);
 
     const [activeTab, setActiveTab] = useState('services'); 
@@ -26,12 +30,15 @@ const Config = ({
     const [isMigrating, setIsMigrating] = useState(false);
     const fileInputRef = useRef(null);
 
-    // Optimizaciones de memoria (useMemo)
+    // Estado local para el nombre de la empresa (branding)
+    const [localCompanyName, setLocalCompanyName] = useState(branding?.name || '');
+
+    // Optimizaciones
     const individualServices = useMemo(() => catalog.filter(s => s.type !== 'Paquete'), [catalog]);
     const packageServices = useMemo(() => catalog.filter(s => s.type === 'Paquete'), [catalog]);
     const filteredClients = useMemo(() => allClients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())), [allClients, clientSearch]);
 
-    // 🎨 TEMA DINÁMICO (Optimizado para lectura)
+    // 🎨 TEMA DINÁMICO
     const theme = {
         card: darkMode ? 'bg-[#161B28] border-white/5 shadow-none' : 'bg-white border-slate-100 shadow-xl shadow-slate-200/50',
         cardHeader: darkMode ? 'bg-[#0B0F19] border-white/5' : 'bg-slate-50 border-slate-100',
@@ -42,6 +49,49 @@ const Config = ({
         sectionTitle: darkMode ? 'text-white' : 'text-slate-900',
         tabActive: darkMode ? 'bg-[#161B28] text-indigo-400 shadow-sm border border-white/5' : 'bg-slate-800 text-white shadow-lg',
         tabInactive: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600',
+    };
+
+    // --- LÓGICA MARCA BLANCA (BRANDING) ---
+    const handleLogoUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Limite de 500KB para proteger Firestore (Base64 puede ser pesado)
+        if (file.size > 500000) { 
+            setNotification({ show: true, message: 'El logo es muy pesado. Máx 500KB.', type: 'error' });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64String = reader.result;
+            try {
+                // Guardamos la configuración en la carpeta privada del usuario
+                await setDoc(doc(db, `users/${user.uid}/config/branding`), {
+                    logo: base64String,
+                    name: localCompanyName || 'Mi Empresa'
+                }, { merge: true });
+                
+                setNotification({ show: true, message: 'Marca actualizada correctamente.', type: 'success' });
+            } catch (error) {
+                console.error(error);
+                setNotification({ show: true, message: 'Error guardando la marca.', type: 'error' });
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleSaveCompanyName = async () => {
+        if (!localCompanyName.trim()) return;
+        try {
+            await setDoc(doc(db, `users/${user.uid}/config/branding`), {
+                name: localCompanyName
+            }, { merge: true });
+            setNotification({ show: true, message: 'Nombre de empresa guardado.', type: 'success' });
+        } catch (error) {
+            console.error(error);
+            setNotification({ show: true, message: 'Error al guardar nombre.', type: 'error' });
+        }
     };
 
     // --- LÓGICA DESCARGAS ---
@@ -102,7 +152,6 @@ const Config = ({
             if ((idx.client === -1 && idx.email === -1) || idx.service === -1) return null;
             
             return lines.slice(1).map(line => {
-                // Regex avanzado para ignorar comas dentro de comillas
                 const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, ''));
                 return {
                     client: idx.client !== -1 ? cols[idx.client] : (idx.email !== -1 ? cols[idx.email].split('@')[0] : 'Desconocido'),
@@ -160,9 +209,59 @@ const Config = ({
                 ))}
             </div>
 
-            {/* --- PESTAÑA SERVICIOS --- */}
+            {/* --- PESTAÑA SERVICIOS + BRANDING --- */}
             {activeTab === 'services' && (
                 <div className="space-y-8">
+                    
+                    {/* 👇 SECCIÓN NUEVA: PERSONALIZACIÓN DE MARCA (WHITE LABEL) */}
+                    <div className={`rounded-[2rem] overflow-hidden border ${theme.card}`}>
+                        <div className={`px-6 py-4 border-b ${theme.cardHeader} flex items-center justify-between`}>
+                            <h3 className={`font-black text-xs uppercase tracking-wider ${theme.subtext}`}>Identidad de Marca (SaaS)</h3>
+                            <span className="text-[10px] bg-indigo-500 text-white px-2 py-0.5 rounded font-bold">PREMIUM</span>
+                        </div>
+                        <div className="p-6 flex flex-col md:flex-row gap-6 items-start">
+                            {/* Logo Preview */}
+                            <div className="flex flex-col items-center gap-2">
+                                <div className={`w-24 h-24 rounded-2xl border-2 border-dashed flex items-center justify-center overflow-hidden ${darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-50'}`}>
+                                    {branding?.logo ? (
+                                        <img src={branding.logo} alt="Logo Empresa" className="w-full h-full object-contain p-2" />
+                                    ) : (
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase">Sin Logo</span>
+                                    )}
+                                </div>
+                                <label className="text-xs font-bold text-indigo-500 cursor-pointer hover:underline">
+                                    Cambiar Logo
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                </label>
+                            </div>
+
+                            {/* Nombre Empresa */}
+                            <div className="flex-1 w-full space-y-3">
+                                <div>
+                                    <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Nombre de tu Negocio</label>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ej: Streaming Global" 
+                                            className={`flex-1 p-3 rounded-xl font-bold text-sm outline-none border transition-all ${theme.input}`} 
+                                            value={localCompanyName} 
+                                            onChange={e => setLocalCompanyName(e.target.value)}
+                                        />
+                                        <button 
+                                            onClick={handleSaveCompanyName}
+                                            className="px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg transition-all"
+                                        >
+                                            Guardar
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 mt-2 ml-1">
+                                        * Este nombre y logo aparecerán en la barra lateral de tu sistema.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Individuales */}
                     <div>
                         <div className="flex items-center gap-2 mb-4 px-2">
@@ -306,7 +405,7 @@ const Config = ({
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => triggerEditClient(client)} className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}><Edit2 size={14}/></button>
-                                    <button onClick={() => triggerDeleteClient(client.id)} className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400' : 'hover:bg-rose-50 text-slate-500 hover:text-rose-500'}`}><Trash2 size={14}/></button>
+                                    <button onClick={() => triggerDeleteClient(client.id)} className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400' : 'hover:bg-rose-50 text-slate-400 hover:text-rose-500'}`}><Trash2 size={14}/></button>
                                 </div>
                             </div>
                         ))}

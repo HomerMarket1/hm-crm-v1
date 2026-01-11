@@ -7,9 +7,11 @@ import {
     query, 
     orderBy, 
     limit, 
-    where, // ✅ Importante para filtrar basura
+    where, 
     getAggregateFromServer, 
-    sum 
+    sum,
+    doc,    // 👈 Nuevo
+    getDoc  // 👈 Nuevo
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config'; 
 
@@ -33,9 +35,12 @@ export const useDataSync = () => {
   const [catalog, setCatalog] = useState([]);
   const [clientsDirectory, setClientsDirectory] = useState([]);
   
-  // Estado para el Dinero Real (Sin contar Admin/Problemas/etc)
+  // Estado para el Dinero Real
   const [totalRevenue, setTotalRevenue] = useState(0); 
   
+  // 👇 NUEVO ESTADO: MARCA BLANCA (BRANDING)
+  const [branding, setBranding] = useState({ name: 'HM Digital', logo: null });
+
   const [loadingState, setLoadingState] = useState({
     sales: true,
     catalog: true,
@@ -53,6 +58,7 @@ export const useDataSync = () => {
         setCatalog([]);
         setClientsDirectory([]);
         setTotalRevenue(0);
+        setBranding({ name: 'HM Digital', logo: null }); // Reset branding
         setLoadingState({ sales: false, catalog: false, clients: false });
       }
     });
@@ -66,15 +72,27 @@ export const useDataSync = () => {
     const userPath = `users/${user.uid}`;
     
     // --- LISTA NEGRA DE ESTADOS (No suman dinero) ---
-    // Firestore permite máximo 10 valores en 'not-in'. 
     const IGNORED_STATUSES = [
         'LIBRE', 
         'Caída', 'Actualizar', 'Dominio', 'EXPIRED', 
         'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'
     ];
 
+    // --- CARGAR BRANDING (Logo y Nombre del Inquilino) ---
+    const fetchBranding = async () => {
+        try {
+            const docRef = doc(db, `${userPath}/config/branding`);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setBranding(docSnap.data());
+            }
+        } catch (e) {
+            console.error("Error cargando branding:", e);
+        }
+    };
+    fetchBranding();
+
     // --- QUERY PRINCIPAL (Visual) ---
-    // Traemos hasta 3000 para que el buscador funcione bien en tu volumen actual (1800 clientes).
     const salesQuery = query(
         collection(db, userPath, 'sales'), 
         orderBy('createdAt', 'desc'), 
@@ -84,15 +102,14 @@ export const useDataSync = () => {
     const catalogRef = collection(db, userPath, 'catalog');
     const clientsRef = collection(db, userPath, 'clients');
 
-    // --- CÁLCULO DE DINERO SERVIDOR (CORREGIDO) ---
-    // Sumamos solo lo que tiene costo y NO es un estado problemático o administrativo.
+    // --- CÁLCULO DE DINERO SERVIDOR ---
     const calculateTotal = async () => {
         try {
             const coll = collection(db, userPath, 'sales');
             const q = query(
                 coll, 
                 where('cost', '>', 0),
-                where('client', 'not-in', IGNORED_STATUSES) // ✅ Aquí está la magia
+                where('client', 'not-in', IGNORED_STATUSES)
             ); 
             
             const snapshot = await getAggregateFromServer(q, {
@@ -104,7 +121,6 @@ export const useDataSync = () => {
         }
     };
     
-    // Ejecutamos el cálculo inicial
     calculateTotal();
 
     // A. Suscripción a VENTAS
@@ -112,11 +128,10 @@ export const useDataSync = () => {
       const docs = snapshot.docs.map(sanitizeData);
       setSales(docs);
       
-      // Si tenemos pocos datos (menos del límite), calculamos la suma en local para que sea tiempo real
-      // PERO aplicando el mismo filtro de ignorar estados basura.
+      // Cálculo local si hay pocos datos
       if(snapshot.size < 3000) {
           const localTotal = docs
-            .filter(d => !IGNORED_STATUSES.includes(d.client)) // ✅ Filtro local idéntico al servidor
+            .filter(d => !IGNORED_STATUSES.includes(d.client))
             .reduce((acc, doc) => acc + (Number(doc.cost) || 0), 0);
           setTotalRevenue(localTotal);
       }
@@ -144,5 +159,6 @@ export const useDataSync = () => {
 
   const loadingData = authLoading || loadingState.sales || loadingState.catalog || loadingState.clients;
 
-  return { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue };
+  // 👇 Retornamos branding aquí
+  return { user, authLoading, sales, catalog, clientsDirectory, loadingData, totalRevenue, branding };
 };

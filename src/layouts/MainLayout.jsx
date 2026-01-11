@@ -4,7 +4,12 @@ import { LayoutDashboard, Box, Settings, LogOut, Menu, X, Moon, Sun } from 'luci
 import Toast from '../components/Toast';
 import { auth } from '../firebase/config'; 
 
-const MainLayout = ({ view, setView, handleLogout, children, notification, setNotification, darkMode, setDarkMode }) => {
+const MainLayout = ({ 
+    view, setView, handleLogout, children, 
+    notification, setNotification, 
+    darkMode, setDarkMode,
+    branding // 👈 Recibimos branding aquí
+}) => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     // 🕵️ DETECCIÓN DE USUARIO LOGUEADO
@@ -43,6 +48,9 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
         );
     };
 
+    // Helper para el nombre de la empresa
+    const companyName = branding?.name || 'HM Digital';
+
     return (
         <div className={`flex h-screen ${theme.bg} overflow-hidden font-sans selection:bg-indigo-500/30 transition-colors duration-500`}>
             
@@ -71,10 +79,18 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
                             <div className="relative group cursor-pointer">
                                 <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity"/>
                                 <div className={`relative w-36 h-36 rounded-full shadow-lg border-2 flex items-center justify-center transform group-hover:scale-105 transition-transform duration-500 overflow-hidden ${darkMode ? 'bg-[#0B0F19] border-white/10' : 'bg-white border-white'}`}>
-                                    <img src="/Logo.webp" alt="HM Digital" className="w-full h-full object-contain p-0" loading="eager" />
+                                    {/* LOGO DINÁMICO */}
+                                    {branding?.logo ? (
+                                        <img src={branding.logo} alt={companyName} className="w-full h-full object-contain p-0" loading="eager" />
+                                    ) : (
+                                        // Fallback al logo original si no hay personalizado
+                                        <img src="/Logo.webp" alt="HM Digital" className="w-full h-full object-contain p-0" loading="eager" />
+                                    )}
                                 </div>
                             </div>
-                            <h1 className={`mt-3 text-xl font-black tracking-tight transition-colors ${theme.text}`}>HM Digital</h1>
+                            <h1 className={`mt-3 text-xl font-black tracking-tight transition-colors text-center px-2 ${theme.text}`}>
+                                {companyName}
+                            </h1>
                         </div>
 
                         <nav className="flex-1 flex flex-col justify-center px-1">
@@ -98,12 +114,15 @@ const MainLayout = ({ view, setView, handleLogout, children, notification, setNo
             {isLoggedIn && (
                 <div className={`md:hidden fixed top-0 left-0 right-0 h-28 pt-8 z-40 px-5 flex items-center justify-between backdrop-blur-md border-b transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/10' : 'bg-[#F2F2F7]/90 border-white/20'}`}>
                     <div className="flex items-center gap-3">
-                        {/* 🚀 CAMBIO: w-14 h-14 (más grande) y p-0 (sin borde grueso) */}
                         <div className={`w-14 h-14 rounded-full shadow-sm flex items-center justify-center overflow-hidden border ${darkMode ? 'bg-black border-white/10' : 'bg-white border-white'}`}>
-                            <img src="/Logo.webp" alt="Logo" className="w-full h-full object-contain p-0" />
+                            {branding?.logo ? (
+                                <img src={branding.logo} alt={companyName} className="w-full h-full object-contain p-0" />
+                            ) : (
+                                <img src="/Logo.webp" alt="Logo" className="w-full h-full object-contain p-0" />
+                            )}
                         </div>
                         <div>
-                            <h1 className={`text-lg font-black leading-none ${theme.text}`}>HM Digital</h1>
+                            <h1 className={`text-lg font-black leading-none ${theme.text}`}>{companyName}</h1>
                             <p className="text-[10px] font-bold text-slate-500 uppercase">Panel</p>
                         </div>
                     </div>
