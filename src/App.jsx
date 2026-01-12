@@ -122,11 +122,12 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // 🔥 ACTUALIZADO: Limpia teléfono para Admin/Caída/etc
+    // 🔥 CORRECCIÓN: Evita que el teléfono se "pegue" de clientes similares
     const handleClientNameChange = (e) => {
         const name = e.target.value;
         const lowerName = name.toLowerCase().trim();
         
+        // 1. Manejo de estados de sistema (Admin, Caída, etc)
         const SYSTEM_CLIENTS = [
             'admin', 'caída', 'caida', 'actualizar', 
             'dominio', 'garantía', 'garantia', 'problemas', 
@@ -138,15 +139,18 @@ const App = () => {
              return;
         }
 
+        // 2. Búsqueda de coincidencia EXACTA
+        // Si no es una coincidencia exacta, el teléfono debe quedar vacío.
         const existing = clientManagement.allClients.find(c => c.name.toLowerCase() === lowerName);
+        
         setFormData({ 
             ...formData, 
             client: name, 
-            phone: existing ? existing.phone : formData.phone 
+            phone: existing ? existing.phone : '' // Solo pone el celular si el nombre es IDÉNTICO
         });
     };
 
-    // 🔥 FUNCION DE GUARDADO INTELIGENTE (Unitario vs Paquetes)
+    // FUNCION DE GUARDADO INTELIGENTE
     const handleGenericSave = async (saleData) => {
         if (!user) return false;
         
@@ -158,12 +162,9 @@ const App = () => {
         const qty = parseInt(saleData.profilesToBuy || 1);
         let finalCost = Number(saleData.cost) || 0;
         
-        // 🔍 DETECCIÓN DE PAQUETE
         const isPackage = saleData.service.toLowerCase().includes('paquete') || 
                           (saleData.type && saleData.type.toLowerCase() === 'paquete');
 
-        // 🔥 CORRECCIÓN: Si NO es paquete y compran más de 1 -> SIEMPRE Multiplicamos
-        // Eliminamos el chequeo de "!isAccount" para que las cuentas completas también puedan vender perfiles sueltos multiplicando
         if (qty > 1 && !isPackage) { 
             finalCost = finalCost * qty;
         }
@@ -182,7 +183,6 @@ const App = () => {
             bulkProfiles 
         ); 
 
-        // Actualización del Portal
         if (success && saleData.phone && saleData.phone.length > 5 && saleData.client !== 'LIBRE') {
             try {
                 let cleanPhone = saleData.phone.trim().replace(/\D/g, '');
@@ -221,7 +221,7 @@ const App = () => {
                     services: updatedServices
                 });
             } catch (err) {
-                console.error("Error update portal:", err);
+                console.error("Error portal:", err);
             }
         }
         return success;
@@ -238,33 +238,33 @@ const App = () => {
         let finalEndDate = formData.endDate;
         const EXEMPT = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         const isExempt = EXEMPT.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
+
         if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
-            const d = new Date(); d.setDate(d.getDate() + 30); finalEndDate = d.toISOString().split('T')[0];
+            const now = new Date();
+            now.setMonth(now.getMonth() + 1);
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            finalEndDate = `${yyyy}-${mm}-${dd}`;
         }
 
         const dataToSave = { ...formData, endDate: finalEndDate };
-        
-        // --- APLICAMOS LÓGICA EN VENTAS NUEVAS TAMBIÉN ---
         const quantity = parseInt(formData.profilesToBuy || 1);
         let batchCost = Number(dataToSave.cost) || 0;
         
         const isPackage = dataToSave.service.toLowerCase().includes('paquete') || 
                           (dataToSave.type && dataToSave.type.toLowerCase() === 'paquete');
 
-        // 🔥 CORRECCIÓN: Mismo ajuste que arriba (Multiplicar si qty > 1 y no es paquete)
         if (quantity > 1 && !isPackage) {
             batchCost = batchCost * quantity;
         }
         
         const dataWithCorrectCost = { ...dataToSave, cost: batchCost };
-
         let success = false;
         
         if (formData.id) {
-            // Edición
             success = await handleGenericSave(dataToSave);
         } else {
-            // Venta Nueva
             const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
             success = await crmActions.processBatchSale(dataWithCorrectCost, quantity, freeRows, bulkProfiles, catalog);
             if (success && quantity === 1) await handleGenericSave(dataToSave); 
@@ -278,25 +278,29 @@ const App = () => {
         const related = sales.filter(s => s.email === sale.email && s.pass === sale.pass && s.client === sale.client && s.client !== 'LIBRE');
         sendWhatsApp(related.length > 1 ? related : [sale], actionType);
     };
-    const resetForm = () => { setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1, lastCode: '' }); setBulkProfiles([{ profile: '', pin: '' }]); };
+
+    const resetForm = () => { 
+        setFormData({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1, lastCode: '' }); 
+        setBulkProfiles([{ profile: '', pin: '' }]); 
+    };
     
     const handleBulkProfileChange = (idx, field, val) => {
         const arr = [...bulkProfiles]; arr[idx][field] = val;
         if (field === 'profile') { const m = getClientPreviousProfiles.find(p => p.profile === val); if (m?.pin) arr[idx].pin = m.pin; }
         setBulkProfiles(arr);
     };
+
     const handleSingleProfileChange = (val) => {
         const m = getClientPreviousProfiles.find(p => p.profile === val);
         setFormData({ ...formData, profile: val, pin: m?.pin || formData.pin });
     };
 
-    const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
-    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
-    const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
+    const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar?', msg: 'Esta categoría desaparecerá.' });
+    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar?', msg: 'Los datos del cliente se borrarán.' });
+    const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
     const triggerDeleteFreeStock = (email, pass) => {
         const ids = sales.filter(s => s.email === email && s.pass === pass && s.client === 'LIBRE').map(s => s.id);
-        if (ids.length) setConfirmModal({ show: true, type: 'delete_free_stock', title: 'Limpiar Stock Libre', msg: `Se eliminarán ${ids.length} perfiles libres.`, data: ids });
-        else setNotification({ show: true, message: 'No hay stock libre.', type: 'info' });
+        if (ids.length) setConfirmModal({ show: true, type: 'delete_free_stock', title: 'Limpiar Stock', msg: `Se eliminarán ${ids.length} perfiles libres.`, data: ids });
     };
     const triggerEditAccount = (d) => setEditAccountModal({ show: true, email: d.email, oldPass: d.pass, newPass: d.pass });
     const triggerOpenEditClient = (client) => setEditClientModal({ show: true, client });
@@ -338,8 +342,7 @@ const App = () => {
             view={view} setView={setView} handleLogout={handleLogout}
             notification={notification} setNotification={setNotification}
             darkMode={darkMode} setDarkMode={setDarkMode}
-            user={user}
-            branding={branding}
+            user={user} branding={branding}
         >
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
@@ -352,29 +355,23 @@ const App = () => {
                 {view === 'dashboard' && <Dashboard
                     sales={sales} filteredSales={filteredSales} catalog={sortedCatalog}
                     filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter}
-                    totalItems={totalItems} 
-                    totalFilteredMoney={moneyToShow} 
+                    totalItems={totalItems} totalFilteredMoney={moneyToShow} 
                     getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining}
                     NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare}
                     handleQuickRenew={(id) => { const s = sales.find(i => i.id === id); crmActions.quickRenew(id, s?.endDate); }}
                     triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView}
                     openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData}
                     expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales}
-                    darkMode={darkMode}
-                    saveSale={handleSaveSale}
-                    onMigrate={crmActions.migrateService}
+                    darkMode={darkMode} saveSale={handleSaveSale} onMigrate={crmActions.migrateService}
                 />}
 
                 {view === 'config' && <Config
-                    sales={sales}
-                    catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
+                    sales={sales} catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm}
                     handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog}
-                    handleEditCatalogService={handleEditCatalogService}
-                    triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients}
-                    triggerDeleteClient={clientManagement.triggerDeleteClient}
-                    triggerEditClient={triggerOpenEditClient}
-                    setNotification={setNotification} formData={formData} setFormData={setFormData}
-                    darkMode={darkMode}
+                    handleEditCatalogService={handleEditCatalogService} triggerDeleteService={triggerDeleteService} 
+                    clientsDirectory={clientsDirectory} allClients={clientManagement.allClients}
+                    triggerDeleteClient={clientManagement.triggerDeleteClient} triggerEditClient={triggerOpenEditClient}
+                    setNotification={setNotification} formData={formData} setFormData={setFormData} darkMode={darkMode}
                 />}
 
                 {view === 'add_stock' && <StockManager
@@ -386,12 +383,10 @@ const App = () => {
 
                 {view === 'form' && <SaleForm
                     formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles}
-                    allClients={clientManagement.allClients} packageCatalog={packageCatalog} 
-                    maxAvailableSlots={sales} 
+                    allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={sales} 
                     getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange}
                     handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange}
-                    handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog}
-                    darkMode={darkMode}
+                    handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog} darkMode={darkMode}
                 />}
             </Suspense>
         </MainLayout>
