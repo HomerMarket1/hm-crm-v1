@@ -1,3 +1,4 @@
+// src/hooks/useCRMActions.js
 import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc, query, where, getDocs, getDoc } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 
@@ -6,6 +7,9 @@ const findBaseServiceName = (serviceName) => {
     if (!serviceName) return '';
     return serviceName.split(' ')[0]; 
 };
+
+// Palabras clave que indican que NO se debe fragmentar ni alterar el resto de la cuenta
+const MAINTENANCE_STATUSES = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'garantía', 'garantia', 'problemas', 'admin'];
 
 export const useCRMActions = (user, setNotification) => {
     if (!user) return {};
@@ -101,7 +105,7 @@ export const useCRMActions = (user, setNotification) => {
         } catch(e) { return false; }
     };
 
-    // --- 3. PROCESAR VENTA (LÓGICA MAESTRA ACTUALIZADA) ---
+    // --- 3. PROCESAR VENTA (LÓGICA MAESTRA CORREGIDA) ---
     const processSale = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
             if (!originalSale?.id) throw new Error("ID no encontrado");
@@ -115,11 +119,13 @@ export const useCRMActions = (user, setNotification) => {
             const targetType = targetCatalogItem?.type || 'Perfil';
             const originalType = originalSale.type || 'Perfil';
 
-            // 🔥 CORRECCIÓN PARA EDICIÓN INDEPENDIENTE (Evita duplicados al cambiar fechas) 🔥
-            // Si el cliente y servicio coinciden con lo que ya había, es una edición de mantenimiento.
-            const isEditingExisting = formData.id && 
-                                      formData.client === originalSale.client && 
-                                      formData.service === originalSale.service;
+            // 🔥 CORRECCIÓN CRÍTICA: SI ES MANTENIMIENTO O EDICIÓN, NO TOCAR NADA MÁS 🔥
+            // Detectamos si el cliente nuevo o viejo es un estado de mantenimiento (Caída, Admin, etc.)
+            const isMaintenanceEdit = MAINTENANCE_STATUSES.includes(formData.client.toLowerCase().trim()) || 
+                                     MAINTENANCE_STATUSES.includes(originalSale.client.toLowerCase().trim());
+            
+            // Si el ID existe y es un cambio de mantenimiento o datos básicos (como fecha), tratamos como Edición Simple.
+            const isEditingExisting = formData.id && (isMaintenanceEdit || (formData.client === originalSale.client && formData.service === originalSale.service));
 
             if (isEditingExisting) {
                 batch.update(doc(db, userPath, 'sales', originalSale.id), { 
@@ -128,7 +134,7 @@ export const useCRMActions = (user, setNotification) => {
                     updatedAt: serverTimestamp() 
                 });
                 await batch.commit();
-                notify('Cambios guardados.', 'success');
+                notify('Información actualizada.', 'success');
                 return true;
             }
 
@@ -214,7 +220,7 @@ export const useCRMActions = (user, setNotification) => {
         } catch (error) { console.error("Error:", error); notify('Error al guardar.', 'error'); return false; }
     };
 
-    // --- 4. MIGRAR SERVICIO (BLINDADO) ---
+    // --- 4. MIGRAR SERVICIO ---
     const migrateService = async (sourceInput, targetInput, oldSlotStatus = 'LIBRE') => {
         try {
             const sourceId = (typeof sourceInput === 'object' && sourceInput !== null) ? sourceInput.id : sourceInput;
@@ -254,7 +260,7 @@ export const useCRMActions = (user, setNotification) => {
         } catch (error) { console.error(error); notify('Error al migrar.', 'error'); return false; }
     };
 
-    // Auxiliares adicionales
+    // Auxiliares adicionales (Mantenidos)
     const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio creado.'); return true; } catch(e){ return false; } };
     const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch(e){ return false; } };
     const updateCatalogService = async (id, d) => { try { await updateDoc(doc(db, userPath, 'catalog', id), d); notify('Actualizado.'); return true; } catch(e){ return false; } };
