@@ -1,14 +1,11 @@
-// src/hooks/useCRMActions.js
 import { addDoc, collection, doc, writeBatch, serverTimestamp, updateDoc, query, where, getDocs, getDoc } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 
-// Helper para limpiar nombres básicos
 const findBaseServiceName = (serviceName) => {
     if (!serviceName) return '';
     return serviceName.split(' ')[0]; 
 };
 
-// Palabras clave que indican que NO se debe fragmentar ni alterar el resto de la cuenta
 const MAINTENANCE_STATUSES = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'garantía', 'garantia', 'problemas', 'admin'];
 
 export const useCRMActions = (user, setNotification) => {
@@ -17,7 +14,6 @@ export const useCRMActions = (user, setNotification) => {
     const userPath = `users/${user.uid}`;
     const notify = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
 
-    // --- 1. GESTOR DE CONFIRMACIONES ---
     const executeConfirmAction = async (modalData, currentSales, currentCatalog) => {
         if (!user || !modalData) return false;
         try {
@@ -83,7 +79,6 @@ export const useCRMActions = (user, setNotification) => {
         }
     };
 
-    // --- 2. GENERAR STOCK ---
     const generateStock = async (form) => {
         try {
             const batch = writeBatch(db);
@@ -105,7 +100,6 @@ export const useCRMActions = (user, setNotification) => {
         } catch(e) { return false; }
     };
 
-    // --- 3. PROCESAR VENTA (LÓGICA MAESTRA CORREGIDA) ---
     const processSale = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
             if (!originalSale?.id) throw new Error("ID no encontrado");
@@ -119,22 +113,19 @@ export const useCRMActions = (user, setNotification) => {
             const targetType = targetCatalogItem?.type || 'Perfil';
             const originalType = originalSale.type || 'Perfil';
 
-            // 🔥 CORRECCIÓN CRÍTICA: SI ES MANTENIMIENTO O EDICIÓN, NO TOCAR NADA MÁS 🔥
-            // Detectamos si el cliente nuevo o viejo es un estado de mantenimiento (Caída, Admin, etc.)
-            const isMaintenanceEdit = MAINTENANCE_STATUSES.includes(formData.client.toLowerCase().trim()) || 
-                                     MAINTENANCE_STATUSES.includes(originalSale.client.toLowerCase().trim());
+            // 🔥 CORRECCIÓN LÓGICA: SOLO proteger si NO es una cuenta completa siendo fragmentada 🔥
+            const isMaintenanceStatus = MAINTENANCE_STATUSES.includes(formData.client.toLowerCase().trim());
+            const isSameService = formData.service === originalSale.service;
             
-            // Si el ID existe y es un cambio de mantenimiento o datos básicos (como fecha), tratamos como Edición Simple.
-            const isEditingExisting = formData.id && (isMaintenanceEdit || (formData.client === originalSale.client && formData.service === originalSale.service));
-
-            if (isEditingExisting) {
+            // Si ya era un Perfil o Paquete (cuenta fragmentada) y solo cambiamos a Admin/Caída, es Edición Simple.
+            if (formData.id && originalType !== 'Cuenta' && (isMaintenanceStatus || isSameService)) {
                 batch.update(doc(db, userPath, 'sales', originalSale.id), { 
                     ...cleanFormData, 
                     cost: totalCost, 
                     updatedAt: serverTimestamp() 
                 });
                 await batch.commit();
-                notify('Información actualizada.', 'success');
+                notify('Cambios guardados.', 'success');
                 return true;
             }
 
@@ -149,7 +140,7 @@ export const useCRMActions = (user, setNotification) => {
                 return true;
             }
 
-            // B. FRAGMENTACIÓN / VENTA NUEVA MÚLTIPLE
+            // B. FRAGMENTACIÓN / VENTA NUEVA
             const isComplexOperation = targetType === 'Paquete' || originalType === 'Cuenta' || profilesToSell > 1;
 
             if (isComplexOperation) {
@@ -214,13 +205,11 @@ export const useCRMActions = (user, setNotification) => {
                 await batch.commit(); notify(`Venta registrada.`, 'success'); return true;
             }
 
-            // C. VENTA SIMPLE
             batch.update(doc(db, userPath, 'sales', originalSale.id), { ...cleanFormData, cost: totalCost, updatedAt: serverTimestamp() });
             await batch.commit(); notify('Guardado correctamente.', 'success'); return true;
         } catch (error) { console.error("Error:", error); notify('Error al guardar.', 'error'); return false; }
     };
 
-    // --- 4. MIGRAR SERVICIO ---
     const migrateService = async (sourceInput, targetInput, oldSlotStatus = 'LIBRE') => {
         try {
             const sourceId = (typeof sourceInput === 'object' && sourceInput !== null) ? sourceInput.id : sourceInput;
@@ -260,7 +249,6 @@ export const useCRMActions = (user, setNotification) => {
         } catch (error) { console.error(error); notify('Error al migrar.', 'error'); return false; }
     };
 
-    // Auxiliares adicionales (Mantenidos)
     const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio creado.'); return true; } catch(e){ return false; } };
     const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch(e){ return false; } };
     const updateCatalogService = async (id, d) => { try { await updateDoc(doc(db, userPath, 'catalog', id), d); notify('Actualizado.'); return true; } catch(e){ return false; } };
