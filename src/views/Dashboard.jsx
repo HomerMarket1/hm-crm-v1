@@ -134,11 +134,11 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                     </div>
                 </div>
 
-                {/* COL 3: Estado Desktop + PRECIO (MODIFICADO) */}
+                {/* COL 3: Estado Desktop + Precio Unitario */}
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
                     {!isFree && !isProblem ? (
                         <div className="flex items-center gap-6">
-                            {/* SECCIÓN PRECIO */}
+                            {/* SECCIÓN PRECIO PC */}
                             {cost > 0 && (
                                 <div className="text-center">
                                     <div className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</div>
@@ -146,10 +146,10 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                                 </div>
                             )}
 
-                            {/* SEPARADOR (Solo si hay precio) */}
+                            {/* SEPARADOR PC */}
                             {cost > 0 && <div className={`w-px h-8 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>}
 
-                            {/* SECCIÓN DÍAS */}
+                            {/* SECCIÓN DÍAS PC */}
                             <div className="text-center leading-none">
                                 <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
                                 <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
@@ -559,18 +559,49 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* MODAL MIGRACIÓN (CON HEADER DE ORIGEN MEJORADO & COLORES DARK MODE) */}
+            {/* MODAL MIGRACIÓN (CON COPIADO DE CREDENCIALES ANTERIORES) */}
             {migrationModal.show && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
                         
                         {/* HEADER CON DATOS DE ORIGEN */}
                         <div className="p-6 border-b border-white/5">
-                            <div className="flex justify-between items-start">
-                                <div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div>
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3>
+                                    <p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p>
+                                </div>
+                                <button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                                    <X size={20} />
+                                </button>
                             </div>
-                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) - Colores corregidos */}
-                            <div className={`mt-4 p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
+
+                            {/* 🔥 BOTÓN PARA COPIAR CREDENCIALES ANTERIORES 🔥 */}
+                            <div className="mb-4 animate-in slide-in-from-top-2">
+                                <button 
+                                    onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)}
+                                    className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${
+                                        darkMode 
+                                        ? 'bg-black/40 border-white/10 hover:border-indigo-500/50 text-slate-300' 
+                                        : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <Lock size={14} className="text-indigo-500 shrink-0"/>
+                                        <div className="text-left">
+                                            <p className="text-[9px] font-bold uppercase opacity-50 leading-none mb-1">Cuenta anterior</p>
+                                            <p className="text-[11px] font-bold truncate">{migrationModal.sale?.email}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                                        <span className="text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity uppercase">Copiar Acceso</span>
+                                        <Copy size={16} className="text-indigo-500"/>
+                                    </div>
+                                </button>
+                            </div>
+
+                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) */}
+                            <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
                                 <p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}>
                                     <User size={12}/> Datos a trasladar:
                                 </p>
