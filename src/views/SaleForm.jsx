@@ -204,12 +204,14 @@ const SaleForm = ({
         subtext: darkMode ? 'text-slate-400' : 'text-slate-500',
         inputBg: darkMode ? 'bg-black/40' : 'bg-slate-50',
         border: darkMode ? 'border-white/10' : 'border-slate-100',
-        focusRing: 'focus:ring-2 focus:ring-indigo-500/50',
+        focusRing: 'focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)]',
         iconColor: 'text-slate-400',
         sectionBg: darkMode ? 'bg-white/5' : 'bg-slate-50',
         activeChip: darkMode ? 'bg-[#2A303C] text-white shadow-sm ring-1 ring-white/10' : 'bg-white text-indigo-600 shadow-sm',
         disabledChip: darkMode ? 'bg-white/5 text-slate-600 cursor-not-allowed' : 'bg-slate-100 text-slate-300 cursor-not-allowed'
     };
+    
+    // 🔥 ACTUALIZADA: Clase con Focus Glow
     const INPUT_CLASS = `w-full h-11 pl-10 pr-4 rounded-xl text-xs font-bold outline-none border transition-all ${theme.inputBg} ${theme.border} ${theme.text} ${theme.focusRing} placeholder:font-medium placeholder:text-slate-500`;
     const ICON_CLASS = `absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors group-focus-within:text-indigo-500 ${theme.iconColor}`;
 
@@ -365,8 +367,9 @@ const SaleForm = ({
                             <div className="space-y-2">
                                 {(parseInt(formData.profilesToBuy) > 1 ? bulkProfiles : [bulkProfiles[0] || {profile: formData.profile, pin: formData.pin}]).map((p, i) => (
                                     <div key={i} className="flex gap-2 animate-in slide-in-from-left-2" style={{animationDelay: `${i*50}ms`}}>
-                                        <input className={`flex-1 p-2.5 rounded-lg text-xs font-bold outline-none border focus:border-indigo-500 transition-colors ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder={`Nombre Perfil ${i+1}`} value={parseInt(formData.profilesToBuy) > 1 ? p.profile : formData.profile} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/>
-                                        <input className={`w-16 p-2.5 text-center rounded-lg text-xs font-mono font-bold outline-none border focus:border-indigo-500 transition-colors ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder="PIN" value={parseInt(formData.profilesToBuy) > 1 ? p.pin : formData.pin} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/>
+                                        {/* 🔥 Focus Glow aplicado aquí también */}
+                                        <input className={`flex-1 p-2.5 rounded-lg text-xs font-bold outline-none border focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder={`Nombre Perfil ${i+1}`} value={parseInt(formData.profilesToBuy) > 1 ? p.profile : formData.profile} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/>
+                                        <input className={`w-16 p-2.5 text-center rounded-lg text-xs font-mono font-bold outline-none border focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder="PIN" value={parseInt(formData.profilesToBuy) > 1 ? p.pin : formData.pin} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/>
                                     </div>
                                 ))}
                             </div>
@@ -377,7 +380,8 @@ const SaleForm = ({
                             <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100/50'}`}>
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase mb-1"><Package size={12}/> Cambiar Plan</label>
                                 <div className="relative">
-                                    <select className={`w-full p-2.5 rounded-lg text-[10px] font-bold outline-none border appearance-none cursor-pointer ${darkMode ? 'bg-[#0B0F19] border-white/10 text-indigo-300' : 'bg-white border-indigo-100 text-indigo-900'}`} onChange={(e) => { const selected = catalog.find(s => s.name === e.target.value); if (selected) setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots })); }} value={formData.service}>
+                                    {/* 🔥 Focus Glow en el Selector */}
+                                    <select className={`w-full p-2.5 rounded-lg text-[10px] font-bold outline-none border transition-all focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] appearance-none cursor-pointer ${darkMode ? 'bg-[#0B0F19] border-white/10 text-indigo-300' : 'bg-white border-indigo-100 text-indigo-900'}`} onChange={(e) => { const selected = catalog.find(s => s.name === e.target.value); if (selected) setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots })); }} value={formData.service}>
                                         <option value={formData.service}>{formData.service} (Actual)</option>
                                         <option disabled>──────────</option>
                                         {filteredConversionCatalog.map(item => <option key={item.id} value={item.name}>{item.name} - ${item.cost}</option>)}

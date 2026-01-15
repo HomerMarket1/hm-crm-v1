@@ -1,7 +1,5 @@
-// src/views/LoginScreen.jsx
-
 import React from 'react';
-import { Mail, Lock, ArrowRight, Zap, Search } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Zap, Search, ShieldCheck } from 'lucide-react';
 
 const LoginScreen = ({ 
     loginEmail, 
@@ -10,48 +8,53 @@ const LoginScreen = ({
     setLoginPass, 
     handleLogin, 
     loginError,
-    onGoToPortal // 👈 Nueva prop para cambiar de vista al Portal
+    onGoToPortal 
 }) => {
     
+    // Estilos basados en la estética neón del resto del proyecto
     const INPUT_WRAPPER = "relative group";
-    const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none";
-    const INPUT_STYLE = "w-full p-4 pl-12 bg-slate-50/50 border border-slate-200/60 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-200 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400";
+    const ICON_STYLE = "absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors pointer-events-none";
+    
+    const INPUT_STYLE = `
+        w-full p-4 pl-12 
+        bg-[#0B0F19] border-[#1E293B] 
+        rounded-2xl text-sm font-bold text-white outline-none 
+        focus:border-cyan-400 focus:shadow-[0_0_20px_rgba(34,211,238,0.2)] 
+        transition-all placeholder:text-slate-600
+    `;
 
     return (
-        <div className="min-h-screen w-full flex items-center justify-center bg-[#F2F2F7] relative overflow-hidden">
+        <div className="min-h-screen w-full flex items-center justify-center bg-[#070A11] relative overflow-hidden">
             
-            {/* Decoración de fondo ambiental */}
-            <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-500/20 rounded-full blur-[100px] animate-pulse"/>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[100px] animate-pulse" style={{animationDelay: '2s'}}/>
+            {/* 🌌 Fondos Ambientales Neón */}
+            <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[120px] animate-pulse"/>
+            <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-cyan-600/10 rounded-full blur-[120px] animate-pulse" style={{animationDelay: '2s'}}/>
 
-            <div className="w-full max-w-sm p-8 m-4 bg-white/60 backdrop-blur-2xl rounded-[3rem] shadow-2xl border border-white/60 relative z-10 animate-in fade-in zoom-in duration-500">
+            {/* 📦 Contenedor Glassmorphism Oscuro */}
+            <div className="w-full max-w-sm p-10 m-4 bg-[#111827]/40 backdrop-blur-3xl rounded-[3.5rem] border border-white/5 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] relative z-10 animate-in fade-in zoom-in duration-700">
                 
-                <div className="text-center mb-6">
-                    {/* ✅ LOGO ESTÉTICO CON LUZ DE FONDO */}
-                    <div className="relative mx-auto mb-6 flex justify-center items-center h-32">
-                        {/* 1. Luz/Glow trasero */}
-                        <div className="absolute w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl animate-pulse" />
-                        
-                        {/* 2. El Logo */}
+                <div className="text-center mb-10">
+                    {/* LOGO CON GLOW INTENSO */}
+                    <div className="relative mx-auto mb-8 flex justify-center items-center h-28">
+                        <div className="absolute w-32 h-32 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
                         <img 
                             src="/Logo.webp" 
                             alt="HM Digital" 
-                            loading="eager" 
-                            className="relative h-full w-auto object-contain filter drop-shadow-lg transform hover:scale-105 transition-transform duration-500" 
+                            className="relative h-full w-auto object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] transform hover:scale-110 transition-transform duration-500" 
                         />
                     </div>
                     
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-2">Bienvenido</h1>
-                    <p className="text-sm font-medium text-slate-400">Ingresa tus credenciales de acceso</p>
+                    <h1 className="text-3xl font-black text-white tracking-tight mb-2">HM Digital</h1>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em]">Panel de Control</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-5">
                     <div className={INPUT_WRAPPER}>
-                        <Mail size={20} className={ICON_STYLE}/>
+                        <Mail size={18} className={ICON_STYLE}/>
                         <input 
                             type="email" 
                             required
-                            placeholder="Correo Electrónico"
+                            placeholder="Correo Administrativo"
                             className={INPUT_STYLE}
                             value={loginEmail}
                             onChange={(e) => setLoginEmail(e.target.value)}
@@ -59,11 +62,11 @@ const LoginScreen = ({
                     </div>
 
                     <div className={INPUT_WRAPPER}>
-                        <Lock size={20} className={ICON_STYLE}/>
+                        <Lock size={18} className={ICON_STYLE}/>
                         <input 
                             type="password" 
                             required
-                            placeholder="Contraseña"
+                            placeholder="Clave de Acceso"
                             className={INPUT_STYLE}
                             value={loginPass}
                             onChange={(e) => setLoginPass(e.target.value)}
@@ -71,40 +74,43 @@ const LoginScreen = ({
                     </div>
 
                     {loginError && (
-                        <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 animate-in slide-in-from-top-2">
-                            <div className="w-2 h-2 rounded-full bg-rose-500 shrink-0"/>
-                            <p className="text-xs font-bold text-rose-600">{loginError}</p>
+                        <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)] shrink-0"/>
+                            <p className="text-xs font-bold text-rose-400">{loginError}</p>
                         </div>
                     )}
 
-                    <div className="h-2"></div>
-
-                    <button 
-                        type="submit" 
-                        className="w-full py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-sm shadow-xl shadow-slate-900/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 group"
-                    >
-                        Iniciar Sesión
-                        <ArrowRight size={18} className="text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-all"/>
-                    </button>
+                    <div className="pt-2">
+                        <button 
+                            type="submit" 
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[1.8rem] font-black text-sm shadow-[0_10px_20px_rgba(79,70,229,0.3)] hover:shadow-[0_15px_25px_rgba(79,70,229,0.4)] active:scale-95 transition-all flex items-center justify-center gap-3 group"
+                        >
+                            ENTRAR AL SISTEMA
+                            <ArrowRight size={18} className="text-indigo-300 group-hover:text-white group-hover:translate-x-1 transition-all"/>
+                        </button>
+                    </div>
                 </form>
 
-                {/* 👇 SECCIÓN ACCESO CLIENTES (NUEVO) 👇 */}
-                <div className="mt-8 pt-6 border-t border-slate-200/60 text-center">
-                    <p className="text-xs font-bold text-slate-400 mb-3">¿Eres cliente?</p>
+                {/* ACCESO PORTAL CLIENTES (Diseño en coherencia con la Bóveda) */}
+                <div className="mt-10 pt-8 border-t border-white/5 text-center">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">¿Solo vienes a consultar?</p>
                     <button 
                         type="button"
                         onClick={onGoToPortal} 
-                        className="w-full py-3.5 rounded-2xl bg-white border-2 border-slate-100 text-slate-600 font-black text-xs hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-100 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
+                        className="w-full py-3.5 rounded-2xl bg-white/5 border border-white/10 text-slate-300 font-bold text-xs hover:bg-white/10 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2"
                     >
-                        <Search size={16} className="opacity-70"/>
-                        Consultar mis Servicios
+                        <Search size={16} className="text-cyan-400"/>
+                        Portal de Clientes
                     </button>
                 </div>
 
                 <div className="mt-8 text-center">
-                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest flex items-center justify-center gap-1">
-                        <Zap size={10} className="fill-slate-300"/> HM Digital Secure
-                    </p>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/5">
+                        <ShieldCheck size={12} className="text-emerald-500"/>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            HM Digital Secure V2
+                        </span>
+                    </div>
                 </div>
 
             </div>

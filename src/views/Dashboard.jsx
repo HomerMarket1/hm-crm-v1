@@ -464,8 +464,8 @@ const Dashboard = ({
                             placeholder={getPlaceholder()} 
                             className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${
                                 darkMode 
-                                ? 'bg-[#1C1C1E] text-white placeholder-slate-600 border border-white/5 focus:border-indigo-500/50 focus:bg-[#2C2C2E]' 
-                                : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10'
+                                ? 'bg-[#1C1C1E] text-white placeholder-slate-600 border border-white/5 focus:border-indigo-500/50 focus:bg-[#2C2C2E] focus:shadow-[0_0_15px_rgba(99,102,241,0.3)]' 
+                                : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 focus:shadow-[0_0_15px_rgba(99,102,241,0.15)]'
                             }`} 
                             value={filterClient} 
                             onChange={e => setFilter('filterClient', e.target.value)} 
@@ -481,7 +481,7 @@ const Dashboard = ({
                                 className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${
                                     filterService !== 'Todos'
                                     ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-500/20' : 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-500/20')
-                                    : (darkMode ? 'bg-[#2C2C2E] text-slate-200 border-white/5 hover:bg-[#3A3A3C]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
+                                    : (darkMode ? 'bg-[#2C2C2E] text-slate-200 border-white/5 hover:bg-[#3A3A3C] focus:border-indigo-400 focus:shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 focus:border-indigo-400 focus:shadow-[0_0_10px_rgba(99,102,241,0.1)]')
                                 }`} 
                                 value={filterService} 
                                 onChange={e => setFilter('filterService', e.target.value)}
@@ -582,8 +582,8 @@ const Dashboard = ({
                                     onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)}
                                     className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${
                                         darkMode 
-                                        ? 'bg-black/40 border-white/10 hover:border-indigo-500/50 text-slate-300' 
-                                        : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600'
+                                        ? 'bg-black/40 border-white/10 hover:border-indigo-500/50 text-slate-300 shadow-sm focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.2)]' 
+                                        : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600 focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.1)]'
                                     }`}
                                 >
                                     <div className="flex items-center gap-2 overflow-hidden">
