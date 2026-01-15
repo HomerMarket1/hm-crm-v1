@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Search, ChevronDown, ChevronUp, User, CheckCircle2, 
     Copy, Key, PlusCircle, Save, Trash2, Eye, EyeOff, 
@@ -18,16 +18,26 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
     const [expandedAccounts, setExpandedAccounts] = useState({});
     const [editingPass, setEditingPass] = useState({ email: null, value: '' });
 
+    // Estado para el Modal de Nuevo Ingreso de Stock
     const [showNewAccountForm, setShowNewAccountForm] = useState(false);
     const [newAccData, setNewAccData] = useState({ 
         email: '', 
         pass: '', 
         service: '', 
-        slots: 5,
-        cost: 0 
+        slots: 5
     });
 
     const PROBLEM_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED'];
+
+    // 🔥 EFECTO: Actualiza automáticamente los slots según el servicio elegido en el catálogo
+    useEffect(() => {
+        if (newAccData.service) {
+            const serviceMatch = catalog.find(s => s.name === newAccData.service);
+            if (serviceMatch && serviceMatch.defaultSlots) {
+                setNewAccData(prev => ({ ...prev, slots: serviceMatch.defaultSlots }));
+            }
+        }
+    }, [newAccData.service, catalog]);
 
     const getBaseName = (name) => {
         if (!name) return 'Sin Servicio';
@@ -66,9 +76,14 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
     const handleSaveNewMasterAccount = async (e) => {
         e.preventDefault();
         if (!user || !newAccData.email || !newAccData.service) return;
+
+        const serviceInCatalog = catalog.find(s => s.name === newAccData.service);
+        const baseCost = serviceInCatalog ? parseFloat(serviceInCatalog.cost || 0) : 0;
+
         try {
             const batch = writeBatch(db);
             const salesRef = collection(db, `users/${user.uid}/sales`);
+
             for (let i = 1; i <= parseInt(newAccData.slots); i++) {
                 const newDocRef = doc(salesRef);
                 batch.set(newDocRef, {
@@ -76,7 +91,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                     service: newAccData.service,
                     email: newAccData.email,
                     pass: newAccData.pass,
-                    cost: parseFloat(newAccData.cost) / parseInt(newAccData.slots),
+                    cost: baseCost, 
                     type: 'Perfil',
                     profile: `Perfil ${i}`,
                     pin: '',
@@ -84,12 +99,13 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                     updatedAt: serverTimestamp()
                 });
             }
+
             await batch.commit();
-            setNotification({ show: true, message: 'Inventario creado', type: 'success' });
+            setNotification({ show: true, message: 'Stock registrado correctamente', type: 'success' });
             setShowNewAccountForm(false);
-            setNewAccData({ email: '', pass: '', service: '', slots: 5, cost: 0 });
+            setNewAccData({ email: '', pass: '', service: '', slots: 5 });
         } catch (err) {
-            setNotification({ show: true, message: 'Error al procesar', type: 'error' });
+            setNotification({ show: true, message: 'Error al registrar', type: 'error' });
         }
     };
 
@@ -114,15 +130,13 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         } catch (err) { setNotification({ show: true, message: 'Error', type: 'error' }); }
     };
 
-    // --- CONFIGURACIÓN DE COLORES TIPO NEÓN ---
     const theme = {
         card: darkMode ? 'bg-[#161B28] border-white/5' : 'bg-white border-slate-200 shadow-sm',
         text: darkMode ? 'text-white' : 'text-slate-900',
         sub: darkMode ? 'text-slate-300/60' : 'text-slate-500',
-        // Estilos para los Inputs del Modal
         input: darkMode 
-            ? 'bg-[#0B0F19] border-[#1E293B] text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.1)]' 
-            : 'bg-slate-100 border-slate-200 text-slate-900',
+            ? 'bg-[#0B0F19] border-[#1E293B] text-white focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)]' 
+            : 'bg-white border-slate-200 text-slate-900',
         modal: darkMode ? 'bg-[#0B0F19] border-white/10 shadow-2xl' : 'bg-white border-slate-200 shadow-2xl',
         label: darkMode ? 'text-slate-400 font-black uppercase text-[10px]' : 'text-slate-500 font-black uppercase text-[10px]'
     };
@@ -145,36 +159,42 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                         </div>
                         
                         <form onSubmit={handleSaveNewMasterAccount} className="space-y-5">
-                            <div className="grid grid-cols-2 gap-5">
-                                <div className="col-span-2">
+                            <div className="space-y-4">
+                                {/* 🔥 SELECT MODIFICADO: Permite elegir libremente sin borrar texto */}
+                                <div>
                                     <label className={`${theme.label} ml-2`}>Servicio</label>
-                                    <input list="catalog-list" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.service} onChange={e => setNewAccData({...newAccData, service: e.target.value})} placeholder="Netflix, Disney, etc"/>
-                                    <datalist id="catalog-list">{catalog.map(s => <option key={s.id} value={s.name}/>)}</datalist>
+                                    <select 
+                                        required 
+                                        className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`}
+                                        value={newAccData.service}
+                                        onChange={e => setNewAccData({...newAccData, service: e.target.value})}
+                                    >
+                                        <option value="" disabled>Seleccionar Servicio</option>
+                                        {catalog.map(s => (
+                                            <option key={s.id} value={s.name}>{s.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 
-                                <div className="col-span-2">
+                                <div>
                                     <label className={`${theme.label} ml-2`}>Correo de la cuenta</label>
                                     <input type="email" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.email} onChange={e => setNewAccData({...newAccData, email: e.target.value})} placeholder="email@cuenta.com"/>
                                 </div>
                                 
-                                <div className="col-span-2">
+                                <div>
                                     <label className={`${theme.label} ml-2`}>Contraseña</label>
                                     <input type="text" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.pass} onChange={e => setNewAccData({...newAccData, pass: e.target.value})} placeholder="Clave de acceso"/>
                                 </div>
                                 
+                                {/* 🔥 SLOTS: Se modifican solos mediante el useEffect superior */}
                                 <div>
-                                    <label className={`${theme.label} ml-2`}>Perfiles</label>
+                                    <label className={`${theme.label} ml-2`}>Cantidad de Perfiles</label>
                                     <input type="number" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.slots} onChange={e => setNewAccData({...newAccData, slots: e.target.value})}/>
-                                </div>
-                                
-                                <div>
-                                    <label className={`${theme.label} ml-2`}>Costo Total</label>
-                                    <input type="number" step="0.01" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.cost} onChange={e => setNewAccData({...newAccData, cost: e.target.value})}/>
                                 </div>
                             </div>
 
-                            <button type="submit" className="w-full mt-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] active:scale-95 transition-all uppercase tracking-widest text-sm">
-                                Registrar en Bóveda
+                            <button type="submit" className="w-full mt-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:shadow-[0_0_25px_rgba(79,70,229,0.6)] active:scale-95 transition-all uppercase tracking-widest text-sm">
+                                REGISTRAR EN BÓVEDA
                             </button>
                         </form>
                     </div>
@@ -189,22 +209,19 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                 </div>
                 
                 <div className="flex items-center gap-2 w-full md:w-auto">
-                    <button 
-                        onClick={() => setShowNewAccountForm(true)} 
-                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black text-xs shadow-lg hover:scale-105 transition-all uppercase"
-                    >
+                    <button onClick={() => setShowNewAccountForm(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black text-xs shadow-lg hover:scale-105 transition-all uppercase">
                         <PlusCircle size={18}/> Nuevo Ingreso
                     </button>
                     <div className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-black text-sm border ${theme.card}`}>
                         <Hash size={16} className="text-indigo-500"/><span className={theme.text}>{filteredAccounts.length}</span>
                     </div>
-                    <button onClick={() => setHideProblems(!hideProblems)} className={`p-3 rounded-2xl border transition-all ${hideProblems ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20 border-rose-600' : (darkMode ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-white text-slate-600')}`}>
+                    <button onClick={() => setHideProblems(!hideProblems)} className={`p-3 rounded-2xl border transition-all ${hideProblems ? 'bg-rose-500 text-white border-rose-600 shadow-lg shadow-rose-500/20' : (darkMode ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-white text-slate-600')}`}>
                         {hideProblems ? <EyeOff size={20}/> : <Eye size={20}/>}
                     </button>
                 </div>
             </header>
 
-            {/* BARRA DE FILTROS */}
+            {/* FILTROS */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2 px-2">
                 <div className="relative md:col-span-6">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
@@ -320,7 +337,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                                         })}
                                         <button 
                                             onClick={() => {
-                                                setNewAccData({ email: acc.email, pass: acc.pass, service: acc.service, slots: 1, cost: 0 });
+                                                setNewAccData({ email: acc.email, pass: acc.pass, service: acc.service, slots: 1 });
                                                 setShowNewAccountForm(true);
                                             }}
                                             className="p-4 rounded-[1.5rem] border border-dashed border-indigo-500/40 text-indigo-500 flex items-center justify-center gap-2 text-xs font-bold hover:bg-indigo-500/5 transition-all"
@@ -333,6 +350,13 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                         </div>
                     );
                 })}
+
+                {filteredAccounts.length === 0 && (
+                    <div className="text-center py-20">
+                        <LayoutGrid size={48} className="mx-auto mb-4 opacity-10"/>
+                        <p className={theme.sub}>No se encontraron cuentas en la bóveda.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
