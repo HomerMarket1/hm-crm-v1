@@ -4,7 +4,6 @@ import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight
 import AppleCalendar from '../components/AppleCalendar';
 
 // --- CONSTANTES & HELPERS ---
-
 const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin', 'Stock', 'Reposicion'];
 
@@ -464,8 +463,8 @@ const Dashboard = ({
                             placeholder={getPlaceholder()} 
                             className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${
                                 darkMode 
-                                ? 'bg-[#1C1C1E] text-white placeholder-slate-600 border border-white/5 focus:border-indigo-500/50 focus:bg-[#2C2C2E] focus:shadow-[0_0_15px_rgba(99,102,241,0.3)]' 
-                                : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 focus:shadow-[0_0_15px_rgba(99,102,241,0.15)]'
+                                ? 'bg-[#0B0F19] text-white placeholder-slate-600 border border-[#1E293B] focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)]' 
+                                : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10'
                             }`} 
                             value={filterClient} 
                             onChange={e => setFilter('filterClient', e.target.value)} 
@@ -481,7 +480,7 @@ const Dashboard = ({
                                 className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${
                                     filterService !== 'Todos'
                                     ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-500/20' : 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-500/20')
-                                    : (darkMode ? 'bg-[#2C2C2E] text-slate-200 border-white/5 hover:bg-[#3A3A3C] focus:border-indigo-400 focus:shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 focus:border-indigo-400 focus:shadow-[0_0_10px_rgba(99,102,241,0.1)]')
+                                    : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-white focus:border-cyan-400 focus:shadow-[0_0_10px_rgba(34,211,238,0.2)]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
                                 }`} 
                                 value={filterService} 
                                 onChange={e => setFilter('filterService', e.target.value)}
@@ -499,7 +498,7 @@ const Dashboard = ({
                                 className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${
                                     filterStatus === 'Vencidos'
                                     ? 'bg-rose-500 text-white border-rose-500 shadow-rose-500/20'
-                                    : (darkMode ? 'bg-[#2C2C2E] text-slate-200 border-white/5 hover:bg-[#3A3A3C]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
+                                    : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-200' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
                                 }`}
                             >
                                 Vencidos
@@ -507,7 +506,7 @@ const Dashboard = ({
                         )}
 
                         {/* FECHAS (Cápsula visible) */}
-                        <div className={`flex items-center bg-transparent rounded-xl border shadow-sm p-1 gap-1 ${darkMode ? 'bg-[#2C2C2E] border-white/5' : 'bg-white border-slate-200'}`}>
+                        <div className={`flex items-center bg-transparent rounded-xl border shadow-sm p-1 gap-1 ${darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-white border-slate-200'}`}>
                             <div className="w-24">
                                 <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
                             </div>
@@ -582,7 +581,7 @@ const Dashboard = ({
                                     onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)}
                                     className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${
                                         darkMode 
-                                        ? 'bg-black/40 border-white/10 hover:border-indigo-500/50 text-slate-300 shadow-sm focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.2)]' 
+                                        ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/50 text-slate-300 shadow-sm focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.2)]' 
                                         : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600 focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.1)]'
                                     }`}
                                 >
@@ -634,7 +633,7 @@ const Dashboard = ({
                                             className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                                                 migrationSourceStatus === status 
                                                 ? (status === 'LIBRE' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-amber-500 text-white border-amber-500')
-                                                : (darkMode ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100')
+                                                : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-400 hover:bg-[#1E293B]' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100')
                                             }`}
                                         >
                                             {status}
@@ -652,7 +651,7 @@ const Dashboard = ({
                                     {migrationModal.matches.length > 0 ? migrationModal.matches.map(match => (
                                         <div 
                                             key={match.id} 
-                                            className={`w-full p-3 rounded-xl border flex flex-col gap-2 transition-all ${darkMode ? 'bg-black/20 border-white/5 hover:border-indigo-500/30' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}
+                                            className={`w-full p-3 rounded-xl border flex flex-col gap-2 transition-all ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/30' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}
                                         >
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
