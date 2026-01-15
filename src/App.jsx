@@ -27,6 +27,7 @@ const StockManager = lazy(() => import('./views/StockManager'));
 const Config = lazy(() => import('./views/Config'));
 const SaleForm = lazy(() => import('./views/SaleForm'));
 const ClientPortal = lazy(() => import('./views/ClientPortal'));
+const InventoryMaster = lazy(() => import('./views/InventoryMaster'));
 
 // CONSTANTES
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
@@ -92,12 +93,14 @@ const App = () => {
     const handleAddServiceToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogService(catalogForm)) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 }); };
     const handleAddPackageToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogPackage(packageForm)) setPackageForm({ name: '', cost: '', slots: 2 }); };
     const handleEditCatalogService = (serviceId, updatedData) => crmActions.updateCatalogService(serviceId, updatedData);
+    
     const handleGenerateStock = async (data) => {
         if (await crmActions.generateStock(data || stockForm)) {
             dispatch({ type: uiActionTypes.SET_STOCK_TAB, payload: 'manage' });
             setStockForm({ service: '', email: '', pass: '', slots: 4, cost: 0, type: 'Perfil' });
         }
     };
+
     const handleStockServiceChange = (e) => {
         const f = catalog.find(s => s.name === e.target.value);
         setStockForm({ ...stockForm, service: f?.name || e.target.value, cost: f?.cost || 0, type: f?.type || 'Perfil', slots: f?.defaultSlots || 1 });
@@ -108,12 +111,14 @@ const App = () => {
         await crmActions.executeConfirmAction(confirmModal, sales, catalog);
         setConfirmModal({ show: false, id: null, type: null, title: '', msg: '', data: null });
     };
+
     const handleEditAccountCredentials = async (passwordOverride = null) => {
         const finalPass = typeof passwordOverride === 'string' ? passwordOverride : editAccountModal.newPass;
         if (!finalPass) return setNotification({ show: true, message: 'Contraseña vacía.', type: 'error' });
         await crmActions.editAccountCredentials(editAccountModal.email, editAccountModal.oldPass, finalPass);
         setEditAccountModal({ show: false, email: '', oldPass: '', newPass: '' });
     };
+
     const handleSaveEditClient = async (clientId, newData) => {
         if (clientManagement.updateClient) {
             const originalName = editClientModal.client ? editClientModal.client.name : null;
@@ -122,35 +127,26 @@ const App = () => {
         setEditClientModal({ show: false, client: null });
     };
 
-    // 🔥 CORRECCIÓN: Evita que el teléfono se "pegue" de clientes similares
+    // Lógica de cambio de nombre y teléfono (Exacta para evitar errores de autocompletado)
     const handleClientNameChange = (e) => {
         const name = e.target.value;
         const lowerName = name.toLowerCase().trim();
-        
-        // 1. Manejo de estados de sistema (Admin, Caída, etc)
-        const SYSTEM_CLIENTS = [
-            'admin', 'caída', 'caida', 'actualizar', 
-            'dominio', 'garantía', 'garantia', 'problemas', 
-            'vencido', 'cancelado'
-        ];
+        const SYSTEM_CLIENTS = ['admin', 'caída', 'caida', 'actualizar', 'dominio', 'garantía', 'garantia', 'problemas', 'vencido', 'cancelado', 'expired'];
         
         if (SYSTEM_CLIENTS.includes(lowerName)) {
              setFormData({ ...formData, client: name, phone: '' });
              return;
         }
 
-        // 2. Búsqueda de coincidencia EXACTA
-        // Si no es una coincidencia exacta, el teléfono debe quedar vacío.
         const existing = clientManagement.allClients.find(c => c.name.toLowerCase() === lowerName);
-        
         setFormData({ 
             ...formData, 
             client: name, 
-            phone: existing ? existing.phone : '' // Solo pone el celular si el nombre es IDÉNTICO
+            phone: existing ? existing.phone : '' 
         });
     };
 
-    // FUNCION DE GUARDADO INTELIGENTE
+    // Función de guardado para ediciones y actualización automática del portal de clientes
     const handleGenericSave = async (saleData) => {
         if (!user) return false;
         
@@ -169,10 +165,7 @@ const App = () => {
             finalCost = finalCost * qty;
         }
 
-        const dataToProcess = {
-            ...saleData,
-            cost: finalCost
-        };
+        const dataToProcess = { ...saleData, cost: finalCost };
 
         const success = await crmActions.processSale(
             dataToProcess, 
@@ -207,10 +200,7 @@ const App = () => {
                 };
 
                 const updatedServices = [
-                    ...existingServices.filter(s => 
-                        s.service !== newService.service || 
-                        (s.service === newService.service && s.email !== newService.email)
-                    ), 
+                    ...existingServices.filter(s => s.id !== newService.id), 
                     newService
                 ];
 
@@ -220,13 +210,12 @@ const App = () => {
                     phone: cleanPhone,       
                     services: updatedServices
                 });
-            } catch (err) {
-                console.error("Error portal:", err);
-            }
+            } catch (err) { console.error("Error portal:", err); }
         }
         return success;
     };
 
+    // Guardado principal de ventas (Con lógica de mes calendario local)
     const handleSaveSale = async (e) => {
         e.preventDefault(); 
         if (!user) return;
@@ -239,6 +228,7 @@ const App = () => {
         const EXEMPT = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         const isExempt = EXEMPT.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
 
+        // Lógica de fecha automática: Mismo día, próximo mes (Local Time)
         if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
             const now = new Date();
             now.setMonth(now.getMonth() + 1);
@@ -255,9 +245,7 @@ const App = () => {
         const isPackage = dataToSave.service.toLowerCase().includes('paquete') || 
                           (dataToSave.type && dataToSave.type.toLowerCase() === 'paquete');
 
-        if (quantity > 1 && !isPackage) {
-            batchCost = batchCost * quantity;
-        }
+        if (quantity > 1 && !isPackage) { batchCost = batchCost * quantity; }
         
         const dataWithCorrectCost = { ...dataToSave, cost: batchCost };
         let success = false;
@@ -295,12 +283,12 @@ const App = () => {
         setFormData({ ...formData, profile: val, pin: m?.pin || formData.pin });
     };
 
-    const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar?', msg: 'Esta categoría desaparecerá.' });
-    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar?', msg: 'Los datos del cliente se borrarán.' });
-    const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
+    const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
+    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
+    const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
     const triggerDeleteFreeStock = (email, pass) => {
         const ids = sales.filter(s => s.email === email && s.pass === pass && s.client === 'LIBRE').map(s => s.id);
-        if (ids.length) setConfirmModal({ show: true, type: 'delete_free_stock', title: 'Limpiar Stock', msg: `Se eliminarán ${ids.length} perfiles libres.`, data: ids });
+        if (ids.length) setConfirmModal({ show: true, type: 'delete_free_stock', title: 'Limpiar Stock Libre', msg: `Se eliminarán ${ids.length} perfiles libres.`, data: ids });
     };
     const triggerEditAccount = (d) => setEditAccountModal({ show: true, email: d.email, oldPass: d.pass, newPass: d.pass });
     const triggerOpenEditClient = (client) => setEditClientModal({ show: true, client });
@@ -379,6 +367,12 @@ const App = () => {
                     handleStockServiceChange={handleStockServiceChange} handleGenerateStock={handleGenerateStock}
                     triggerDeleteAccount={triggerDeleteAccount} triggerDeleteFreeStock={triggerDeleteFreeStock} triggerEditAccount={triggerEditAccount}
                     darkMode={darkMode}
+                />}
+
+                {view === 'inventory' && <InventoryMaster 
+                    sales={sales} catalog={sortedCatalog} darkMode={darkMode}
+                    setFormData={setFormData} setView={setView}
+                    user={user} setNotification={setNotification} 
                 />}
 
                 {view === 'form' && <SaleForm

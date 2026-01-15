@@ -1,6 +1,6 @@
 // src/layouts/MainLayout.jsx
 import React, { useState } from 'react';
-import { LayoutDashboard, Box, Settings, LogOut, Menu, X, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, Box, Settings, LogOut, Menu, X, Moon, Sun, Database } from 'lucide-react';
 import Toast from '../components/Toast';
 import { auth } from '../firebase/config'; 
 
@@ -8,14 +8,14 @@ const MainLayout = ({
     view, setView, handleLogout, children, 
     notification, setNotification, 
     darkMode, setDarkMode,
-    branding // 👈 Recibimos branding aquí
+    branding 
 }) => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     // 🕵️ DETECCIÓN DE USUARIO LOGUEADO
     const isLoggedIn = auth.currentUser; 
 
-    // Colores dinámicos
+    // Colores dinámicos y estilos de tema
     const theme = {
         bg: darkMode ? 'bg-[#0B0F19]' : 'bg-[#F2F2F7]',
         text: darkMode ? 'text-slate-200' : 'text-slate-800',
@@ -24,9 +24,10 @@ const MainLayout = ({
         activeBtn: darkMode ? 'bg-white/10 text-white shadow-none' : 'bg-white shadow-lg shadow-indigo-100/50',
     };
 
+    // 🔥 MENÚ UNIFICADO: Bóveda ahora apunta a InventoryMaster
     const menuItems = [
         { id: 'dashboard', label: 'Tablero', icon: LayoutDashboard, bg: 'bg-indigo-500' },
-        { id: 'add_stock', label: 'Stock / Bóveda', icon: Box, bg: 'bg-emerald-500' },
+        { id: 'inventory', label: 'Bóveda / Stock', icon: Box, bg: 'bg-emerald-500' },
         { id: 'config', label: 'Ajustes', icon: Settings, bg: 'bg-slate-500' },
     ];
 
@@ -48,13 +49,12 @@ const MainLayout = ({
         );
     };
 
-    // Helper para el nombre de la empresa
     const companyName = branding?.name || 'HM Digital';
 
     return (
         <div className={`flex h-screen ${theme.bg} overflow-hidden font-sans selection:bg-indigo-500/30 transition-colors duration-500`}>
             
-            {/* 🔥 SCROLLBARS INVISIBLES GLOBAL 🔥 */}
+            {/* 🔥 SCROLLBARS PERSONALIZADOS 🔥 */}
             <style>{`
                 ::-webkit-scrollbar { width: 6px; height: 6px; }
                 ::-webkit-scrollbar-track { background: transparent; }
@@ -73,17 +73,16 @@ const MainLayout = ({
             {isLoggedIn && (
                 <aside className="hidden md:flex flex-col w-64 h-full p-4 z-20">
                     <div className={`flex-1 backdrop-blur-2xl border shadow-xl shadow-black/5 rounded-[2.5rem] flex flex-col p-5 relative overflow-hidden transition-colors duration-500 ${theme.sidebar}`}>
+                        {/* EFECTO DE LUZ DE FONDO */}
                         <div className={`absolute -top-20 -right-20 w-60 h-60 rounded-full blur-3xl pointer-events-none ${darkMode ? 'bg-indigo-500/10' : 'bg-indigo-500/10'}`}/>
                         
                         <div className="flex flex-col items-center mb-8 mt-2">
                             <div className="relative group cursor-pointer">
                                 <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity"/>
                                 <div className={`relative w-36 h-36 rounded-full shadow-lg border-2 flex items-center justify-center transform group-hover:scale-105 transition-transform duration-500 overflow-hidden ${darkMode ? 'bg-[#0B0F19] border-white/10' : 'bg-white border-white'}`}>
-                                    {/* LOGO DINÁMICO */}
                                     {branding?.logo ? (
                                         <img src={branding.logo} alt={companyName} className="w-full h-full object-contain p-0" loading="eager" />
                                     ) : (
-                                        // Fallback al logo original si no hay personalizado
                                         <img src="/Logo.webp" alt="HM Digital" className="w-full h-full object-contain p-0" loading="eager" />
                                     )}
                                 </div>
@@ -110,7 +109,7 @@ const MainLayout = ({
                 </aside>
             )}
 
-            {/* ✅ HEADER MÓVIL (CORREGIDO) */}
+            {/* ✅ HEADER MÓVIL */}
             {isLoggedIn && (
                 <div className={`md:hidden fixed top-0 left-0 right-0 h-28 pt-8 z-40 px-5 flex items-center justify-between backdrop-blur-md border-b transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/10' : 'bg-[#F2F2F7]/90 border-white/20'}`}>
                     <div className="flex items-center gap-3">
@@ -123,7 +122,7 @@ const MainLayout = ({
                         </div>
                         <div>
                             <h1 className={`text-lg font-black leading-none ${theme.text}`}>{companyName}</h1>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase">Panel</p>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Panel Control</p>
                         </div>
                     </div>
                     <div className="flex gap-2">
@@ -137,7 +136,7 @@ const MainLayout = ({
                 </div>
             )}
 
-            {/* MOBILE MENU OVERLAY */}
+            {/* ✅ MENÚ DESPLEGABLE MÓVIL (OVERLAY) */}
             {isLoggedIn && mobileMenuOpen && (
                 <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setMobileMenuOpen(false)}>
                     <div className={`absolute right-0 top-0 bottom-0 w-3/4 max-w-sm p-6 pt-16 shadow-2xl animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-[#0B0F19]' : 'bg-[#F2F2F7]'}`} onClick={e => e.stopPropagation()}>
@@ -148,7 +147,7 @@ const MainLayout = ({
                         <div className="px-1">
                             {menuItems.map(item => <NavButton key={item.id} item={item} isMobile={true} />)}
                             <div className={`h-px my-6 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}/>
-                            <button onClick={handleLogout} className="w-full py-3 bg-rose-500/10 text-rose-500 rounded-xl font-bold flex items-center justify-center gap-2 text-sm">
+                            <button onClick={handleLogout} className="w-full py-3 bg-rose-500/10 text-rose-500 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition-all active:scale-95">
                                 <LogOut size={18} /> Cerrar Sesión
                             </button>
                         </div>
@@ -156,7 +155,7 @@ const MainLayout = ({
                 </div>
             )}
 
-            {/* ✅ MAIN CONTENT */}
+            {/* ✅ CONTENIDO PRINCIPAL */}
             <main className={`flex-1 h-full overflow-y-auto overflow-x-hidden relative ${isLoggedIn ? 'pt-28 md:pt-0' : 'pt-0'}`}>
                 <div className="max-w-[1600px] mx-auto p-4 md:p-6 h-full">
                     {children}
