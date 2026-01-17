@@ -333,16 +333,12 @@ const Dashboard = ({
         const maintenance = [];
 
         (filteredSales || []).forEach(sale => {
-            // --- 🛠 MODIFICACIÓN AQUÍ 🛠 ---
-            // Creamos una llave única combinando CORREO + SERVICIO.
-            // Esto evita que una caída en "Max" contamine las cuentas de "Paramount" del mismo correo.
             const emailKey = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
-            const serviceKey = cleanServiceName(sale.service).toLowerCase(); // Usamos el helper para limpiar el nombre
+            const serviceKey = cleanServiceName(sale.service).toLowerCase(); 
             const uniqueGroupKey = `${emailKey}|${serviceKey}`; 
             
             if (!groups[uniqueGroupKey]) groups[uniqueGroupKey] = [];
             groups[uniqueGroupKey].push(sale);
-            // -----------------------------
         });
 
         Object.values(groups).forEach(group => {
@@ -351,10 +347,7 @@ const Dashboard = ({
             const hasProblem = realItems.some(sale => {
                 const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
                 const isFree = sale.client.toLowerCase().includes('libre');
-                
-                // CORRECCIÓN CRÍTICA: Admin NUNCA es un problema para Garantía
                 if (isFree || sale.client === 'Admin') return false;
-                
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
 
@@ -362,15 +355,14 @@ const Dashboard = ({
             
             if (hasProblem) {
                 if (isFragmented) {
-                    warranty.push(...group); // Cuentas rotas con clientes -> GARANTÍA
+                    warranty.push(...group); 
                 } else {
-                    maintenance.push(...group); // Cuentas rotas solas -> SOPORTE
+                    maintenance.push(...group); 
                 }
             } else {
                 group.forEach(sale => {
                     const clientName = (sale.client || '').toLowerCase();
                     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
-                    
                     if (isFree) free.push(sale);
                     else healthy.push(sale);
                 });
@@ -385,16 +377,33 @@ const Dashboard = ({
     else if (activeTab === 'warranty') currentList = warrantySales;
     else currentList = maintenanceSales; 
 
+    // --- ⚡️ CORE FIX: ORDENAMIENTO INTELIGENTE ---
     const visibleSales = useMemo(() => {
+        // Palabras clave que queremos "hundir" al final de la lista
+        const buryList = ['admin', 'actualizar', 'dominio', 'caida', 'caída', 'stock', 'reposicion'];
+
         const sorted = [...currentList];
-        // En Garantía y Soporte, ordenar por email para agrupar visualmente
+
+        // En Garantía y Soporte, mantenemos orden por email (agrupación lógica)
         if (activeTab === 'warranty' || activeTab === 'maintenance') {
             sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
         } else {
-            // En Activos y Stock, ordenar por nombre de cliente/servicio
+            // EN ACTIVOS Y STOCK: Aplicamos el algoritmo de peso
             sorted.sort((a, b) => {
                 const clientA = (a.client || '').toLowerCase();
                 const clientB = (b.client || '').toLowerCase();
+
+                // Detectamos si son "Items de Sistema/Mantenimiento"
+                const isSystemA = buryList.some(k => clientA.includes(k));
+                const isSystemB = buryList.some(k => clientB.includes(k));
+
+                // REGLA DE PESO:
+                // Si A es sistema y B es normal -> A va después (return 1)
+                // Si A es normal y B es sistema -> A va antes (return -1)
+                if (isSystemA && !isSystemB) return 1;
+                if (!isSystemA && isSystemB) return -1;
+
+                // Si ambos son del mismo tipo, desempatamos alfabéticamente
                 return clientA.localeCompare(clientB);
             });
         }
@@ -446,7 +455,7 @@ const Dashboard = ({
                 <button onClick={() => setActiveTab('maintenance')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'maintenance' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Wrench size={18} className={`mb-1 ${activeTab === 'maintenance' ? 'animate-spin-slow' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Soporte</span><span className="text-xs font-black">{maintenanceSales.length}</span></button>
             </div>
 
-            {/* FILTROS (Igual que siempre) */}
+            {/* FILTROS */}
             <div className={`sticky top-0 z-40 -mx-4 px-4 py-3 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-b border-white/5' : 'bg-[#F2F2F7]/90 border-b border-slate-200/50'}`}>
                 <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
                     <div className="relative group w-full shadow-sm">
@@ -499,7 +508,7 @@ const Dashboard = ({
                 {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODALES BULK Y MIGRACIÓN (Sin cambios) */}
+            {/* MODALES BULK Y MIGRACIÓN */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
