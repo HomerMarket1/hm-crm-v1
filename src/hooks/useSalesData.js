@@ -70,6 +70,9 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         const isFilteringStatus = filterStatus !== 'Todos';
         const hasDateFilter = dateFrom || dateTo;
 
+        // ✅ FIX CALENDARIO: Normalización de rango para un solo día
+        const effectiveDateTo = (dateFrom && !dateTo) ? dateFrom : dateTo;
+
         return sales.filter(sale => {
             // A. FILTRO TEXTO (Búsqueda Profunda)
             if (term) {
@@ -103,11 +106,18 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                 }
             }
             
-            // D. FILTRO FECHA (Comparación de Strings ISO YYYY-MM-DD es segura y rápida)
+            // D. FILTRO FECHA (Comparación Inclusiva corregida para un solo día)
             if (hasDateFilter) {
                 if (!sale.endDate) return false;
-                if (dateFrom && sale.endDate < dateFrom) return false;
-                if (dateTo && sale.endDate > dateTo) return false;
+                
+                // Si el rango es el mismo día (Desde y Hasta iguales)
+                if (dateFrom && effectiveDateTo && dateFrom === effectiveDateTo) {
+                    if (sale.endDate !== dateFrom) return false;
+                } else {
+                    // Rango de fechas normal
+                    if (dateFrom && sale.endDate < dateFrom) return false;
+                    if (effectiveDateTo && sale.endDate > effectiveDateTo) return false;
+                }
             }
 
             return true;
@@ -130,17 +140,17 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
     const accountsInventory = useMemo(() => {
         const groups = {};
         sales.forEach(s => {
-            // Agrupamos por: Email + Pass + Plataforma Base (ej: Netflix)
-            // Esto agrupa "Netflix Pantalla" y "Netflix Completa" en el mismo bucket
-            const platformName = getPlatformBaseName(s.service);
-            const key = `${s.email}|${s.pass}|${platformName}`;
+            // ✅ FIX INVENTARIO: Agrupamos por Email + Pass + Nombre Exacto del Servicio
+            // Esto evita que servicios distintos con mismo correo se sobreescriban.
+            const exactService = s.service || 'Sin Servicio';
+            const key = `${s.email}|${s.pass}|${exactService}`;
             
             if (!groups[key]) {
                 groups[key] = { 
                     id: s.id, // ID de referencia (cualquiera del grupo)
                     email: s.email, 
                     pass: s.pass, 
-                    service: platformName, 
+                    service: exactService, // Mostramos el servicio exacto registrado
                     total: 0, 
                     free: 0,
                     ids: [] 

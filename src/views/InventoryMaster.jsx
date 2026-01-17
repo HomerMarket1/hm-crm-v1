@@ -24,7 +24,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
     const [selectedStatus, setSelectedStatus] = useState('Todos'); 
     const [hideProblems, setHideProblems] = useState(false); 
     const [expandedAccounts, setExpandedAccounts] = useState({});
-    const [editingPass, setEditingPass] = useState({ email: null, value: '' });
+    const [editingPass, setEditingPass] = useState({ email: null, value: '', groupKey: null });
 
     const [deleteModal, setDeleteModal] = useState(null);
     const [displayLimit, setDisplayLimit] = useState(20);
@@ -34,7 +34,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
     
     // Estado del formulario de nuevo stock
     const [newAccData, setNewAccData] = useState({ 
-        email: '', pass: '', service: '', slots: 5, type: 'Perfil' // 'Perfil' o 'Cuenta'
+        email: '', pass: '', service: '', slots: 5, type: 'Perfil' 
     });
 
     const getBaseName = (name) => {
@@ -45,7 +45,6 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
     // 🧠 FILTRO INTELIGENTE PARA EL DROPDOWN DEL MODAL
     const availableServicesForDropdown = useMemo(() => {
         if (newAccData.type === 'Cuenta') {
-            // MODO CUENTA: Solo mostramos Nombres Base Únicos (Ej: Netflix, Disney+)
             const uniqueBases = new Set();
             safeCatalog.forEach(item => {
                 const isPackage = item.name.toLowerCase().includes('paquete');
@@ -58,7 +57,6 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             });
             return Array.from(uniqueBases).sort();
         } else {
-            // MODO PERFIL: Mostramos el catálogo pero OCULTAMOS "Cuenta Completa"
             return safeCatalog
                 .map(s => s.name)
                 .filter(name => !name.toLowerCase().includes('cuenta completa') && !name.toLowerCase().includes('completa'))
@@ -66,7 +64,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         }
     }, [safeCatalog, newAccData.type]);
 
-    // Auto-llenado de slots
+    // Auto-llenado de slots al seleccionar servicio
     useEffect(() => {
         if (newAccData.service && safeCatalog.length > 0) {
             const serviceMatch = safeCatalog.find(s => s.name === newAccData.service || getBaseName(s.name) === newAccData.service);
@@ -78,20 +76,24 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
 
     useEffect(() => { setDisplayLimit(20); }, [searchTerm, selectedService, selectedStatus, hideProblems]);
 
-    // 🧠 Agrupación Inteligente
+    // 🧠 Agrupación Inteligente con LLAVE COMPUESTA (Email + Servicio)
     const groupedAccounts = useMemo(() => {
         if (safeSales.length === 0) return [];
         const groups = {};
         
         safeSales.forEach(sale => {
-            const email = sale.email || 'Sin Email';
-            const baseService = getBaseName(sale.service);
+            const email = (sale.email || 'Sin Email').trim();
+            const serviceName = sale.service || 'Sin Servicio';
             
-            if (!groups[email]) {
-                groups[email] = { 
+            // ✅ LA CLAVE ÚNICA: Combina correo y servicio para evitar sobreescritura
+            const groupKey = `${email.toLowerCase()}_${serviceName.toLowerCase()}`;
+            
+            if (!groups[groupKey]) {
+                groups[groupKey] = { 
+                    groupKey,
                     email, 
                     pass: sale.pass || '', 
-                    service: baseService, 
+                    service: serviceName, 
                     profiles: [], 
                     freeCount: 0, 
                     totalCount: 0, 
@@ -101,15 +103,15 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             }
 
             if (sale.type === 'Cuenta' || (sale.service && sale.service.toLowerCase().includes('completa'))) {
-                groups[email].isMasterAccount = true;
+                groups[groupKey].isMasterAccount = true;
             }
 
-            groups[email].profiles.push(sale);
-            groups[email].totalCount++;
+            groups[groupKey].profiles.push(sale);
+            groups[groupKey].totalCount++;
             
-            if (PROBLEM_STATUSES.includes(sale.client)) groups[email].status = sale.client;
+            if (PROBLEM_STATUSES.includes(sale.client)) groups[groupKey].status = sale.client;
             
-            if (['LIBRE', 'Espacio Libre', 'disponible'].includes(sale.client)) groups[email].freeCount++;
+            if (['LIBRE', 'Espacio Libre', 'disponible'].includes(sale.client)) groups[groupKey].freeCount++;
         });
 
         return Object.values(groups).sort((a, b) => a.email.localeCompare(b.email));
@@ -117,8 +119,9 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
 
     const filteredAccounts = useMemo(() => {
         return groupedAccounts.filter(acc => {
-            const matchesSearch = acc.email.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesService = selectedService === 'Todos' || acc.service === selectedService;
+            const matchesSearch = acc.email.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                 acc.service.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesService = selectedService === 'Todos' || getBaseName(acc.service) === selectedService;
             const matchesStatus = selectedStatus === 'Todos' || acc.status === selectedStatus;
             const isHiddenByEye = hideProblems && PROBLEM_STATUSES.includes(acc.status);
             return matchesSearch && matchesService && matchesStatus && !isHiddenByEye;
@@ -170,38 +173,22 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             const salesRef = collection(db, `users/${user.uid}/sales`);
             
             if (newAccData.type === 'Cuenta') {
-                // ESTRATEGIA A: 1 Sola Tarjeta (Cuenta Madre)
                 const newDocRef = doc(salesRef);
                 const baseName = getBaseName(newAccData.service);
                 const cleanName = `${baseName} Cuenta Completa`;
 
                 batch.set(newDocRef, { 
-                    client: 'LIBRE', 
-                    service: cleanName, 
-                    email: newAccData.email, 
-                    pass: newAccData.pass, 
-                    cost: baseCost, 
-                    type: 'Cuenta', 
-                    profile: '', 
-                    pin: '', 
-                    createdAt: serverTimestamp(), 
-                    updatedAt: serverTimestamp() 
+                    client: 'LIBRE', service: cleanName, email: newAccData.email, pass: newAccData.pass, 
+                    cost: baseCost, type: 'Cuenta', profile: '', pin: '', 
+                    createdAt: serverTimestamp(), updatedAt: serverTimestamp() 
                 });
             } else {
-                // ESTRATEGIA B: N Tarjetas (Perfiles Sueltos)
                 for (let i = 1; i <= parseInt(newAccData.slots); i++) {
                     const newDocRef = doc(salesRef);
                     batch.set(newDocRef, { 
-                        client: 'LIBRE', 
-                        service: newAccData.service, 
-                        email: newAccData.email, 
-                        pass: newAccData.pass, 
-                        cost: 0,
-                        type: 'Perfil', 
-                        profile: `Perfil ${i}`, 
-                        pin: '', 
-                        createdAt: serverTimestamp(), 
-                        updatedAt: serverTimestamp() 
+                        client: 'LIBRE', service: newAccData.service, email: newAccData.email, pass: newAccData.pass, 
+                        cost: 0, type: 'Perfil', profile: `Perfil ${i}`, pin: '', 
+                        createdAt: serverTimestamp(), updatedAt: serverTimestamp() 
                     });
                 }
             }
@@ -218,20 +205,31 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
 
     const handleDeleteProfile = async (id) => {
         if (!window.confirm("¿Eliminar este perfil?")) return;
-        try { await deleteDoc(doc(db, `users/${user.uid}/sales`, id)); setNotification({ show: true, message: 'Eliminado', type: 'success' }); } catch (err) { setNotification({ show: true, message: 'Error', type: 'error' }); }
+        try { 
+            await deleteDoc(doc(db, `users/${user.uid}/sales`, id)); 
+            setNotification({ show: true, message: 'Eliminado', type: 'success' }); 
+        } catch (err) { 
+            setNotification({ show: true, message: 'Error', type: 'error' }); 
+        }
     };
 
     const handleUpdateGlobalPass = async (acc) => {
         if (!editingPass.value) return;
         try {
             const batch = writeBatch(db);
-            const q = query(collection(db, `users/${user.uid}/sales`), where("email", "==", acc.email));
+            // ✅ Filtro por Email + Servicio para actualizar solo esta cuenta específica
+            const q = query(collection(db, `users/${user.uid}/sales`), 
+                where("email", "==", acc.email),
+                where("service", "==", acc.service)
+            );
             const snap = await getDocs(q);
             snap.forEach(d => { batch.update(d.ref, { pass: editingPass.value, updatedAt: serverTimestamp() }); });
             await batch.commit();
-            setEditingPass({ email: null, value: '' });
+            setEditingPass({ email: null, value: '', groupKey: null });
             setNotification({ show: true, message: 'Clave actualizada', type: 'success' });
-        } catch (err) { setNotification({ show: true, message: 'Error', type: 'error' }); }
+        } catch (err) { 
+            setNotification({ show: true, message: 'Error', type: 'error' }); 
+        }
     };
 
     // THEME
@@ -256,9 +254,9 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                                 <Trash2 size={28} />
                             </div>
                             <div>
-                                <h3 className={`text-lg font-black ${theme.text}`}>¿Eliminar Cuenta Maestra?</h3>
+                                <h3 className={`text-lg font-black ${theme.text}`}>¿Eliminar Cuenta?</h3>
                                 <p className={`text-xs mt-2 ${theme.sub}`}>
-                                    Borrarás <span className="font-bold text-rose-400">{deleteModal.email}</span>.
+                                    Borrarás <span className="font-bold text-rose-400">{deleteModal.email}</span> de {deleteModal.service}.
                                 </p>
                             </div>
                             <div className="flex gap-3 w-full mt-2">
@@ -270,7 +268,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                 </div>
             )}
 
-            {/* 🔥 MODAL NUEVO STOCK (CON FILTRO CORRECTO) 🔥 */}
+            {/* --- MODAL NUEVO STOCK --- */}
             {showNewAccountForm && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
                     <div className={`w-full max-w-md p-6 md:p-8 rounded-[2.5rem] border animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-y-auto ${theme.modal}`}>
@@ -283,8 +281,6 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                         </div>
                         
                         <form onSubmit={handleSaveNewMasterAccount} className="space-y-4">
-                            
-                            {/* SELECTOR DE TIPO */}
                             <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-black/10">
                                 <button 
                                     type="button"
@@ -325,7 +321,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                             {newAccData.type === 'Cuenta' && (
                                 <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium flex items-center gap-2 animate-in fade-in">
                                     <ShieldCheck size={18} />
-                                    <span>Se creará <b>1 Tarjeta Madre</b>. Los perfiles se generarán automáticamente al vender.</span>
+                                    <span>Se creará <b>1 Tarjeta Madre</b>.</span>
                                 </div>
                             )}
 
@@ -349,7 +345,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             <div className={`grid grid-cols-1 md:grid-cols-12 gap-2 sticky top-0 z-30 py-2 border-b backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/5' : 'bg-[#F2F2F7]/90 border-slate-200/50'}`}>
                 <div className="relative md:col-span-6 group shadow-lg">
                     <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-cyan-400' : 'text-slate-400'}`} size={18}/>
-                    <input type="text" placeholder="Buscar cuenta por correo..." className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${theme.input}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+                    <input type="text" placeholder="Buscar cuenta..." className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${theme.input}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
                 </div>
                 <select className={`md:col-span-3 px-4 py-3 rounded-2xl border outline-none font-bold text-xs transition-all ${theme.input}`} value={selectedService} onChange={(e) => setSelectedService(e.target.value)}>
                     <option value="Todos">Todos los Servicios</option>
@@ -364,11 +360,11 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             <div className="space-y-3">
                 {visibleAccounts.length > 0 ? visibleAccounts.map((acc, index) => {
                     const isProblem = PROBLEM_STATUSES.includes(acc.status);
-                    const isExpanded = expandedAccounts[acc.email];
+                    const isExpanded = expandedAccounts[acc.groupKey];
 
                     return (
-                        <div key={acc.email} ref={index === visibleAccounts.length - 1 ? lastElementRef : null} className={`rounded-[2rem] border transition-all duration-300 ${theme.card} ${isProblem ? 'border-rose-500/30' : ''}`}>
-                            <div onClick={() => setExpandedAccounts(p => ({...p, [acc.email]: !p[acc.email]}))} className="p-5 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors">
+                        <div key={acc.groupKey} ref={index === visibleAccounts.length - 1 ? lastElementRef : null} className={`rounded-[2rem] border transition-all duration-300 ${theme.card} ${isProblem ? 'border-rose-500/30' : ''}`}>
+                            <div onClick={() => setExpandedAccounts(p => ({...p, [acc.groupKey]: !p[acc.groupKey]}))} className="p-5 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors">
                                 <div className="flex items-center gap-4 min-w-0">
                                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black shrink-0 text-lg ${isProblem ? 'bg-rose-500/20 text-rose-500' : (acc.isMasterAccount ? 'bg-indigo-600 text-white shadow-lg' : 'bg-emerald-500/20 text-emerald-500')}`}>{acc.service.charAt(0)}</div>
                                     <div className="min-w-0">
@@ -400,8 +396,11 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                                     <div className="bg-white/5 p-4 rounded-3xl border border-white/5">
                                         <label className={`${theme.label} block mb-2`}>Credenciales Maestras</label>
                                         <div className="flex gap-2">
-                                            <div className="relative flex-1 group"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400" size={16}/><input type="text" className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-xs font-mono border outline-none transition-all ${theme.input}`} value={editingPass.email === acc.email ? editingPass.value : acc.pass} onChange={(e) => setEditingPass({ email: acc.email, value: e.target.value })}/></div>
-                                            {editingPass.email === acc.email && editingPass.value !== acc.pass && <button onClick={() => handleUpdateGlobalPass(acc)} className="p-3 bg-emerald-500 text-white rounded-xl shadow-lg active:scale-95 transition-all"><Save size={18}/></button>}
+                                            <div className="relative flex-1 group">
+                                                <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400" size={16}/>
+                                                <input type="text" className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-xs font-mono border outline-none transition-all ${theme.input}`} value={editingPass.groupKey === acc.groupKey ? editingPass.value : acc.pass} onChange={(e) => setEditingPass({ email: acc.email, value: e.target.value, groupKey: acc.groupKey })}/>
+                                            </div>
+                                            {editingPass.groupKey === acc.groupKey && editingPass.value !== acc.pass && <button onClick={() => handleUpdateGlobalPass(acc)} className="p-3 bg-emerald-500 text-white rounded-xl shadow-lg active:scale-95 transition-all"><Save size={18}/></button>}
                                             <button onClick={() => {navigator.clipboard.writeText(`${acc.email}:${acc.pass}`); setNotification({show:true, message:'Copiado'});}} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg active:scale-95 transition-all"><Copy size={18}/></button>
                                         </div>
                                     </div>
@@ -412,7 +411,10 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                                                 <div key={profile.id} className={`p-4 rounded-3xl border flex items-center justify-between group transition-all ${isLibre ? 'bg-emerald-500/5 border-emerald-500/20' : (darkMode ? 'bg-white/5 border-white/5' : 'bg-white shadow-sm')}`}>
                                                     <div className="flex items-center gap-3 truncate">
                                                         <div className={`p-2 rounded-xl ${isLibre ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-500/10 text-slate-400'}`}>{isLibre ? <CheckCircle2 size={16}/> : <User size={16}/>}</div>
-                                                        <div className="truncate"><p className={`text-xs font-black truncate ${isLibre ? 'text-emerald-500' : (PROBLEM_STATUSES.includes(profile.client) ? 'text-rose-400' : theme.text)}`}>{isLibre ? 'DISPONIBLE' : profile.client}</p><p className={`text-[10px] font-bold font-mono uppercase ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>{profile.profile} {profile.pin && `| PIN: ${profile.pin}`}</p></div>
+                                                        <div className="truncate">
+                                                            <p className={`text-xs font-black truncate ${isLibre ? 'text-emerald-500' : (PROBLEM_STATUSES.includes(profile.client) ? 'text-rose-400' : theme.text)}`}>{isLibre ? 'DISPONIBLE' : profile.client}</p>
+                                                            <p className={`text-[10px] font-bold font-mono uppercase ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>{profile.profile} {profile.pin && `| PIN: ${profile.pin}`}</p>
+                                                        </div>
                                                     </div>
                                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                                         <button onClick={() => { setFormData(profile); setView('form'); }} className="p-2 rounded-xl bg-indigo-500 text-white text-[10px] font-bold shadow-md hover:bg-indigo-600">Asignar</button>
