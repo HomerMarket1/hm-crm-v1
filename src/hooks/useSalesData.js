@@ -1,17 +1,21 @@
-// src/hooks/useSalesData.js
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 
-// Normalizador de texto (mayúsculas/tildes)
+// --- ⚡️ CONSTANTES & HELPERS PUROS (Outside Context) ---
+// Mantenemos consistencia con useDataSync
+const NON_BILLABLE = ['libre', 'caída', 'caida', 'actualizar', 'dominio', 'expired', 'vencido', 'cancelado', 'problemas', 'garantía', 'garantia', 'admin', 'stock', 'reposicion'];
+
+// Normalizador de texto optimizado (Memo-friendly)
 const normalizeText = (text) => {
     if (!text) return '';
     return String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
-// 🧠 NUEVO HELPER INTELIGENTE: Detecta la plataforma base
+// Detector de Plataforma Base (Para la Bóveda/Inventario)
 const getPlatformBaseName = (serviceName) => {
     if (!serviceName) return 'Desconocido';
     const lower = serviceName.toLowerCase();
     
+    // Orden de prioridad: De más específico a más general
     if (lower.includes('disney')) return 'Disney+';
     if (lower.includes('netflix')) return 'Netflix';
     if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
@@ -19,197 +23,235 @@ const getPlatformBaseName = (serviceName) => {
     if (lower.includes('paramount')) return 'Paramount+';
     if (lower.includes('vix')) return 'Vix';
     if (lower.includes('plex')) return 'Plex';
-    if (lower.includes('iptv')) return 'IPTV';
-    if (lower.includes('magis')) return 'Magis TV';
+    if (lower.includes('iptv') || lower.includes('magis')) return 'IPTV / Magis';
     if (lower.includes('crunchyroll')) return 'Crunchyroll';
     if (lower.includes('spotify')) return 'Spotify';
     if (lower.includes('youtube')) return 'YouTube';
     if (lower.includes('apple')) return 'Apple TV';
     
-    // Si no coincide con ninguno conocido, devolvemos el nombre original 
-    // (para no romper servicios personalizados)
-    return serviceName;
+    return serviceName; // Fallback
+};
+
+// Calculadora de días pura (trabaja con timestamps para velocidad)
+const calculateDaysDiff = (endDateString, todayTimestamp) => {
+    if (!endDateString || !endDateString.includes('-')) return 0;
+    const [y, m, d] = endDateString.split('-').map(Number);
+    // Mes en JS es 0-11
+    const endTimestamp = new Date(y, m - 1, d).getTime(); 
+    const diffTime = endTimestamp - todayTimestamp;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
 export const useSalesData = (sales, catalog, allClients, uiState, currentFormData) => {
+    // Desestructuramos para evitar re-renders por props fantasma
     const { filterClient, filterService, filterStatus, dateFrom, dateTo } = uiState;
 
-    const NON_BILLABLE = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin'];
+    // 1. DATE ANCHOR (Calculamos "Hoy" una sola vez por render)
+    const todayAnchor = useMemo(() => {
+        const t = new Date();
+        t.setHours(0,0,0,0);
+        return t.getTime();
+    }, []); // Se recalcula solo si se refresca el componente mayor
+
+    // Helper memoizado para usar dentro del componente
+    const getDaysRemaining = useCallback((endDate) => {
+        return calculateDaysDiff(endDate, todayAnchor);
+    }, [todayAnchor]);
 
     // ========================================================================
-    // 2. HELPER DE FECHA (BLINDADO) 🛡️
-    // ========================================================================
-    const getDaysRemaining = (endDate) => {
-        if (!endDate || typeof endDate !== 'string' || !endDate.includes('-')) return 0;
-        try {
-            const today = new Date(); 
-            today.setHours(0,0,0,0); 
-            const parts = endDate.split('-');
-            const year = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1; 
-            const day = parseInt(parts[2], 10);
-            const end = new Date(year, month, day); 
-            const diffTime = end - today;
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        } catch (e) { return 0; }
-    };
-
-    // ========================================================================
-    // 3. FILTRADO PRINCIPAL
+    // 2. MOTOR DE FILTRADO (Turbocharged) 🏎️
     // ========================================================================
     const filteredSales = useMemo(() => {
-        if (!sales) return []; 
-        
+        if (!sales) return [];
+
+        // Pre-procesamos filtros para no hacerlo en cada iteración
+        const term = filterClient ? normalizeText(filterClient) : '';
+        const isFilteringService = filterService !== 'Todos';
+        const isFilteringStatus = filterStatus !== 'Todos';
+        const hasDateFilter = dateFrom || dateTo;
+
         return sales.filter(sale => {
-            // A. FILTRO TEXTO
-            if (filterClient) {
-                const term = normalizeText(filterClient);
+            // A. FILTRO TEXTO (Búsqueda Profunda)
+            if (term) {
                 const matchName = normalizeText(sale.client).includes(term);
                 const matchEmail = normalizeText(sale.email).includes(term);
-                const matchPhone = normalizeText(sale.phone).includes(term); 
-                if (!matchName && !matchEmail && !matchPhone) return false;
+                const matchPhone = sale.phone ? normalizeText(sale.phone).includes(term) : false;
+                const matchService = normalizeText(sale.service).includes(term); // Agregué servicio
+                if (!matchName && !matchEmail && !matchPhone && !matchService) return false;
             }
+
             // B. FILTRO SERVICIO
-            if (filterService !== 'Todos' && sale.service !== filterService) return false;
+            if (isFilteringService) {
+                // Comparación laxa para atrapar variantes
+                if (!sale.service.toLowerCase().includes(filterService.toLowerCase())) return false;
+            }
             
-            // C. FILTRO ESTADO
-            if (filterStatus !== 'Todos') {
-                const isFree = sale.client === 'LIBRE';
-                const isProblem = NON_BILLABLE.some(s => s.toLowerCase() === (sale.client || '').toLowerCase());
-                
+            // C. FILTRO ESTADO (Lógica Blindada)
+            if (isFilteringStatus) {
+                const clientLower = (sale.client || '').toLowerCase();
+                const isFree = clientLower.includes('libre');
+                const isProblem = NON_BILLABLE.some(s => clientLower.includes(s));
+                const days = calculateDaysDiff(sale.endDate, todayAnchor);
+
                 if (filterStatus === 'Libres' && !isFree) return false;
                 if (filterStatus === 'Ocupados' && (isFree || isProblem)) return false;
-                if (filterStatus === 'Problemas' && !isProblem) return false;
+                if (filterStatus === 'Problemas' && (!isProblem || isFree)) return false; // Libre no es problema
                 if (filterStatus === 'Vencidos') {
-                    if (!sale.endDate || isFree || isProblem) return false;
-                    if (getDaysRemaining(sale.endDate) >= 0) return false; 
+                    // Solo vencidos reales (clientes activos con fecha pasada)
+                    if (isFree || isProblem || !sale.endDate) return false;
+                    if (days >= 0) return false; 
                 }
             }
             
-            // D. FILTRO FECHA
-            if (dateFrom || dateTo) {
+            // D. FILTRO FECHA (Comparación de Strings ISO YYYY-MM-DD es segura y rápida)
+            if (hasDateFilter) {
                 if (!sale.endDate) return false;
-                if (dateFrom && !dateTo) {
-                    if (sale.endDate !== dateFrom) return false;
-                }
-                else {
-                    if (dateFrom && sale.endDate < dateFrom) return false;
-                    if (dateTo && sale.endDate > dateTo) return false;
-                }
+                if (dateFrom && sale.endDate < dateFrom) return false;
+                if (dateTo && sale.endDate > dateTo) return false;
             }
 
             return true;
         });
-    }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo]);
+    }, [sales, filterClient, filterService, filterStatus, dateFrom, dateTo, todayAnchor]);
 
     // ========================================================================
-    // 4. CÁLCULOS AGREGADOS
+    // 3. ANALYTICS & INVENTORY
     // ========================================================================
+    
+    // Total Dinero (Excluyendo basura)
     const totalFilteredMoney = useMemo(() => filteredSales.reduce((sum, s) => {
-        const isFree = s.client === 'LIBRE';
-        const isProblem = NON_BILLABLE.some(st => st.toLowerCase() === (s.client || '').toLowerCase());
-        if (isFree || isProblem) return sum;
+        const clientLower = (s.client || '').toLowerCase();
+        // Chequeo rápido contra lista negra
+        if (NON_BILLABLE.some(st => clientLower.includes(st))) return sum;
         return sum + (Number(s.cost) || 0);
     }, 0), [filteredSales]);
 
-    const totalItems = filteredSales.length;
-
-    const getClientPreviousProfiles = useMemo(() => {
-        if (!currentFormData.client || currentFormData.client === 'LIBRE') return [];
-        return sales
-            .filter(s => s.client === currentFormData.client && s.profile)
-            .map(s => ({ profile: s.profile, pin: s.pin }))
-            .filter((v, i, a) => a.findIndex(t => t.profile === v.profile) === i);
-    }, [sales, currentFormData.client]);
-
-    // 🔴 LÓGICA DE BÓVEDA CORREGIDA (AGRUPACIÓN POR PLATAFORMA BASE)
+    // Inventario Agrupado (Bóveda de Credenciales)
     const accountsInventory = useMemo(() => {
         const groups = {};
         sales.forEach(s => {
-            // Normalizamos el nombre (ej: "Disney+ Paquete" -> "Disney+")
+            // Agrupamos por: Email + Pass + Plataforma Base (ej: Netflix)
+            // Esto agrupa "Netflix Pantalla" y "Netflix Completa" en el mismo bucket
             const platformName = getPlatformBaseName(s.service);
-            
-            // La llave ahora usa la PLATAFORMA BASE, no el servicio específico
             const key = `${s.email}|${s.pass}|${platformName}`;
             
             if (!groups[key]) {
                 groups[key] = { 
+                    id: s.id, // ID de referencia (cualquiera del grupo)
                     email: s.email, 
                     pass: s.pass, 
-                    service: platformName, // Guardamos el nombre limpio para mostrar en la tarjeta
+                    service: platformName, 
                     total: 0, 
-                    free: 0, 
-                    id: s.id, 
+                    free: 0,
                     ids: [] 
                 };
             }
             
             groups[key].total++;
-            if (s.client === 'LIBRE') groups[key].free++;
+            if ((s.client || '').toLowerCase().includes('libre')) groups[key].free++;
             groups[key].ids.push(s.id);
         });
-        return Object.values(groups);
+        
+        // Convertimos a array y ordenamos: Primero los que tienen libres, luego por nombre
+        return Object.values(groups).sort((a, b) => {
+            if (b.free !== a.free) return b.free - a.free;
+            return a.service.localeCompare(b.service);
+        });
     }, [sales]);
 
+    // Sugerencia de Perfiles previos (Para autocompletar)
+    const getClientPreviousProfiles = useMemo(() => {
+        if (!currentFormData.client || currentFormData.client === 'LIBRE') return [];
+        return sales
+            .filter(s => s.client === currentFormData.client && s.profile)
+            .map(s => ({ profile: s.profile, pin: s.pin }))
+            // Eliminar duplicados exactos
+            .filter((v, i, a) => a.findIndex(t => t.profile === v.profile) === i);
+    }, [sales, currentFormData.client]);
+
+    // Slots disponibles para la venta actual
     const maxAvailableSlots = useMemo(() => {
         if (!currentFormData.service || !currentFormData.email) return 5;
-        // Aquí mantenemos la lógica estricta para el formulario de venta (queremos vender el servicio exacto)
-        // Opcional: Podrías usar getPlatformBaseName aquí también si quieres que al seleccionar "Disney Paquete"
-        // te sugiera cupos de cualquier "Disney". Por ahora lo dejo estricto para seguridad.
+        // Búsqueda estricta para evitar vender un perfil de Disney en una cuenta de Netflix
         return sales.filter(s => 
             s.email === currentFormData.email && 
             s.service === currentFormData.service && 
-            s.client === 'LIBRE'
+            (s.client || '').toLowerCase().includes('libre')
         ).length;
     }, [sales, currentFormData.service, currentFormData.email]);
 
-    const packageCatalog = useMemo(() => catalog ? catalog.filter(s => s.type === 'Paquete') : [], [catalog]);
+    // ========================================================================
+    // 4. ALERTAS & VISUALS
+    // ========================================================================
 
-    // Visual Helpers
-    const getStatusIcon = (serviceName) => {
+    const isBillable = useCallback((s) => {
+        const c = (s.client || '').toLowerCase();
+        if (c.includes('libre') || !s.endDate) return false;
+        if (NON_BILLABLE.some(status => c.includes(status))) return false;
+        return true;
+    }, []);
+
+    // Memoizamos listas de alertas para el Dashboard
+    const { expiringToday, expiringTomorrow, overdueSales } = useMemo(() => {
+        const today = [];
+        const tomorrow = [];
+        const overdue = [];
+
+        sales.forEach(s => {
+            if (!isBillable(s)) return;
+            const days = calculateDaysDiff(s.endDate, todayAnchor);
+
+            if (days < 0) overdue.push(s);
+            else if (days === 0) today.push(s);
+            else if (days === 1) tomorrow.push(s);
+        });
+
+        return { expiringToday: today, expiringTomorrow: tomorrow, overdueSales: overdue };
+    }, [sales, todayAnchor, isBillable]);
+
+    // Helpers Visuales (Ahora estables con useCallback)
+    const getStatusIcon = useCallback((serviceName) => {
         const lower = serviceName ? serviceName.toLowerCase() : '';
         if (lower.includes('netflix')) return 'N';
         if (lower.includes('disney')) return 'D';
         if (lower.includes('max') || lower.includes('hbo')) return 'M';
         if (lower.includes('prime') || lower.includes('amazon')) return 'P';
         if (lower.includes('paramount')) return 'P+';
-        if (lower.includes('vix')) return 'V';
-        if (lower.includes('plex')) return 'PX';
-        if (lower.includes('iptv')) return 'TV';
-        if (lower.includes('magis')) return 'MG';
-        if (lower.includes('crunchyroll')) return 'CR';
-        if (lower.includes('spotify')) return 'S';
+        if (lower.includes('apple')) return 'Ap';
         if (lower.includes('youtube')) return 'Y';
+        if (lower.includes('spotify')) return 'S';
+        if (lower.includes('iptv')) return 'TV';
         return 'S';
-    };
+    }, []);
 
-    const getStatusColor = (endDate, client) => {
-        if (client === 'LIBRE') return 'bg-emerald-100 text-emerald-600 border border-emerald-200';
-        if (NON_BILLABLE.some(s => s.toLowerCase() === (client || '').toLowerCase())) return 'bg-gray-100 text-gray-500 border border-gray-200';
+    const getStatusColor = useCallback((endDate, client) => {
+        const c = (client || '').toLowerCase();
+        if (c.includes('libre')) return 'bg-emerald-100 text-emerald-600 border border-emerald-200';
+        
+        // Estados de error/mantenimiento
+        if (NON_BILLABLE.some(s => c.includes(s))) return 'bg-gray-100 text-gray-500 border border-gray-200';
         
         if (!endDate) return 'bg-slate-100 text-slate-500'; 
         
-        const days = getDaysRemaining(endDate);
+        const days = calculateDaysDiff(endDate, todayAnchor);
         if (days < 0) return 'bg-rose-100 text-rose-600 border border-rose-200'; 
         if (days <= 3) return 'bg-amber-100 text-amber-600 border border-amber-200'; 
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
-    };
-
-    const isBillable = (s) => {
-        if (s.client === 'LIBRE') return false;
-        if (!s.endDate) return false;
-        if (NON_BILLABLE.some(status => status.toLowerCase() === s.client.toLowerCase())) return false;
-        return true;
-    };
-
-    const expiringToday = useMemo(() => sales.filter(s => isBillable(s) && getDaysRemaining(s.endDate) === 0), [sales]);
-    const expiringTomorrow = useMemo(() => sales.filter(s => isBillable(s) && getDaysRemaining(s.endDate) === 1), [sales]);
-    const overdueSales = useMemo(() => sales.filter(s => isBillable(s) && getDaysRemaining(s.endDate) < 0), [sales]);
+    }, [todayAnchor]);
 
     return {
-        filteredSales, totalFilteredMoney, totalItems, getClientPreviousProfiles, maxAvailableSlots,
-        accountsInventory, packageCatalog, getStatusIcon, getStatusColor,
+        filteredSales, 
+        totalFilteredMoney, 
+        totalItems: filteredSales.length, 
+        getClientPreviousProfiles, 
+        maxAvailableSlots,
+        accountsInventory, 
+        packageCatalog: useMemo(() => catalog ? catalog.filter(s => s.type === 'Paquete') : [], [catalog]),
+        getStatusIcon, 
+        getStatusColor,
         getDaysRemaining, 
-        expiringToday, expiringTomorrow, overdueSales
+        expiringToday, 
+        expiringTomorrow, 
+        overdueSales
     };
 };

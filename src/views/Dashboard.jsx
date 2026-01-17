@@ -2,10 +2,13 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
-// --- CONSTANTES & HELPERS ---
+// --- ⚡️ CONSTANTES & CONFIGURACIÓN GLOBAL (Single Source of Truth) ---
 const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin', 'Stock', 'Reposicion'];
+// Palabras que "hundiremos" visualmente al final de la lista
+const BURY_LIST = ['admin', 'actualizar', 'dominio', 'caida', 'caída', 'stock', 'reposicion'];
 
+// --- HELPERS PUROS ---
 const cleanServiceName = (name) => name ? name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim() : '';
 
 const getWhatsAppUrl = (phone, message) => {
@@ -22,13 +25,12 @@ const safeGetDays = (dateString) => {
     return Math.ceil((new Date(y, m - 1, d) - today) / (1000 * 60 * 60 * 24));
 };
 
-// --- HELPER DE ESTILOS ---
+// --- LOGICA VISUAL DE TARJETAS ---
 const getCardStyles = (sale, days, darkMode) => {
     const clientName = sale.client ? sale.client.toLowerCase() : '';
     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
     const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
     
-    // Admin NO es problema visualmente, tiene su propio estilo
     const isAdmin = sale.client === 'Admin';
     const isProblem = !isAdmin && (PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client));
     const isFullAccount = sale.type === 'Cuenta';
@@ -46,7 +48,6 @@ const getCardStyles = (sale, days, darkMode) => {
         text = darkMode ? "text-amber-300" : "text-amber-900"; 
         subText = darkMode ? "text-amber-200/60" : "text-amber-800/60";
     } else if (isAdmin) {
-        // Estilo VIP para Admin
         bg = darkMode ? "bg-slate-800 border-white/10" : "bg-slate-900 text-white";
         text = "text-white";
         subText = "text-slate-400";
@@ -63,7 +64,7 @@ const getCardStyles = (sale, days, darkMode) => {
     return { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount };
 };
 
-// --- COMPONENTE TARJETA ---
+// --- SUB-COMPONENTE: SALE CARD (Idealmente mover a components/SaleCard.jsx) ---
 const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
     const days = safeGetDays(sale.endDate);
     const { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
@@ -80,7 +81,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
             <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center">
                 
-                {/* COL 1: Info */}
+                {/* COL 1: Info Principal */}
                 <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 ${statusColor}`}>
                         {iconLetter}
@@ -147,7 +148,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                     </div>
                 </div>
 
-                {/* COL 3: Estado Desktop + Precio Unitario */}
+                {/* COL 3: Estado y Métricas (Desktop) */}
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
                     {!isFree && !isProblem ? (
                         <div className="flex items-center gap-6">
@@ -170,7 +171,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                     )}
                 </div>
 
-                {/* COL 4: Acciones */}
+                {/* COL 4: Botonera de Acciones */}
                 <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
                     {isFree ? (
                         <div className="flex w-full md:w-auto gap-2 justify-end">
@@ -201,7 +202,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
     );
 });
 
-// --- DASHBOARD PRINCIPAL ---
+// --- COMPONENTE PRINCIPAL: DASHBOARD ---
 const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
@@ -222,6 +223,7 @@ const Dashboard = ({
 
     useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo, activeTab]);
 
+    // Persistencia simple de IDs enviados hoy (para no spamear)
     useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
         try {
@@ -239,19 +241,21 @@ const Dashboard = ({
         });
     };
 
-    const openMigration = (sale) => {
+    // --- MIGRATION LOGIC ---
+    const openMigration = useCallback((sale) => {
         const cleanTargetService = cleanServiceName(sale.service).toLowerCase();
         const matches = sales.filter(s => {
             const sName = (s.client || '').toLowerCase();
             const sService = cleanServiceName(s.service).toLowerCase();
             const sType = (s.type || '').toLowerCase();
-            const isFree = sName === 'libre' || sName === 'espacio libre' || sName === 'disponible';
-            const isProfile = sType === 'perfil'; 
-            return isFree && isProfile && sService.includes(cleanTargetService);
+            // Match: Debe ser Libre + Perfil + Mismo Servicio
+            return (sName.includes('libre') || sName.includes('disponible')) 
+                   && sType === 'perfil' 
+                   && sService.includes(cleanTargetService);
         });
         setMigrationSourceStatus('Caída'); 
         setMigrationModal({ show: true, sale, matches });
-    };
+    }, [sales]);
 
     const executeMigration = async (targetSale) => {
         const sourceSale = migrationModal.sale;
@@ -264,6 +268,7 @@ const Dashboard = ({
         setMigrationModal({ show: false, sale: null, matches: [] });
     };
 
+    // --- WHATSAPP LOGIC ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
@@ -308,6 +313,7 @@ const Dashboard = ({
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
+    // Handlers memoizados para pasar a SaleCard (evita re-renders)
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
         copy: (e, email, pass) => {
@@ -322,9 +328,9 @@ const Dashboard = ({
         migrate: openMigration, 
         renew: handleQuickRenew,
         liberate: triggerLiberate
-    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles]);
+    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration]);
 
-    // 🔥 CLASIFICACIÓN V4: ACTIVO | STOCK | GARANTÍA | SOPORTE 🔥
+    // --- CLASIFICACIÓN DE DATOS (Memoized) ---
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
         const groups = {};
         const healthy = [];
@@ -336,29 +342,23 @@ const Dashboard = ({
             const emailKey = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
             const serviceKey = cleanServiceName(sale.service).toLowerCase(); 
             const uniqueGroupKey = `${emailKey}|${serviceKey}`; 
-            
             if (!groups[uniqueGroupKey]) groups[uniqueGroupKey] = [];
             groups[uniqueGroupKey].push(sale);
         });
 
         Object.values(groups).forEach(group => {
             const realItems = group; 
-            
             const hasProblem = realItems.some(sale => {
                 const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
                 const isFree = sale.client.toLowerCase().includes('libre');
                 if (isFree || sale.client === 'Admin') return false;
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
-
             const isFragmented = realItems.length > 1;
             
             if (hasProblem) {
-                if (isFragmented) {
-                    warranty.push(...group); 
-                } else {
-                    maintenance.push(...group); 
-                }
+                if (isFragmented) warranty.push(...group); 
+                else maintenance.push(...group); 
             } else {
                 group.forEach(sale => {
                     const clientName = (sale.client || '').toLowerCase();
@@ -371,45 +371,39 @@ const Dashboard = ({
         return { healthySales: healthy, freeSales: free, warrantySales: warranty, maintenanceSales: maintenance };
     }, [filteredSales]);
 
+    // Seleccionamos la lista activa
     let currentList = [];
     if (activeTab === 'healthy') currentList = healthySales;
     else if (activeTab === 'free') currentList = freeSales;
     else if (activeTab === 'warranty') currentList = warrantySales;
     else currentList = maintenanceSales; 
 
-    // --- ⚡️ CORE FIX: ORDENAMIENTO INTELIGENTE ---
+    // --- ⚡️ CORE FEATURE: ORDENAMIENTO INTELIGENTE (Weighted Sort) ---
     const visibleSales = useMemo(() => {
-        // Palabras clave que queremos "hundir" al final de la lista
-        const buryList = ['admin', 'actualizar', 'dominio', 'caida', 'caída', 'stock', 'reposicion'];
-
         const sorted = [...currentList];
 
-        // En Garantía y Soporte, mantenemos orden por email (agrupación lógica)
+        // En Garantía y Soporte, ordenamos por email para agrupar problemas
         if (activeTab === 'warranty' || activeTab === 'maintenance') {
             sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
         } else {
-            // EN ACTIVOS Y STOCK: Aplicamos el algoritmo de peso
+            // EN ACTIVOS Y STOCK: Aplicamos peso para hundir "Admin/Stock"
             sorted.sort((a, b) => {
                 const clientA = (a.client || '').toLowerCase();
                 const clientB = (b.client || '').toLowerCase();
 
-                // Detectamos si son "Items de Sistema/Mantenimiento"
-                const isSystemA = buryList.some(k => clientA.includes(k));
-                const isSystemB = buryList.some(k => clientB.includes(k));
+                const isSystemA = BURY_LIST.some(k => clientA.includes(k));
+                const isSystemB = BURY_LIST.some(k => clientB.includes(k));
 
-                // REGLA DE PESO:
-                // Si A es sistema y B es normal -> A va después (return 1)
-                // Si A es normal y B es sistema -> A va antes (return -1)
-                if (isSystemA && !isSystemB) return 1;
-                if (!isSystemA && isSystemB) return -1;
+                if (isSystemA && !isSystemB) return 1;  // A va al fondo
+                if (!isSystemA && isSystemB) return -1; // B va al fondo
 
-                // Si ambos son del mismo tipo, desempatamos alfabéticamente
                 return clientA.localeCompare(clientB);
             });
         }
         return sorted.slice(0, displayLimit);
     }, [currentList, displayLimit, activeTab]);
 
+    // Infinite Scroll Observer
     const lastElementRef = useCallback(node => {
         if (loadingData) return;
         if (observer.current) observer.current.disconnect();
@@ -420,12 +414,6 @@ const Dashboard = ({
         });
         if (node) observer.current.observe(node);
     }, [loadingData, displayLimit, currentList.length]);
-
-    const theme = useMemo(() => ({
-        inputBg: darkMode ? 'bg-black/20 text-white placeholder-slate-600 border-white/5' : 'bg-transparent text-slate-800 placeholder-slate-400',
-        activeBtn: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
-        inactiveBtn: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700'
-    }), [darkMode]);
 
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400"><div className="w-12 h-12 rounded-full border-4 border-current border-t-transparent animate-spin mb-4"/>Sincronizando...</div>;
 
@@ -438,7 +426,7 @@ const Dashboard = ({
 
     return (
         <div className="w-full pb-32 space-y-4 animate-in fade-in">
-            {/* ALERTAS */}
+            {/* --- SECCIÓN ALERTAS (Vencimientos) --- */}
             {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     {overdueSales.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencidas', list: overdueSales })} className="flex-1 p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Ban size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Vencidas</span><p className="text-sm font-black">{overdueSales.length}</p></div></div><ChevronRight size={14}/></button>)}
@@ -447,7 +435,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* TABS CON SOPORTE */}
+            {/* --- SECCIÓN TABS (Navegación) --- */}
             <div className="px-1 grid grid-cols-4 gap-2">
                 <button onClick={() => setActiveTab('healthy')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' ? (darkMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-600 text-white shadow-lg') : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Activity size={18} className={`mb-1 ${activeTab === 'healthy' ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Activos</span><span className="text-xs font-black">{healthySales.length}</span></button>
                 <button onClick={() => setActiveTab('free')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' ? 'bg-emerald-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Box size={18} className={`mb-1 ${activeTab === 'free' ? 'animate-bounce' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Stock</span><span className="text-xs font-black">{freeSales.length}</span></button>
@@ -455,7 +443,7 @@ const Dashboard = ({
                 <button onClick={() => setActiveTab('maintenance')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'maintenance' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Wrench size={18} className={`mb-1 ${activeTab === 'maintenance' ? 'animate-spin-slow' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Soporte</span><span className="text-xs font-black">{maintenanceSales.length}</span></button>
             </div>
 
-            {/* FILTROS */}
+            {/* --- SECCIÓN FILTROS (Sticky) --- */}
             <div className={`sticky top-0 z-40 -mx-4 px-4 py-3 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-b border-white/5' : 'bg-[#F2F2F7]/90 border-b border-slate-200/50'}`}>
                 <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
                     <div className="relative group w-full shadow-sm">
@@ -489,7 +477,7 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {/* HEADER DINERO (SOLO EN ACTIVOS) */}
+            {/* --- HEADER KPI (Solo Activos) --- */}
             {activeTab === 'healthy' && (
                 <div className="flex items-end justify-between px-2 md:px-4 animate-in fade-in">
                     <div><h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p></div>
@@ -497,7 +485,7 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* LISTA DE TARJETAS */}
+            {/* --- LISTA VIRTUALIZADA (Infinite Scroll) --- */}
             <div className="space-y-3">
                 {visibleSales.length > 0 ? visibleSales.map((sale, i) => (<div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}><SaleCard sale={sale} darkMode={darkMode} handlers={handlers} /></div>)) : (
                     <div className="py-20 text-center opacity-40">
@@ -508,7 +496,7 @@ const Dashboard = ({
                 {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODALES BULK Y MIGRACIÓN */}
+            {/* --- MODALES AUXILIARES --- */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
