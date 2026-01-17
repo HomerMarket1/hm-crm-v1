@@ -1,6 +1,5 @@
-// src/views/Dashboard.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
-import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User } from 'lucide-react';
+import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
 // --- CONSTANTES & HELPERS ---
@@ -28,8 +27,11 @@ const getCardStyles = (sale, days, darkMode) => {
     const clientName = sale.client ? sale.client.toLowerCase() : '';
     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
     const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
-    const isProblem = PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
+    
+    // Admin NO es problema visualmente, tiene su propio estilo
     const isAdmin = sale.client === 'Admin';
+    const isProblem = !isAdmin && (PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client));
+    const isFullAccount = sale.type === 'Cuenta';
 
     let bg = darkMode ? 'bg-[#161B28] border-white/5' : 'bg-white/60 border-white/40';
     let text = darkMode ? 'text-white' : 'text-slate-800';
@@ -44,9 +46,12 @@ const getCardStyles = (sale, days, darkMode) => {
         text = darkMode ? "text-amber-300" : "text-amber-900"; 
         subText = darkMode ? "text-amber-200/60" : "text-amber-800/60";
     } else if (isAdmin) {
+        // Estilo VIP para Admin
         bg = darkMode ? "bg-slate-800 border-white/10" : "bg-slate-900 text-white";
         text = "text-white";
-        subText = "text-slate-300";
+        subText = "text-slate-400";
+    } else if (isFullAccount) {
+        bg = darkMode ? "bg-[#1e2536] border-indigo-500/20" : "bg-indigo-50/30 border-indigo-100";
     }
 
     let statusColor = darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600';
@@ -55,13 +60,13 @@ const getCardStyles = (sale, days, darkMode) => {
     else if (days < 0) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-600';
     else if (days <= 3) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-600';
 
-    return { bg, text, subText, statusColor, isFree, isProblem, isAdmin };
+    return { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount };
 };
 
 // --- COMPONENTE TARJETA ---
 const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
     const days = safeGetDays(sale.endDate);
-    const { bg, text, subText, statusColor, isFree, isProblem, isAdmin } = getCardStyles(sale, days, darkMode);
+    const { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
 
     const iconLetter = useMemo(() => {
@@ -82,8 +87,17 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start">
-                            <div>
-                                <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>{isFree ? 'Espacio Libre' : sale.client}</div>
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>
+                                        {isFree ? 'Espacio Libre' : sale.client}
+                                    </div>
+                                    {isFullAccount && !isFree && (
+                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase ${darkMode ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'}`}>
+                                            <Layers size={8} /> Completa
+                                        </span>
+                                    )}
+                                </div>
                                 <div className={`text-[11px] md:text-xs font-medium truncate mt-0.5 ${subText}`}>{sale.service}</div>
                             </div>
                             
@@ -107,7 +121,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         )}
                         {isProblem && (
                             <div className="md:hidden mt-1 flex items-center gap-1 text-amber-500 font-bold text-[10px] animate-pulse">
-                                <AlertTriangle size={10} /> <span>Modo Garantía</span>
+                                <AlertTriangle size={10} /> <span>Revisar Cuenta</span>
                             </div>
                         )}
                         {!isFree && !isProblem && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
@@ -137,18 +151,13 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
                     {!isFree && !isProblem ? (
                         <div className="flex items-center gap-6">
-                            {/* SECCIÓN PRECIO PC */}
                             {cost > 0 && (
                                 <div className="text-center">
                                     <div className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</div>
                                     <div className="text-[9px] font-bold opacity-40 uppercase text-slate-400">Precio</div>
                                 </div>
                             )}
-
-                            {/* SEPARADOR PC */}
                             {cost > 0 && <div className={`w-px h-8 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>}
-
-                            {/* SECCIÓN DÍAS PC */}
                             <div className="text-center leading-none">
                                 <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
                                 <div className="text-[10px] font-bold opacity-40 uppercase mt-1 text-slate-400">{formattedDate}</div>
@@ -156,7 +165,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                     ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : 
                         <span className={`flex items-center gap-2 text-xs font-black px-3 py-1 rounded-full ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
-                            <ShieldAlert size={14}/> GARANTÍA
+                            <ShieldAlert size={14}/> {isAdmin ? 'ADMIN' : (isFullAccount ? 'SOPORTE' : 'GARANTÍA')}
                         </span>
                     )}
                 </div>
@@ -174,25 +183,16 @@ const SaleCard = React.memo(({ sale, darkMode, handlers }) => {
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
-                            {/* 1. WHATSAPP */}
                             {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
                             {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
-                            
-                            {/* 2. MUDANZA */}
                             <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
-                            
-                            {/* 3. EDITAR */}
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
-                            
-                            {/* 4. RENOVAR */}
                             {!isProblem && (
                                 <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes">
                                     <CalendarPlus size={14}/>
                                 </button>
                             )}
-
-                            {/* 5. LIBERAR */}
-                            <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><RotateCcw size={14}/></button>
+                            <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} title="Liberar / Recuperar"><RotateCcw size={14}/></button>
                         </div>
                     )}
                 </div>
@@ -239,22 +239,16 @@ const Dashboard = ({
         });
     };
 
-    // --- LOGICA DE MIGRACIÓN EXPRESS (FILTRADA SOLO PERFILES) ---
     const openMigration = (sale) => {
         const cleanTargetService = cleanServiceName(sale.service).toLowerCase();
-        
-        // 🔍 FILTRO MEJORADO: Solo mostrar destinos que sean "Perfil"
         const matches = sales.filter(s => {
             const sName = (s.client || '').toLowerCase();
             const sService = cleanServiceName(s.service).toLowerCase();
-            const sType = (s.type || '').toLowerCase(); // Verificar el tipo
-            
+            const sType = (s.type || '').toLowerCase();
             const isFree = sName === 'libre' || sName === 'espacio libre' || sName === 'disponible';
-            const isProfile = sType === 'perfil'; // 👈 ¡CLAVE! Solo perfiles individuales
-            
+            const isProfile = sType === 'perfil'; 
             return isFree && isProfile && sService.includes(cleanTargetService);
         });
-        
         setMigrationSourceStatus('Caída'); 
         setMigrationModal({ show: true, sale, matches });
     };
@@ -262,20 +256,14 @@ const Dashboard = ({
     const executeMigration = async (targetSale) => {
         const sourceSale = migrationModal.sale;
         if (!sourceSale || !targetSale) return;
-
-        // ✅ LÓGICA ATÓMICA + AUTO-ENFOQUE
         if (onMigrate) {
             await onMigrate(sourceSale, targetSale, migrationSourceStatus);
             setActiveTab('healthy');
             setFilter('filterClient', sourceSale.client); 
-        } else {
-            console.error("Falta la función onMigrate en Dashboard");
         }
-
         setMigrationModal({ show: false, sale: null, matches: [] });
     };
 
-    // --- LOGICA WHATSAPP ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
@@ -320,7 +308,6 @@ const Dashboard = ({
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
-    // --- HANDLERS ---
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
         copy: (e, email, pass) => {
@@ -337,68 +324,77 @@ const Dashboard = ({
         liberate: triggerLiberate
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles]);
 
-    // --- LÓGICA DE CLASIFICACIÓN (FILTRO ESTRICTO GARANTÍA) ---
-    const { healthySales, freeSales, warrantySales } = useMemo(() => {
+    // 🔥 CLASIFICACIÓN V4: ACTIVO | STOCK | GARANTÍA | SOPORTE 🔥
+    const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
         const groups = {};
         const healthy = [];
         const free = [];
         const warranty = [];
+        const maintenance = [];
 
         (filteredSales || []).forEach(sale => {
-            const key = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(sale);
+            // --- 🛠 MODIFICACIÓN AQUÍ 🛠 ---
+            // Creamos una llave única combinando CORREO + SERVICIO.
+            // Esto evita que una caída en "Max" contamine las cuentas de "Paramount" del mismo correo.
+            const emailKey = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
+            const serviceKey = cleanServiceName(sale.service).toLowerCase(); // Usamos el helper para limpiar el nombre
+            const uniqueGroupKey = `${emailKey}|${serviceKey}`; 
+            
+            if (!groups[uniqueGroupKey]) groups[uniqueGroupKey] = [];
+            groups[uniqueGroupKey].push(sale);
+            // -----------------------------
         });
 
         Object.values(groups).forEach(group => {
-            const realItems = group.filter(s => s.client !== 'Admin');
+            const realItems = group; 
             
             const hasProblem = realItems.some(sale => {
                 const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
+                const isFree = sale.client.toLowerCase().includes('libre');
+                
+                // CORRECCIÓN CRÍTICA: Admin NUNCA es un problema para Garantía
+                if (isFree || sale.client === 'Admin') return false;
+                
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
 
-            // Regla: >1 ficha y NO Cuenta Completa
-            const isLargeGroup = realItems.length > 1; 
-            const isFullAccount = realItems.some(s => (s.type || '').toLowerCase().includes('completa') || (s.service || '').toLowerCase().includes('completa'));
-
-            if (hasProblem && isLargeGroup && !isFullAccount) {
-                warranty.push(...group);
+            const isFragmented = realItems.length > 1;
+            
+            if (hasProblem) {
+                if (isFragmented) {
+                    warranty.push(...group); // Cuentas rotas con clientes -> GARANTÍA
+                } else {
+                    maintenance.push(...group); // Cuentas rotas solas -> SOPORTE
+                }
             } else {
                 group.forEach(sale => {
-                    const clientName = sale.client ? sale.client.toLowerCase() : '';
+                    const clientName = (sale.client || '').toLowerCase();
                     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
                     
-                    if (isFree) {
-                        free.push(sale);
-                    } else {
-                        healthy.push(sale);
-                    }
+                    if (isFree) free.push(sale);
+                    else healthy.push(sale);
                 });
             }
         });
-        return { healthySales: healthy, freeSales: free, warrantySales: warranty };
+        return { healthySales: healthy, freeSales: free, warrantySales: warranty, maintenanceSales: maintenance };
     }, [filteredSales]);
 
     let currentList = [];
     if (activeTab === 'healthy') currentList = healthySales;
     else if (activeTab === 'free') currentList = freeSales;
-    else currentList = warrantySales;
+    else if (activeTab === 'warranty') currentList = warrantySales;
+    else currentList = maintenanceSales; 
 
-    // --- SCROLL INFINITO & ORDENAMIENTO (CON ORDEN PERSONALIZADO) ---
     const visibleSales = useMemo(() => {
         const sorted = [...currentList];
-        if (activeTab === 'warranty') {
+        // En Garantía y Soporte, ordenar por email para agrupar visualmente
+        if (activeTab === 'warranty' || activeTab === 'maintenance') {
             sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
         } else {
-            // Nombres de sistema al final
+            // En Activos y Stock, ordenar por nombre de cliente/servicio
             sorted.sort((a, b) => {
                 const clientA = (a.client || '').toLowerCase();
                 const clientB = (b.client || '').toLowerCase();
-                const isBadA = NON_BILLABLE_STATUSES.some(s => s.toLowerCase() === clientA);
-                const isBadB = NON_BILLABLE_STATUSES.some(s => s.toLowerCase() === clientB);
-                if (isBadA && !isBadB) return 1;
-                if (!isBadA && isBadB) return -1;
                 return clientA.localeCompare(clientB);
             });
         }
@@ -416,7 +412,6 @@ const Dashboard = ({
         if (node) observer.current.observe(node);
     }, [loadingData, displayLimit, currentList.length]);
 
-    // --- THEME ---
     const theme = useMemo(() => ({
         inputBg: darkMode ? 'bg-black/20 text-white placeholder-slate-600 border-white/5' : 'bg-transparent text-slate-800 placeholder-slate-400',
         activeBtn: darkMode ? 'bg-[#161B28] text-white shadow-sm border border-white/5' : 'bg-white text-indigo-600 shadow-sm',
@@ -428,12 +423,13 @@ const Dashboard = ({
     const getPlaceholder = () => {
         if (activeTab === 'healthy') return "Buscar Cliente Activo...";
         if (activeTab === 'free') return "Buscar Espacio Libre...";
+        if (activeTab === 'maintenance') return "Buscar Soporte / Caídas...";
         return "Buscar Cuenta en Garantía...";
     };
 
     return (
         <div className="w-full pb-32 space-y-4 animate-in fade-in">
-            {/* ALERTAS SUPERIORES */}
+            {/* ALERTAS */}
             {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     {overdueSales.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencidas', list: overdueSales })} className="flex-1 p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Ban size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Vencidas</span><p className="text-sm font-black">{overdueSales.length}</p></div></div><ChevronRight size={14}/></button>)}
@@ -442,94 +438,49 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* TABS */}
-            <div className="px-1 grid grid-cols-3 gap-2">
-                <button onClick={() => setActiveTab('healthy')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' ? (darkMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-600 text-white shadow-lg') : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Activity size={18} className={`mb-1 ${activeTab === 'healthy' ? 'animate-pulse' : ''}`} /><span className="text-[9px] font-bold uppercase opacity-80">Activos</span><span className="text-xs font-black">{healthySales.length}</span></button>
-                <button onClick={() => setActiveTab('free')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' ? 'bg-emerald-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Box size={18} className={`mb-1 ${activeTab === 'free' ? 'animate-bounce' : ''}`} /><span className="text-[9px] font-bold uppercase opacity-80">Disponibles</span><span className="text-xs font-black">{freeSales.length}</span></button>
-                <button onClick={() => setActiveTab('warranty')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'warranty' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><ShieldAlert size={18} className={`mb-1 ${activeTab === 'warranty' ? 'animate-pulse' : ''}`} /><span className="text-[9px] font-bold uppercase opacity-80">Garantía</span><span className="text-xs font-black">{warrantySales.length}</span></button>
+            {/* TABS CON SOPORTE */}
+            <div className="px-1 grid grid-cols-4 gap-2">
+                <button onClick={() => setActiveTab('healthy')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' ? (darkMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-600 text-white shadow-lg') : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Activity size={18} className={`mb-1 ${activeTab === 'healthy' ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Activos</span><span className="text-xs font-black">{healthySales.length}</span></button>
+                <button onClick={() => setActiveTab('free')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' ? 'bg-emerald-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Box size={18} className={`mb-1 ${activeTab === 'free' ? 'animate-bounce' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Stock</span><span className="text-xs font-black">{freeSales.length}</span></button>
+                <button onClick={() => setActiveTab('warranty')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'warranty' ? 'bg-rose-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><ShieldAlert size={18} className={`mb-1 ${activeTab === 'warranty' ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Garantía</span><span className="text-xs font-black">{warrantySales.length}</span></button>
+                <button onClick={() => setActiveTab('maintenance')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'maintenance' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Wrench size={18} className={`mb-1 ${activeTab === 'maintenance' ? 'animate-spin-slow' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Soporte</span><span className="text-xs font-black">{maintenanceSales.length}</span></button>
             </div>
 
-            {/* FILTROS (STICKY - DISEÑO IOS PREMIUM CON WRAP PARA CELULAR) */}
+            {/* FILTROS (Igual que siempre) */}
             <div className={`sticky top-0 z-40 -mx-4 px-4 py-3 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-b border-white/5' : 'bg-[#F2F2F7]/90 border-b border-slate-200/50'}`}>
                 <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
-                    
-                    {/* 1. BUSCADOR */}
                     <div className="relative group w-full shadow-sm">
-                        <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}>
-                            <Search size={18} weight="bold" />
-                        </div>
-                        <input 
-                            type="text" 
-                            placeholder={getPlaceholder()} 
-                            className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${
-                                darkMode 
-                                ? 'bg-[#0B0F19] text-white placeholder-slate-600 border border-[#1E293B] focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)]' 
-                                : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10'
-                            }`} 
-                            value={filterClient} 
-                            onChange={e => setFilter('filterClient', e.target.value)} 
-                        />
+                        <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}><Search size={18} weight="bold" /></div>
+                        <input type="text" placeholder={getPlaceholder()} className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${darkMode ? 'bg-[#0B0F19] text-white placeholder-slate-600 border border-[#1E293B] focus:border-cyan-400' : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50'}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} />
                     </div>
                     
-                    {/* 2. CHIPS CON WRAP (Solución para calendario en móvil) */}
                     <div className="flex flex-wrap items-center gap-2">
-                        
-                        {/* SERVICIOS */}
                         <div className="relative flex-grow md:flex-grow-0 md:w-auto min-w-[140px]">
-                            <select 
-                                className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${
-                                    filterService !== 'Todos'
-                                    ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-500/20' : 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-500/20')
-                                    : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-white focus:border-cyan-400 focus:shadow-[0_0_10px_rgba(34,211,238,0.2)]' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
-                                }`} 
-                                value={filterService} 
-                                onChange={e => setFilter('filterService', e.target.value)}
-                            >
+                            <select className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${filterService !== 'Todos' ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-indigo-600 text-white border-indigo-600') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-white' : 'bg-white text-slate-700 border-slate-200')}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}>
                                 <option value="Todos">Todos los Servicios</option>
                                 {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                             </select>
                             <Filter size={10} className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${filterService !== 'Todos' ? 'text-white' : 'text-slate-400'}`}/>
                         </div>
 
-                        {/* VENCIDOS (Solo Activos) */}
                         {activeTab === 'healthy' && (
-                            <button 
-                                onClick={() => setFilter('filterStatus', filterStatus === 'Vencidos' ? 'Todos' : 'Vencidos')} 
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${
-                                    filterStatus === 'Vencidos'
-                                    ? 'bg-rose-500 text-white border-rose-500 shadow-rose-500/20'
-                                    : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-200' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')
-                                }`}
-                            >
-                                Vencidos
-                            </button>
+                            <button onClick={() => setFilter('filterStatus', filterStatus === 'Vencidos' ? 'Todos' : 'Vencidos')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${filterStatus === 'Vencidos' ? 'bg-rose-500 text-white border-rose-500' : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-200' : 'bg-white text-slate-700 border-slate-200')}`}>Vencidos</button>
                         )}
 
-                        {/* FECHAS (Cápsula visible) */}
                         <div className={`flex items-center bg-transparent rounded-xl border shadow-sm p-1 gap-1 ${darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-white border-slate-200'}`}>
-                            <div className="w-24">
-                                <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
-                            </div>
+                            <div className="w-24"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div>
                             <ArrowRight size={10} className={darkMode ? 'text-slate-500' : 'text-slate-300'} />
-                            <div className="w-24">
-                                <AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} />
-                            </div>
+                            <div className="w-24"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
                         </div>
 
-                        {/* LIMPIAR */}
                         {(dateFrom || dateTo || filterService !== 'Todos' || filterStatus === 'Vencidos') && (
-                            <button 
-                                onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); setFilter('filterService', 'Todos'); setFilter('filterStatus', 'Todos'); }} 
-                                className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all ml-auto md:ml-0"
-                            >
-                                <X size={14} strokeWidth={3}/>
-                            </button>
+                            <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); setFilter('filterService', 'Todos'); setFilter('filterStatus', 'Todos'); }} className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all ml-auto md:ml-0"><X size={14} strokeWidth={3}/></button>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* HEADER DINERO */}
+            {/* HEADER DINERO (SOLO EN ACTIVOS) */}
             {activeTab === 'healthy' && (
                 <div className="flex items-end justify-between px-2 md:px-4 animate-in fade-in">
                     <div><h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p></div>
@@ -537,13 +488,18 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* LISTA */}
+            {/* LISTA DE TARJETAS */}
             <div className="space-y-3">
-                {visibleSales.length > 0 ? visibleSales.map((sale, i) => (<div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}><SaleCard sale={sale} darkMode={darkMode} handlers={handlers} /></div>)) : (activeTab === 'healthy' && <div className="py-20 text-center opacity-40"><p className="font-bold">Sin resultados</p></div>)}
+                {visibleSales.length > 0 ? visibleSales.map((sale, i) => (<div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}><SaleCard sale={sale} darkMode={darkMode} handlers={handlers} /></div>)) : (
+                    <div className="py-20 text-center opacity-40">
+                        {activeTab === 'maintenance' ? <Wrench size={32} className="mx-auto mb-2 text-slate-500"/> : <p className="font-bold">Sin resultados</p>}
+                        {activeTab === 'maintenance' && <p className="font-bold text-xs">Todo funciona correctamente</p>}
+                    </div>
+                )}
                 {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODAL BULK */}
+            {/* MODALES BULK Y MIGRACIÓN (Sin cambios) */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
@@ -558,151 +514,20 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* MODAL MIGRACIÓN (CON COPIADO DE CREDENCIALES ANTERIORES) */}
             {migrationModal.show && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
-                        
-                        {/* HEADER CON DATOS DE ORIGEN */}
                         <div className="p-6 border-b border-white/5">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3>
-                                    <p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p>
-                                </div>
-                                <button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
-                                    <X size={20} />
-                                </button>
-                            </div>
-
-                            {/* 🔥 BOTÓN PARA COPIAR CREDENCIALES ANTERIORES 🔥 */}
-                            <div className="mb-4 animate-in slide-in-from-top-2">
-                                <button 
-                                    onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)}
-                                    className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${
-                                        darkMode 
-                                        ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/50 text-slate-300 shadow-sm focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.2)]' 
-                                        : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600 focus:border-indigo-500 focus:shadow-[0_0_10px_rgba(99,102,241,0.1)]'
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-2 overflow-hidden">
-                                        <Lock size={14} className="text-indigo-500 shrink-0"/>
-                                        <div className="text-left">
-                                            <p className="text-[9px] font-bold uppercase opacity-50 leading-none mb-1">Cuenta anterior</p>
-                                            <p className="text-[11px] font-bold truncate">{migrationModal.sale?.email}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                                        <span className="text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity uppercase">Copiar Acceso</span>
-                                        <Copy size={16} className="text-indigo-500"/>
-                                    </div>
-                                </button>
-                            </div>
-
-                            {/* TARJETA DE DATOS ACTUALES (ORIGEN) */}
-                            <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
-                                <p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}>
-                                    <User size={12}/> Datos a trasladar:
-                                </p>
-                                <div className="flex gap-4">
-                                    <div className="flex-1">
-                                        <span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>Perfil Actual</span>
-                                        <span className={`text-base font-black truncate block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>
-                                            {migrationModal.sale?.profile || 'N/A'}
-                                        </span>
-                                    </div>
-                                    <div className={`flex-1 border-l pl-4 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}>
-                                        <span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>PIN Actual</span>
-                                        <span className={`text-base font-mono font-black block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>
-                                            {migrationModal.sale?.pin || '---'}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
+                            <div className="flex justify-between items-start mb-4"><div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div><button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><X size={20} /></button></div>
+                            <div className="mb-4 animate-in slide-in-from-top-2"><button onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)} className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/50 text-slate-300 shadow-sm' : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600'}`}><div className="flex items-center gap-2 overflow-hidden"><Lock size={14} className="text-indigo-500 shrink-0"/><div className="text-left"><p className="text-[9px] font-bold uppercase opacity-50 leading-none mb-1">Cuenta anterior</p><p className="text-[11px] font-bold truncate">{migrationModal.sale?.email}</p></div></div><div className="flex items-center gap-2 shrink-0 ml-2"><span className="text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity uppercase">Copiar Acceso</span><Copy size={16} className="text-indigo-500"/></div></button></div>
+                            <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}><p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}><User size={12}/> Datos a trasladar:</p><div className="flex gap-4"><div className="flex-1"><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>Perfil Actual</span><span className={`text-base font-black truncate block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.profile || 'N/A'}</span></div><div className={`flex-1 border-l pl-4 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>PIN Actual</span><span className={`text-base font-mono font-black block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.pin || '---'}</span></div></div></div>
                         </div>
-                        
                         <div className="p-6 space-y-4">
-                            {/* SELECTOR DE ESTADO ORIGEN */}
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">¿Cómo queda la cuenta anterior?</label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    {['Caída', 'Actualizar', 'Dominio', 'LIBRE'].map(status => (
-                                        <button 
-                                            key={status}
-                                            onClick={() => setMigrationSourceStatus(status)}
-                                            className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                                                migrationSourceStatus === status 
-                                                ? (status === 'LIBRE' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-amber-500 text-white border-amber-500')
-                                                : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-400 hover:bg-[#1E293B]' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100')
-                                            }`}
-                                        >
-                                            {status}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
+                            <div><label className="block text-xs font-bold uppercase text-slate-500 mb-2">¿Cómo queda la cuenta anterior?</label><div className="grid grid-cols-4 gap-2">{['Caída', 'Actualizar', 'Dominio', 'LIBRE'].map(status => (<button key={status} onClick={() => setMigrationSourceStatus(status)} className={`py-2 rounded-xl text-xs font-bold border transition-all ${migrationSourceStatus === status ? (status === 'LIBRE' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-amber-500 text-white border-amber-500') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-400 hover:bg-[#1E293B]' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100')}`}>{status}</button>))}</div></div>
                             <div className="h-px bg-white/5"></div>
-
-                            {/* LISTA DE DESTINOS */}
-                            <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Elige el destino (Disponibles):</label>
-                                <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                                    {migrationModal.matches.length > 0 ? migrationModal.matches.map(match => (
-                                        <div 
-                                            key={match.id} 
-                                            className={`w-full p-3 rounded-xl border flex flex-col gap-2 transition-all ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/30' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wide ${darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>
-                                                        {match.profile || 'General'}
-                                                    </span>
-                                                    {match.pin && (
-                                                        <span className={`text-[11px] font-mono font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                                            PIN: <span className={darkMode ? 'text-white' : 'text-slate-900'}>{match.pin}</span>
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                
-                                                <button 
-                                                    onClick={() => executeMigration(match)}
-                                                    className={`flex items-center gap-1 pl-3 pr-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${darkMode ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-emerald-500 text-white hover:bg-emerald-600'} shadow-lg shadow-emerald-500/20`}
-                                                >
-                                                    Elegir <ArrowRight size={12} />
-                                                </button>
-                                            </div>
-
-                                            <div className={`flex items-center justify-between p-2 rounded-lg border ${darkMode ? 'bg-black/40 border-white/5' : 'bg-white border-slate-200'}`}>
-                                                <div className="min-w-0 flex-1 mr-2">
-                                                    <div className={`text-xs font-bold truncate select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{match.email}</div>
-                                                    <div className="text-[10px] font-mono text-slate-500 select-all">{match.pass}</div>
-                                                </div>
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation(); 
-                                                        handlers.copy(e, match.email, match.pass);
-                                                    }} 
-                                                    className={`p-2 rounded-md transition-all active:scale-95 ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-indigo-600'}`}
-                                                    title="Copiar Credenciales"
-                                                >
-                                                    <Copy size={14}/>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )) : (
-                                        <div className="text-center py-8 opacity-50">
-                                            <Box size={32} className="mx-auto mb-2 text-slate-500"/>
-                                            <p className="text-xs font-bold">No hay cuentas libres de este servicio.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <div><label className="block text-xs font-bold uppercase text-slate-500 mb-2">Elige el destino (Disponibles):</label><div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">{migrationModal.matches.length > 0 ? migrationModal.matches.map(match => (<div key={match.id} className={`w-full p-3 rounded-xl border flex flex-col gap-2 transition-all ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/30' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className={`px-2 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wide ${darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>{match.profile || 'General'}</span>{match.pin && (<span className={`text-[11px] font-mono font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>PIN: <span className={darkMode ? 'text-white' : 'text-slate-900'}>{match.pin}</span></span>)}</div><button onClick={() => executeMigration(match)} className={`flex items-center gap-1 pl-3 pr-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${darkMode ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-emerald-500 text-white hover:bg-emerald-600'} shadow-lg shadow-emerald-500/20`}>Elegir <ArrowRight size={12} /></button></div><div className={`flex items-center justify-between p-2 rounded-lg border ${darkMode ? 'bg-black/40 border-white/5' : 'bg-white border-slate-200'}`}><div className="min-w-0 flex-1 mr-2"><div className={`text-xs font-bold truncate select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{match.email}</div><div className="text-[10px] font-mono text-slate-500 select-all">{match.pass}</div></div><button onClick={(e) => { e.stopPropagation(); handlers.copy(e, match.email, match.pass); }} className={`p-2 rounded-md transition-all active:scale-95 ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-indigo-600'}`} title="Copiar Credenciales"><Copy size={14}/></button></div></div>)) : (<div className="text-center py-8 opacity-50"><Box size={32} className="mx-auto mb-2 text-slate-500"/><p className="text-xs font-bold">No hay cuentas libres de este servicio.</p></div>)}</div></div>
                         </div>
-
-                        <div className="p-4 bg-black/20 text-right">
-                            <button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`px-6 py-2 rounded-xl font-bold text-sm ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`}>Cancelar</button>
-                        </div>
+                        <div className="p-4 bg-black/20 text-right"><button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`px-6 py-2 rounded-xl font-bold text-sm ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`}>Cancelar</button></div>
                     </div>
                 </div>
             )}

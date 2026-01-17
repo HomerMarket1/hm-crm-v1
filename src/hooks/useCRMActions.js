@@ -4,11 +4,16 @@ import { db } from '../firebase/config';
 // Helper para limpiar nombres básicos
 const findBaseServiceName = (serviceName) => {
     if (!serviceName) return '';
-    return serviceName.split(' ')[0]; 
+    return serviceName.replace(/\s(Cuenta|Completa|Paquete|Perfil|Perfiles|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
 };
 
-// Palabras clave de estados de mantenimiento
-const MAINTENANCE_STATUSES = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'garantía', 'garantia', 'problemas', 'admin'];
+// LISTA DE ESTADOS SEGUROS (MANTENIMIENTO/STOCK)
+// ⚠️ NOTA: 'Admin' ya NO está aquí, para permitir venderle perfiles sueltos.
+const SAFE_STATUSES = [
+    'libre', 'espacio libre', 'disponible', '', 
+    'caída', 'caida', 'actualizar', 'dominio', 'reposicion', 
+    'garantía', 'garantia', 'problemas', 'stock', 'seguimiento'
+];
 
 export const useCRMActions = (user, setNotification) => {
     if (!user) return {};
@@ -16,7 +21,7 @@ export const useCRMActions = (user, setNotification) => {
     const userPath = `users/${user.uid}`;
     const notify = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
 
-    // --- 1. GESTOR DE CONFIRMACIONES ---
+    // --- 1. GESTOR DE CONFIRMACIONES (LIBERAR / ELIMINAR) ---
     const executeConfirmAction = async (modalData, currentSales, currentCatalog) => {
         if (!user || !modalData) return false;
         try {
@@ -31,32 +36,30 @@ export const useCRMActions = (user, setNotification) => {
                 const saleToFree = currentSales.find(i => i.id === modalData.id);
                 if (saleToFree) {
                     const isPackage = saleToFree.service.toLowerCase().includes('paquete');
-                    const isAccount = (saleToFree.type === 'Cuenta' || saleToFree.service.toLowerCase().includes('cuenta completa')) && !isPackage;
+                    const typeLower = (saleToFree.type || '').toLowerCase();
+                    const serviceLower = (saleToFree.service || '').toLowerCase();
+                    const isAccount = (typeLower.includes('cuenta') || serviceLower.includes('cuenta completa') || serviceLower.includes('completa')) && !isPackage;
 
                     let finalServiceName = saleToFree.service;
                     let targetType = 'Perfil';
                     let targetProfile = ''; 
-
+                    
                     if (isAccount) {
+                        // Limpieza de nombre y mantenimiento de unidad
+                        const baseName = findBaseServiceName(saleToFree.service);
+                        finalServiceName = `${baseName} Cuenta Completa`;
                         targetType = 'Cuenta';
-                        targetProfile = 'Cuenta Completa'; 
-                        finalServiceName = saleToFree.service; 
+                        targetProfile = ''; // Perfil vacío para estética limpia
                     } else {
-                        targetType = 'Perfil';
-                        targetProfile = ''; 
                         const cleanName = saleToFree.service.replace(/paquete\s*\d*/gi, '').trim();
                         const originalService = currentCatalog.find(c => c.name === cleanName && c.type === 'Perfil');
-                        if (originalService) {
-                            finalServiceName = originalService.name;
-                        } else {
-                            const baseName = findBaseServiceName(saleToFree.service);
-                            const fuzzyService = currentCatalog.find(c => c.name.includes(baseName) && c.type === 'Perfil');
-                            finalServiceName = fuzzyService ? fuzzyService.name : baseName;
-                        }
+                        finalServiceName = originalService ? originalService.name : findBaseServiceName(saleToFree.service);
                     }
 
                     batch.update(doc(db, userPath, 'sales', modalData.id), {
-                        client: 'LIBRE', phone: '', endDate: '', cost: 0, service: finalServiceName, updatedAt: serverTimestamp(), type: targetType, profile: targetProfile, pin: ''
+                        client: 'LIBRE', phone: '', endDate: '', cost: 0, 
+                        service: finalServiceName, updatedAt: serverTimestamp(), 
+                        type: targetType, profile: targetProfile, pin: ''
                     });
                     operationCount++;
                 }
@@ -75,76 +78,115 @@ export const useCRMActions = (user, setNotification) => {
                 return true;
             }
             return false;
-        } catch (error) {
-            console.error("Error crítico:", error);
-            notify('Error al ejecutar la acción.', 'error');
-            return false;
-        }
+        } catch (error) { console.error(error); notify('Error al ejecutar la acción.', 'error'); return false; }
     };
 
     // --- 2. GENERAR STOCK ---
     const generateStock = async (form) => {
         try {
             const batch = writeBatch(db);
-            const isAccountType = form.type === 'Cuenta' || form.service.toLowerCase().includes('cuenta completa');
-            const loops = isAccountType ? 1 : (Number(form.slots) || 1);
+            const typeLower = (form.type || '').toLowerCase();
+            const serviceLower = (form.service || '').toLowerCase();
+            const isAccountStrategy = typeLower.includes('cuenta') || typeLower.includes('completa') || serviceLower.includes('cuenta completa');
             
-            for(let i=0; i < loops; i++) {
+            if (isAccountStrategy) {
+                const baseName = findBaseServiceName(form.service);
+                const cleanServiceName = `${baseName} Cuenta Completa`;
                 const newDocRef = doc(collection(db, userPath, 'sales'));
-                const profileName = isAccountType ? 'Cuenta Completa' : `Perfil ${i+1}`;
-
                 batch.set(newDocRef, {
-                    client: 'LIBRE', service: form.service, email: form.email, pass: form.pass, cost: 0,
-                    type: isAccountType ? 'Cuenta' : (form.type || 'Perfil'), createdAt: serverTimestamp(), profile: profileName, pin: ''
+                    client: 'LIBRE', service: cleanServiceName, email: form.email, pass: form.pass, cost: 0,
+                    type: 'Cuenta', createdAt: serverTimestamp(), profile: '', pin: ''
                 });
+                notify(`Cuenta Madre agregada.`, 'success');
+            } else {
+                const loops = Number(form.slots) || 1;
+                for(let i=0; i < loops; i++) {
+                    const newDocRef = doc(collection(db, userPath, 'sales'));
+                    batch.set(newDocRef, {
+                        client: 'LIBRE', service: form.service, email: form.email, pass: form.pass, cost: 0,
+                        type: form.type || 'Perfil', createdAt: serverTimestamp(), profile: `Perfil ${i+1}`, pin: ''
+                    });
+                }
+                notify(`Generados ${loops} perfiles.`, 'success');
             }
             await batch.commit();
-            notify(isAccountType ? `Cuenta agregada.` : `Generados ${loops} perfiles.`, 'success');
             return true;
-        } catch(e) { return false; }
+        } catch(e) { console.error(e); notify('Error al agregar stock.', 'error'); return false; }
     };
 
-    // --- 3. PROCESAR VENTA ---
+    // --- 3. PROCESAR VENTA (LÓGICA BLINDADA V3) ---
     const processSale = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
             if (!originalSale?.id) throw new Error("ID no encontrado");
             const batch = writeBatch(db);
             const totalCost = Number(formData.cost) || 0;
-            
             const cleanFormData = { ...formData };
             Object.keys(cleanFormData).forEach(key => cleanFormData[key] === undefined && delete cleanFormData[key]);
 
+            // 1. Detección del Tipo DESTINO
             const targetCatalogItem = catalog.find(c => c.name === formData.service);
-            const targetType = targetCatalogItem?.type || 'Perfil';
-            const originalType = originalSale.type || 'Perfil';
-
-            // Protección de edición de mantenimiento
-            const isMaintenanceStatus = MAINTENANCE_STATUSES.includes(formData.client.toLowerCase().trim());
-            const isSameService = formData.service === originalSale.service;
+            let targetType = targetCatalogItem?.type || 'Perfil';
             
-            if (formData.id && originalType !== 'Cuenta' && (isMaintenanceStatus || isSameService)) {
+            // Forzamos 'Cuenta' solo si el nombre lo dice explícitamente
+            if (formData.service.toLowerCase().includes('cuenta completa') || formData.service.toLowerCase().includes('completa')) {
+                targetType = 'Cuenta';
+            }
+
+            // 2. Detección del Tipo ORIGEN
+            const originalTypeRaw = (originalSale.type || 'Perfil').toLowerCase();
+            const isOriginalAccount = originalTypeRaw.includes('cuenta') || (originalSale.service || '').toLowerCase().includes('cuenta completa'); 
+            const originalType = isOriginalAccount ? 'Cuenta' : (originalTypeRaw.includes('paquete') ? 'Paquete' : 'Perfil');
+
+            // 3. Chequeo de Estado Seguro
+            const clientLower = (formData.client || '').toLowerCase().trim();
+            const isSafeStatus = SAFE_STATUSES.includes(clientLower);
+
+            // 🛑 GUARDIA DE SEGURIDAD (SOLO si vamos a Mantenimiento Y el destino sigue siendo Cuenta)
+            // Si cambias el servicio a "Perfil" manualmente, te dejamos fragmentar incluso en Mantenimiento.
+            const isReturningAccountToStock = 
+                isOriginalAccount && 
+                isSafeStatus && 
+                targetType === 'Cuenta';
+
+            if (isReturningAccountToStock) {
+                // Mantenimiento de Unidad
+                const baseName = findBaseServiceName(formData.service);
+                const cleanName = `${baseName} Cuenta Completa`;
+                
                 batch.update(doc(db, userPath, 'sales', originalSale.id), { 
-                    ...cleanFormData, 
-                    cost: totalCost, 
-                    updatedAt: serverTimestamp() 
+                    ...cleanFormData, service: cleanName, cost: 0, type: 'Cuenta', profile: '', updatedAt: serverTimestamp() 
                 });
                 await batch.commit();
-                notify('Cambios guardados.', 'success');
+                notify('Cuenta actualizada (Unidad Mantenida).', 'success');
                 return true;
             }
 
-            const siblings = sales.filter(s => s.email === originalSale.email && s.pass === originalSale.pass && s.id !== originalSale.id);
+            // 4. BÚSQUEDA DE HERMANOS (Para Unificar o Fragmentar)
+            const siblings = sales.filter(s => 
+                s.email === originalSale.email && 
+                s.id !== originalSale.id &&
+                (s.pass === originalSale.pass || !s.pass || !originalSale.pass)
+            );
 
-            // A. UNIFICACIÓN
+            // A. UNIFICACIÓN (Si el destino es Cuenta Completa -> Borramos todo lo demás)
+            // Esto cubre "Asignar Cuenta Completa a Admin"
             if (targetType === 'Cuenta') {
                 siblings.forEach(sib => batch.delete(doc(db, userPath, 'sales', sib.id)));
-                batch.update(doc(db, userPath, 'sales', originalSale.id), { ...cleanFormData, type: 'Cuenta', profile: 'General', pin: '', cost: totalCost, updatedAt: serverTimestamp() });
+                
+                const baseName = findBaseServiceName(formData.service);
+                const cleanName = `${baseName} Cuenta Completa`;
+
+                batch.update(doc(db, userPath, 'sales', originalSale.id), { 
+                    ...cleanFormData, service: cleanName, type: 'Cuenta', profile: '', pin: '', cost: totalCost, updatedAt: serverTimestamp() 
+                });
                 await batch.commit(); 
-                notify('Cuenta Unificada.', 'success'); 
+                notify('Cuenta Unificada correctamente.', 'success'); 
                 return true;
             }
 
-            // B. FRAGMENTACIÓN / VENTA NUEVA
+            // B. FRAGMENTACIÓN / VENTA
+            // Si llegamos aquí, NO es Cuenta Completa, así que es Perfil o Paquete.
+            // Admin cae aquí si eliges "Netflix" (Perfil) como servicio.
             const isComplexOperation = targetType === 'Paquete' || originalType === 'Cuenta' || profilesToSell > 1;
 
             if (isComplexOperation) {
@@ -156,24 +198,17 @@ export const useCRMActions = (user, setNotification) => {
                 const unitCost = totalCost / (slotsToOccupy > 0 ? slotsToOccupy : 1);
 
                 if (originalType === 'Cuenta') {
+                    // FRAGMENTAR CUENTA MADRE
                     siblings.forEach(sib => batch.delete(doc(db, userPath, 'sales', sib.id)));
                     
-                    let realBaseName = formData.service
-                        .replace(/paquete\s*\d*/gi, '')
-                        .replace(/cuenta\s*completa/gi, '')
-                        .trim();
-
+                    let realBaseName = findBaseServiceName(formData.service);
                     const isNetflix = realBaseName.toLowerCase().includes('netflix');
                     let defaultCapacity = isNetflix ? 5 : 4;
                     
-                    const accountCatalogItem = catalog.find(c => c.name === `${realBaseName} Cuenta Completa` || (c.name.includes(realBaseName) && c.type === 'Cuenta'));
+                    // Intentamos buscar capacidad en catálogo
+                    const accountCatalogItem = catalog.find(c => c.name === `${realBaseName} Cuenta Completa`);
                     if (accountCatalogItem && accountCatalogItem.defaultSlots) {
                         defaultCapacity = Number(accountCatalogItem.defaultSlots);
-                    } else {
-                        const baseCatalogItem = catalog.find(c => c.name === realBaseName && c.type === 'Perfil');
-                        if (baseCatalogItem?.defaultSlots && Number(baseCatalogItem.defaultSlots) > 1) {
-                            defaultCapacity = Number(baseCatalogItem.defaultSlots);
-                        }
                     }
 
                     const accountCapacity = Math.max(siblings.length + 1, defaultCapacity);
@@ -184,9 +219,7 @@ export const useCRMActions = (user, setNotification) => {
                         const pData = bulkProfiles[i] || {}; 
                         let slotData = {};
                         if (isSold) {
-                            const profileName = (profilesToSell === 1) 
-                                ? (pData.profile || cleanFormData.profile || `Perfil ${i+1}`)
-                                : (pData.profile || `Perfil ${i+1}`);
+                            const profileName = (profilesToSell === 1) ? (pData.profile || cleanFormData.profile || `Perfil ${i+1}`) : (pData.profile || `Perfil ${i+1}`);
                             const pinCode = (pData.pin) ? pData.pin : cleanFormData.pin;
                             slotData = { ...cleanFormData, cost: unitCost, profile: profileName, pin: pinCode || '', type: 'Perfil' };
                         } else {
@@ -196,10 +229,13 @@ export const useCRMActions = (user, setNotification) => {
                         else { const newDoc = doc(collection(db, userPath, 'sales')); batch.set(newDoc, { ...slotData, createdAt: new Date(Date.now() + i*50) }); }
                     }
                 } else {
-                    const availableSiblings = siblings.filter(s => s.client === 'LIBRE' || s.client === '' || s.client === 'Espacio Libre');
+                    // VENTA MULTIPLE DESDE PERFILES SUELTOS
+                    const availableSiblings = siblings.filter(s => SAFE_STATUSES.includes((s.client || '').toLowerCase()));
                     if (1 + availableSiblings.length < slotsToOccupy) { notify(`No hay suficientes slots libres.`, 'error'); return false; }
+                    
                     const pData0 = bulkProfiles[0] || {};
                     batch.update(doc(db, userPath, 'sales', originalSale.id), { ...cleanFormData, cost: unitCost, profile: pData0.profile || cleanFormData.profile, pin: pData0.pin || cleanFormData.pin || '', updatedAt: serverTimestamp() });
+                    
                     for (let i = 1; i < slotsToOccupy; i++) {
                         const targetDoc = availableSiblings[i-1];
                         const pData = bulkProfiles[i] || {};
@@ -209,31 +245,23 @@ export const useCRMActions = (user, setNotification) => {
                 await batch.commit(); notify(`Venta registrada.`, 'success'); return true;
             }
 
+            // Actualización simple
             batch.update(doc(db, userPath, 'sales', originalSale.id), { ...cleanFormData, cost: totalCost, updatedAt: serverTimestamp() });
             await batch.commit(); notify('Guardado correctamente.', 'success'); return true;
         } catch (error) { console.error("Error:", error); notify('Error al guardar.', 'error'); return false; }
     };
 
-    // --- 4. MIGRAR SERVICIO ---
     const migrateService = async (sourceInput, targetInput, oldSlotStatus = 'LIBRE') => {
         try {
             const sourceId = (typeof sourceInput === 'object' && sourceInput !== null) ? sourceInput.id : sourceInput;
             const targetId = (typeof targetInput === 'object' && targetInput !== null) ? targetInput.id : targetInput;
-
-            if (!sourceId || !targetId || typeof sourceId !== 'string') {
-                notify('IDs de migración inválidos.', 'error');
-                return false;
-            }
-
+            if (!sourceId || !targetId || typeof sourceId !== 'string') { notify('IDs inválidos.', 'error'); return false; }
             const sourceRef = doc(db, userPath, 'sales', sourceId);
             const targetRef = doc(db, userPath, 'sales', targetId);
-            const sourceSnap = await getDoc(sourceRef);
-            const targetSnap = await getDoc(targetRef);
-
-            if (!sourceSnap.exists() || !targetSnap.exists()) { notify('Datos no encontrados.', 'error'); return false; }
-
-            const sourceData = sourceSnap.data();
             const batch = writeBatch(db);
+            const sourceSnap = await getDoc(sourceRef);
+            if (!sourceSnap.exists()) return;
+            const sourceData = sourceSnap.data();
 
             batch.update(targetRef, {
                 client: sourceData.client, phone: sourceData.phone || '', endDate: sourceData.endDate || '', cost: sourceData.cost || 0,
@@ -246,42 +274,24 @@ export const useCRMActions = (user, setNotification) => {
             } else {
                 newSourceData = { ...newSourceData, phone: '', endDate: '', cost: 0 };
             }
-
             batch.update(sourceRef, newSourceData);
-            await batch.commit();
-            notify('Migración completada.', 'success');
-            return true;
+            await batch.commit(); notify('Migración completada.', 'success'); return true;
         } catch (error) { console.error(error); notify('Error al migrar.', 'error'); return false; }
     };
 
-    // 🔥 5. RENOVACIÓN RÁPIDA (CORREGIDA): Mantiene el mismo día, solo avanza el mes
     const quickRenew = async (id, date) => {
         if(!id || !date) return;
         try {
             const [y, m, d] = date.split('-').map(Number);
             const currentEndDate = new Date(y, m - 1, d);
-            
-            // Avanzamos un mes exacto
             currentEndDate.setMonth(currentEndDate.getMonth() + 1);
-            
-            // Re-formatear a YYYY-MM-DD
             const nextYear = currentEndDate.getFullYear();
             const nextMonth = String(currentEndDate.getMonth() + 1).padStart(2, '0');
             const nextDay = String(currentEndDate.getDate()).padStart(2, '0');
             const finalDate = `${nextYear}-${nextMonth}-${nextDay}`;
-
-            await updateDoc(doc(db, userPath, 'sales', id), { 
-                endDate: finalDate,
-                updatedAt: serverTimestamp()
-            });
-            
-            notify('Renovado: Mismo día, próximo mes.', 'success');
-            return true;
-        } catch(e) { 
-            console.error("Error renovando:", e);
-            notify('Error al renovar.', 'error');
-            return false; 
-        }
+            await updateDoc(doc(db, userPath, 'sales', id), { endDate: finalDate, updatedAt: serverTimestamp() });
+            notify('Renovado: Mismo día, próximo mes.', 'success'); return true;
+        } catch(e) { console.error("Error renovando:", e); notify('Error al renovar.', 'error'); return false; }
     };
 
     const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio creado.'); return true; } catch(e){ return false; } };
