@@ -464,10 +464,32 @@ const Dashboard = ({
                             <button onClick={() => setFilter('filterStatus', filterStatus === 'Vencidos' ? 'Todos' : 'Vencidos')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${filterStatus === 'Vencidos' ? 'bg-rose-500 text-white border-rose-500' : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-200' : 'bg-white text-slate-700 border-slate-200')}`}>Vencidos</button>
                         )}
 
-                        <div className={`flex items-center bg-transparent rounded-xl border shadow-sm p-1 gap-1 ${darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-white border-slate-200'}`}>
-                            <div className="w-24"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div>
-                            <ArrowRight size={10} className={darkMode ? 'text-slate-500' : 'text-slate-300'} />
-                            <div className="w-24"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
+                        {/* --- SECCIÓN FILTROS DE FECHA (OPTIMIZACIÓN FINAL) --- */}
+                        <div className={`flex flex-1 items-center justify-between min-w-[210px] h-[46px] px-2 rounded-2xl border transition-all shadow-sm ${darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-white border-slate-200'}`}>
+                            {/* Contenedor Desde */}
+                            <div className="flex-1">
+                                <AppleCalendar 
+                                    value={dateFrom} 
+                                    onChange={(val) => setFilter('dateFrom', val)} 
+                                    label="Desde" 
+                                    darkMode={darkMode} 
+                                    ghost={true}
+                                />
+                            </div>
+                            
+                            {/* Divisor Minimalista */}
+                            <div className={`w-px h-4 mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+                            
+                            {/* Contenedor Hasta */}
+                            <div className="flex-1">
+                                <AppleCalendar 
+                                    value={dateTo} 
+                                    onChange={(val) => setFilter('dateTo', val)} 
+                                    label="Hasta" 
+                                    darkMode={darkMode} 
+                                    ghost={true}
+                                />
+                            </div>
                         </div>
 
                         {(dateFrom || dateTo || filterService !== 'Todos' || filterStatus === 'Vencidos') && (
