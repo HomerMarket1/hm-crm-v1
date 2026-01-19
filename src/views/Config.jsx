@@ -2,13 +2,13 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { 
     Settings, Trash2, Package, Users, Search, Edit2, 
-    Database, UploadCloud, Download, Save, Archive, X 
+    Database, UploadCloud, Download, Save, Archive, X, DollarSign 
 } from 'lucide-react';
 import { useCRMActions } from '../hooks/useCRMActions'; 
 import { useDataSync } from '../hooks/useDataSync';
 
-// Imports necesarios para Marca Blanca
-import { doc, setDoc } from 'firebase/firestore'; 
+// Imports necesarios para Marca Blanca y Edición
+import { doc, setDoc, updateDoc } from 'firebase/firestore'; 
 import { db } from '../firebase/config';
 
 const Config = ({ 
@@ -25,6 +25,9 @@ const Config = ({
     const [activeTab, setActiveTab] = useState('services'); 
     const [clientSearch, setClientSearch] = useState('');
     
+    // Estados Edición de Precio
+    const [editingItem, setEditingItem] = useState(null); // { id, name, cost, type... }
+
     // Estados Migración
     const [migrationPreview, setMigrationPreview] = useState(null);
     const [isMigrating, setIsMigrating] = useState(false);
@@ -51,6 +54,29 @@ const Config = ({
         sectionTitle: darkMode ? 'text-white' : 'text-slate-900',
         tabActive: darkMode ? 'bg-[#161B28] text-indigo-400 shadow-sm border border-white/5' : 'bg-slate-800 text-white shadow-lg',
         tabInactive: darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600',
+        modal: darkMode ? 'bg-[#0B0F19] border-white/10 shadow-2xl' : 'bg-white border-slate-200 shadow-2xl',
+    };
+
+    // --- LÓGICA EDICIÓN PRECIO ---
+    const handleEditClick = (item) => {
+        setEditingItem({ ...item }); // Copia para editar sin afectar la lista visualmente aun
+    };
+
+    const handleUpdatePrice = async (e) => {
+        e.preventDefault();
+        if (!editingItem || !user) return;
+
+        try {
+            const docRef = doc(db, `users/${user.uid}/catalog`, editingItem.id);
+            await updateDoc(docRef, {
+                cost: Number(editingItem.cost)
+            });
+            setNotification({ show: true, message: 'Precio actualizado.', type: 'success' });
+            setEditingItem(null); // Cerrar modal
+        } catch (error) {
+            console.error(error);
+            setNotification({ show: true, message: 'Error al actualizar.', type: 'error' });
+        }
     };
 
     // --- LÓGICA MARCA BLANCA ---
@@ -137,6 +163,42 @@ const Config = ({
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+            
+            {/* --- MODAL DE EDICIÓN DE PRECIO --- */}
+            {editingItem && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className={`w-full max-w-sm rounded-[2rem] p-6 border shadow-2xl transform transition-all scale-100 ${theme.modal}`}>
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className={`text-lg font-black ${theme.text}`}>Editar Precio</h3>
+                                <p className={`text-xs font-bold uppercase tracking-wider text-indigo-500`}>{editingItem.name}</p>
+                            </div>
+                            <button onClick={() => setEditingItem(null)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400"><X size={20}/></button>
+                        </div>
+                        
+                        <form onSubmit={handleUpdatePrice} className="space-y-4">
+                            <div>
+                                <label className={`text-[10px] font-bold uppercase ml-1 ${theme.subtext}`}>Nuevo Costo</label>
+                                <div className="relative group">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500" size={16}/>
+                                    <input 
+                                        type="number" 
+                                        required 
+                                        autoFocus
+                                        className={theme.input + " w-full pl-10 pr-4 py-3 rounded-xl font-bold text-lg outline-none border"} 
+                                        value={editingItem.cost} 
+                                        onChange={e => setEditingItem({...editingItem, cost: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                            <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">
+                                Guardar Cambios
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* TABS HEADER */}
             <div className={`p-1 rounded-2xl flex gap-1 w-full max-w-xl mx-auto mb-8 border ${darkMode ? 'bg-[#0B0F19] border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
                 {['services', 'clients', 'migration'].map((tab) => (
@@ -193,7 +255,13 @@ const Config = ({
                                     {individualServices.map((item) => (
                                         <div key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${theme.itemBg}`}>
                                             <div className="flex items-center gap-3"><div className="w-1 bg-indigo-500 h-8 rounded-full"></div><div><p className={`font-bold text-sm ${theme.text}`}>{item.name}</p><p className={`text-[10px] font-bold ${theme.subtext}`}>{item.type} • {item.defaultSlots} cupos</p></div></div>
-                                            <div className="flex items-center gap-3"><span className={`font-black text-sm ${theme.text}`}>${item.cost}</span><button onClick={() => triggerDeleteService(item.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500"><Trash2 size={14}/></button></div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-black text-sm mr-2 ${theme.text}`}>${item.cost}</span>
+                                                {/* BOTÓN EDITAR */}
+                                                <button onClick={() => handleEditClick(item)} className="p-1.5 rounded-lg hover:bg-indigo-500/10 text-indigo-500 transition-colors"><Edit2 size={14}/></button>
+                                                {/* BOTÓN ELIMINAR */}
+                                                <button onClick={() => triggerDeleteService(item.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-colors"><Trash2 size={14}/></button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -235,7 +303,13 @@ const Config = ({
                                     {packageServices.map((item) => (
                                         <div key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${theme.itemBg}`}>
                                             <div className="flex items-center gap-3"><div className="w-1 bg-purple-500 h-8 rounded-full"></div><div><p className={`font-bold text-sm ${theme.text}`}>{item.name}</p><p className={`text-[10px] font-bold ${theme.subtext}`}>Paquete de {item.defaultSlots} perfiles</p></div></div>
-                                            <div className="flex items-center gap-3"><span className={`font-black text-sm ${theme.text}`}>${item.cost}</span><button onClick={() => triggerDeleteService(item.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500"><Trash2 size={14}/></button></div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-black text-sm mr-2 ${theme.text}`}>${item.cost}</span>
+                                                {/* BOTÓN EDITAR */}
+                                                <button onClick={() => handleEditClick(item)} className="p-1.5 rounded-lg hover:bg-indigo-500/10 text-indigo-500 transition-colors"><Edit2 size={14}/></button>
+                                                {/* BOTÓN ELIMINAR */}
+                                                <button onClick={() => triggerDeleteService(item.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-colors"><Trash2 size={14}/></button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

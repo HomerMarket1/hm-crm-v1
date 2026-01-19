@@ -37,23 +37,51 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         email: '', pass: '', service: '', slots: 5, type: 'Perfil' 
     });
 
-    const getBaseName = (name) => {
-        if (!name) return 'Sin Servicio';
-        return name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
-    };
+    // ✅ DETECTOR DE PLATAFORMA (Lógica Especial Disney)
+    const getBaseName = useCallback((serviceName) => {
+        if (!serviceName) return 'Sin Servicio';
+        const lower = serviceName.toLowerCase();
+        
+        // --- REGLA ESPECIAL DISNEY (Separación Solicitada) ---
+        if (lower.includes('disney')) {
+            if (lower.includes('vivo')) return 'Disney+ En Vivo';
+            // Todo lo que no sea "En Vivo" se agrupa como Básico
+            // (Esto agrupa "Disney+ Básico", "Disney+ Basico", "Disney+ Standard", etc.)
+            return 'Disney+ Básico';
+        }
 
-    // 🧠 FILTRO INTELIGENTE PARA EL DROPDOWN DEL MODAL
+        // Resto de plataformas (Agrupación Estándar)
+        if (lower.includes('netflix')) return 'Netflix';
+        if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
+        if (lower.includes('max') || lower.includes('hbo')) return 'Max';
+        if (lower.includes('paramount')) return 'Paramount+';
+        if (lower.includes('vix')) return 'Vix';
+        if (lower.includes('plex')) return 'Plex';
+        if (lower.includes('iptv') || lower.includes('magis')) return 'IPTV / Magis';
+        if (lower.includes('crunchyroll')) return 'Crunchyroll';
+        if (lower.includes('spotify')) return 'Spotify';
+        if (lower.includes('youtube')) return 'YouTube';
+        if (lower.includes('apple')) return 'Apple TV';
+        
+        // Fallback: Limpieza genérica
+        return serviceName.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
+    }, []);
+
+    // 🧠 OPCIONES DEL FILTRO
+    const filterOptions = useMemo(() => {
+        const fromCatalog = safeCatalog.map(s => getBaseName(s.name));
+        const fromSales = safeSales.map(s => getBaseName(s.service));
+        return [...new Set([...fromCatalog, ...fromSales])].sort();
+    }, [safeCatalog, safeSales, getBaseName]);
+
+    // 🧠 DROPDOWN PARA NUEVO STOCK
     const availableServicesForDropdown = useMemo(() => {
         if (newAccData.type === 'Cuenta') {
             const uniqueBases = new Set();
             safeCatalog.forEach(item => {
                 const isPackage = item.name.toLowerCase().includes('paquete');
                 const isProfileSpecific = item.type === 'Perfil' && item.name.includes('Perfil');
-                
-                if (!isPackage && !isProfileSpecific) {
-                    const base = getBaseName(item.name);
-                    uniqueBases.add(base);
-                }
+                if (!isPackage && !isProfileSpecific) uniqueBases.add(getBaseName(item.name));
             });
             return Array.from(uniqueBases).sort();
         } else {
@@ -62,9 +90,9 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                 .filter(name => !name.toLowerCase().includes('cuenta completa') && !name.toLowerCase().includes('completa'))
                 .sort();
         }
-    }, [safeCatalog, newAccData.type]);
+    }, [safeCatalog, newAccData.type, getBaseName]);
 
-    // Auto-llenado de slots al seleccionar servicio
+    // Auto-llenado de slots
     useEffect(() => {
         if (newAccData.service && safeCatalog.length > 0) {
             const serviceMatch = safeCatalog.find(s => s.name === newAccData.service || getBaseName(s.name) === newAccData.service);
@@ -72,28 +100,32 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                 setNewAccData(prev => ({ ...prev, slots: serviceMatch.defaultSlots }));
             }
         }
-    }, [newAccData.service, safeCatalog]);
+    }, [newAccData.service, safeCatalog, getBaseName]);
 
     useEffect(() => { setDisplayLimit(20); }, [searchTerm, selectedService, selectedStatus, hideProblems]);
 
-    // 🧠 Agrupación Inteligente con LLAVE COMPUESTA (Email + Servicio)
+    // ========================================================================
+    // 🧠 AGRUPACIÓN INTELIGENTE (Llave: Email + Nombre Base)
+    // ========================================================================
     const groupedAccounts = useMemo(() => {
         if (safeSales.length === 0) return [];
         const groups = {};
         
         safeSales.forEach(sale => {
             const email = (sale.email || 'Sin Email').trim();
-            const serviceName = sale.service || 'Sin Servicio';
             
-            // ✅ LA CLAVE ÚNICA: Combina correo y servicio para evitar sobreescritura
-            const groupKey = `${email.toLowerCase()}_${serviceName.toLowerCase()}`;
+            // Usamos el detector especial que ahora separa Disney Básico de En Vivo
+            const baseService = getBaseName(sale.service);
+            
+            // La llave usa este nombre base diferenciado
+            const groupKey = `${email.toLowerCase()}_${baseService.toLowerCase()}`;
             
             if (!groups[groupKey]) {
                 groups[groupKey] = { 
                     groupKey,
                     email, 
                     pass: sale.pass || '', 
-                    service: serviceName, 
+                    service: baseService, // La tarjeta mostrará "Disney+ En Vivo" o "Disney+ Básico"
                     profiles: [], 
                     freeCount: 0, 
                     totalCount: 0, 
@@ -110,20 +142,22 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             groups[groupKey].totalCount++;
             
             if (PROBLEM_STATUSES.includes(sale.client)) groups[groupKey].status = sale.client;
-            
             if (['LIBRE', 'Espacio Libre', 'disponible'].includes(sale.client)) groups[groupKey].freeCount++;
         });
 
         return Object.values(groups).sort((a, b) => a.email.localeCompare(b.email));
-    }, [safeSales]);
+    }, [safeSales, getBaseName]);
 
+    // 🧠 FILTRADO FINAL
     const filteredAccounts = useMemo(() => {
         return groupedAccounts.filter(acc => {
             const matchesSearch = acc.email.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                  acc.service.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesService = selectedService === 'Todos' || getBaseName(acc.service) === selectedService;
+            
+            const matchesService = selectedService === 'Todos' || acc.service === selectedService;
             const matchesStatus = selectedStatus === 'Todos' || acc.status === selectedStatus;
             const isHiddenByEye = hideProblems && PROBLEM_STATUSES.includes(acc.status);
+            
             return matchesSearch && matchesService && matchesStatus && !isHiddenByEye;
         });
     }, [groupedAccounts, searchTerm, selectedService, selectedStatus, hideProblems]);
@@ -217,13 +251,21 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         if (!editingPass.value) return;
         try {
             const batch = writeBatch(db);
-            // ✅ Filtro por Email + Servicio para actualizar solo esta cuenta específica
             const q = query(collection(db, `users/${user.uid}/sales`), 
-                where("email", "==", acc.email),
-                where("service", "==", acc.service)
+                where("email", "==", acc.email)
             );
             const snap = await getDocs(q);
-            snap.forEach(d => { batch.update(d.ref, { pass: editingPass.value, updatedAt: serverTimestamp() }); });
+            
+            // Filtro en memoria para actualizar SOLO la variante correcta (Básico vs En Vivo)
+            const baseTarget = getBaseName(acc.service);
+            
+            snap.forEach(d => { 
+                const data = d.data();
+                if (getBaseName(data.service) === baseTarget) {
+                    batch.update(d.ref, { pass: editingPass.value, updatedAt: serverTimestamp() });
+                }
+            });
+            
             await batch.commit();
             setEditingPass({ email: null, value: '', groupKey: null });
             setNotification({ show: true, message: 'Clave actualizada', type: 'success' });
@@ -347,10 +389,14 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                     <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-cyan-400' : 'text-slate-400'}`} size={18}/>
                     <input type="text" placeholder="Buscar cuenta..." className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${theme.input}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
                 </div>
+                
                 <select className={`md:col-span-3 px-4 py-3 rounded-2xl border outline-none font-bold text-xs transition-all ${theme.input}`} value={selectedService} onChange={(e) => setSelectedService(e.target.value)}>
                     <option value="Todos">Todos los Servicios</option>
-                    {[...new Set(safeCatalog.map(s => getBaseName(s.name)))].map(name => <option key={name} value={name}>{name}</option>)}
+                    {filterOptions.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                    ))}
                 </select>
+                
                 <select className={`md:col-span-3 px-4 py-3 rounded-2xl border outline-none font-bold text-xs transition-all ${theme.input}`} value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
                     <option value="Todos">Todos los Estados</option>
                     {PROBLEM_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
@@ -413,7 +459,11 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                                                         <div className={`p-2 rounded-xl ${isLibre ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-500/10 text-slate-400'}`}>{isLibre ? <CheckCircle2 size={16}/> : <User size={16}/>}</div>
                                                         <div className="truncate">
                                                             <p className={`text-xs font-black truncate ${isLibre ? 'text-emerald-500' : (PROBLEM_STATUSES.includes(profile.client) ? 'text-rose-400' : theme.text)}`}>{isLibre ? 'DISPONIBLE' : profile.client}</p>
-                                                            <p className={`text-[10px] font-bold font-mono uppercase ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>{profile.profile} {profile.pin && `| PIN: ${profile.pin}`}</p>
+                                                            <p className={`text-[10px] font-bold font-mono uppercase ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>
+                                                                {/* Aquí mostramos el nombre específico del perfil si es diferente al de la cuenta */}
+                                                                {profile.profile} {profile.pin && `| PIN: ${profile.pin}`}
+                                                                <span className="block text-[8px] opacity-50">{profile.service}</span>
+                                                            </p>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
