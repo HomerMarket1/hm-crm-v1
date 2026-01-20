@@ -8,22 +8,10 @@ const normalizeText = (text) => {
     return String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
-// ✅ DETECTOR DE PLATAFORMA MEJORADO (Separa Cuentas Completas)
+// Mantenemos esta función SOLO para iconos y colores, NO para filtrar
 const getPlatformBaseName = (serviceName) => {
     if (!serviceName) return 'Desconocido';
     const lower = serviceName.toLowerCase();
-
-    // 1. PRIMERO: Detectar si es Cuenta Completa para separarla del grupo normal
-    if (lower.includes('completa') || lower.includes('cuenta completa')) {
-        if (lower.includes('netflix')) return 'Netflix Cuenta Completa';
-        if (lower.includes('disney')) return 'Disney+ Cuenta Completa';
-        if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video Cuenta Completa';
-        if (lower.includes('max') || lower.includes('hbo')) return 'Max Cuenta Completa';
-        // Fallback genérico
-        return 'Cuenta Completa';
-    }
-
-    // 2. LUEGO: Detectar Plataformas (Perfiles)
     if (lower.includes('disney')) return 'Disney+';
     if (lower.includes('netflix')) return 'Netflix';
     if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
@@ -36,7 +24,6 @@ const getPlatformBaseName = (serviceName) => {
     if (lower.includes('spotify')) return 'Spotify';
     if (lower.includes('youtube')) return 'YouTube';
     if (lower.includes('apple')) return 'Apple TV';
-    
     return serviceName; 
 };
 
@@ -71,6 +58,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         const effectiveDateTo = (dateFrom && !dateTo) ? dateFrom : dateTo;
 
         return sales.filter(sale => {
+            // A. Filtro Texto (Buscador)
             if (term) {
                 const matchName = normalizeText(sale.client).includes(term);
                 const matchEmail = normalizeText(sale.email).includes(term);
@@ -79,13 +67,15 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                 if (!matchName && !matchEmail && !matchPhone && !matchService) return false;
             }
 
-            // ✅ FIX DEL FILTRO DE SERVICIO: Comparación Exacta de Categoría
+            // ✅ B. FILTRO SERVICIO (LITERAL Y EXACTO)
             if (isFilteringService) {
-                const saleCategory = getPlatformBaseName(sale.service);
-                // Si el filtro es "Netflix", NO aceptará "Netflix Cuenta Completa" porque son textos distintos
-                if (saleCategory !== filterService) return false;
+                // Comparamos el texto exacto. Si en el filtro dice "Disney+ En Vivo",
+                // la venta debe decir exactamente "Disney+ En Vivo".
+                // Usamos trim() para evitar errores por espacios vacíos accidentales.
+                if (sale.service.trim() !== filterService.trim()) return false;
             }
 
+            // C. Filtro Estado
             if (isFilteringStatus) {
                 const clientLower = (sale.client || '').toLowerCase();
                 const isFree = clientLower.includes('libre');
@@ -99,9 +89,10 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                     if (days >= 0) return false; 
                 }
             }
+
+            // D. Filtro Fecha
             if (hasDateFilter) {
                 if (!sale.endDate) return false;
-                // Lógica de fechas (Fix de día único mantenido)
                 const targetDate = String(sale.endDate).trim();
                 const startLimit = dateFrom ? String(dateFrom).trim() : null;
                 const endLimit = effectiveDateTo ? String(effectiveDateTo).trim() : null;
@@ -123,7 +114,9 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return sum + (Number(s.cost) || 0);
     }, 0), [filteredSales]);
 
-    // ✅ INVENTARIO (MANTENIENDO EL FIX DE LLAVE COMPUESTA)
+    // ✅ INVENTARIO / BÓVEDA
+    // Mantenemos la llave compuesta para que en el inventario también se separen
+    // las variantes como "Paquete" o "Cuenta Completa".
     const accountsInventory = useMemo(() => {
         const groups = {};
         sales.forEach(s => {
@@ -135,7 +128,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                     id: s.id, 
                     email: s.email, 
                     pass: s.pass, 
-                    service: exactService, // Mostramos nombre real
+                    service: exactService, 
                     total: 0, 
                     free: 0,
                     ids: [] 
@@ -170,7 +163,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         ).length;
     }, [sales, currentFormData.service, currentFormData.email]);
 
-    // --- HELPERS VISUALES (Mantenidos igual) ---
+    // --- HELPERS VISUALES ---
     const isBillable = useCallback((s) => {
         const c = (s.client || '').toLowerCase();
         if (c.includes('libre') || !s.endDate) return false;
@@ -216,17 +209,12 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     }, [todayAnchor]);
 
-    // OJO: EXPORTAMOS getPlatformBaseName para que el Dashboard pueda usarlo para generar el dropdown
-    // Si tu Dashboard.jsx genera el dropdown por su cuenta, asegúrate de que use una lógica similar.
-    // Si no, con este cambio en el filtro debería bastar si el dropdown se llena con estos valores.
-
     return {
         filteredSales, totalFilteredMoney, totalItems: filteredSales.length, 
         getClientPreviousProfiles, maxAvailableSlots, accountsInventory, 
         packageCatalog: useMemo(() => catalog ? catalog.filter(s => s.type === 'Paquete') : [], [catalog]),
         getStatusIcon, getStatusColor, getDaysRemaining, 
         expiringToday, expiringTomorrow, overdueSales,
-        // Helper exportado por si lo necesitas en la UI
-        getPlatformBaseName 
+        getPlatformBaseName // Exportamos por si el Dashboard lo usa para iconos
     };
 };
