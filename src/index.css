@@ -2,30 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* * Definición de la fuente base
- */
+/* 1. FUENTE Y ROOT */
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
-/* * Estilos globales del cuerpo de la página
- * EVITAMOS LIMITAR EL ANCHO EXTERNAMENTE
- */
+/* 2. ESTRUCTURA GLOBAL */
 body {
   margin: 0;
   padding: 0;
   width: 100vw;
   min-height: 100vh;
   background-color: #F2F2F7;
-  /* IMPORTANTE: Permitimos el scroll en el body si es necesario, 
-     pero el componente principal de React manejará el scroll interno. */
-  overflow-x: hidden; 
-  overflow-y: hidden;
+  /* IMPORTANTE: overflow hidden previene el doble scrollbar en Windows.
+     El scroll lo manejarán los contenedores internos de tu app. */
+  overflow: hidden; 
 }
 
-/* * Contenedor principal de React (#root)
- * Ocupa todo el espacio disponible y quita límites de ancho
- */
 #root {
   width: 100%;
   height: 100vh; 
@@ -34,23 +27,92 @@ body {
   padding: 0;
 }
 
-/* * Utility para evitar barras de scroll laterales
- */
+/* --- 🎨 3. MAGIA PARA WINDOWS (SCROLLBARS ESTILO MAC) --- */
+/* Esto fuerza a Windows (Chrome/Edge) a usar una barra fina y flotante */
+
+::-webkit-scrollbar {
+  width: 6px;  /* Ancho vertical fino */
+  height: 6px; /* Alto horizontal fino */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; /* Fondo invisible */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* Color gris suave (slate-300) */
+  border-radius: 10px;       /* Bordes totalmente redondos */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8; /* Se oscurece un poco al tocarlo (slate-400) */
+}
+
+/* Ajuste para Modo Oscuro */
+.dark ::-webkit-scrollbar-thumb {
+  background-color: #334155; /* slate-700 para fondo oscuro */
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: #475569; /* slate-600 */
+}
+
+/* Utility opcional para ocultar barra pero permitir scroll */
 .no-scrollbar::-webkit-scrollbar {
     display: none;
 }
-
 .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
-/* --- FIX CALENDARIO MODO OSCURO --- */
-.dark-calendar::-webkit-calendar-picker-indicator {
-  filter: invert(1); /* Invierte el color del icono a Blanco */
-  opacity: 0.6;
-  cursor: pointer;
+
+/* --- 📅 4. INPUTS DE FECHA (CALENDARIOS) --- */
+/* Fuerza a que el icono del calendario sea blanco en modo oscuro automáticamente */
+input[type="date"] {
+  color-scheme: light;
 }
-.dark-calendar::-webkit-calendar-picker-indicator:hover {
+.dark input[type="date"] {
+  color-scheme: dark; 
+}
+
+/* Estilo del icono del calendario al pasar el mouse */
+::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: 0.2s;
+}
+::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
+  transform: scale(1.1);
+}
+
+
+/* --- 🔽 5. SELECTORES (DROPDOWNS) --- */
+/* Elimina la flecha gris estándar de Windows y pone un icono SVG moderno */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 1em;
+}
+
+/* AUTOCOMPLETE FIX (Quita el fondo amarillo/azul de Chrome al autocompletar contraseñas) */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px white inset !important;
+    -webkit-text-fill-color: #0f172a !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover, 
+.dark input:-webkit-autofill:focus, 
+.dark input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #0f172a inset !important; /* Mantiene fondo oscuro */
+    -webkit-text-fill-color: white !important;
 }
