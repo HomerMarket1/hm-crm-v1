@@ -71,7 +71,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             if (isFilteringService) {
                 // Comparamos el texto exacto. Si en el filtro dice "Disney+ En Vivo",
                 // la venta debe decir exactamente "Disney+ En Vivo".
-                // Usamos trim() para evitar errores por espacios vacíos accidentales.
                 if (sale.service.trim() !== filterService.trim()) return false;
             }
 
@@ -115,8 +114,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
     }, 0), [filteredSales]);
 
     // ✅ INVENTARIO / BÓVEDA
-    // Mantenemos la llave compuesta para que en el inventario también se separen
-    // las variantes como "Paquete" o "Cuenta Completa".
     const accountsInventory = useMemo(() => {
         const groups = {};
         sales.forEach(s => {
@@ -209,12 +206,47 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     }, [todayAnchor]);
 
+    // 🏆 CALCULADORA DE LEALTAD (NUEVA FUNCIÓN)
+    const getClientLoyalty = useCallback((clientName) => {
+        if (!clientName || !sales.length) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
+
+        const nameToSearch = normalizeText(clientName);
+        
+        // 1. Buscamos todas las ventas históricas de este cliente
+        const clientHistory = sales.filter(s => normalizeText(s.client) === nameToSearch);
+        
+        if (clientHistory.length === 0) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
+
+        // 2. Encontramos la fecha de la PRIMERA compra (ordenamos ascendente)
+        const sortedHistory = clientHistory.sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : new Date().getTime();
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : new Date().getTime();
+            return dateA - dateB;
+        });
+
+        const firstSaleDate = sortedHistory[0].createdAt ? new Date(sortedHistory[0].createdAt) : new Date();
+        const now = new Date();
+
+        // 3. Calculamos la diferencia en meses
+        const diffTime = Math.abs(now - firstSaleDate);
+        const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30)); 
+
+        // 4. Asignamos Nivel
+        if (diffMonths >= 10) return { level: 'LEYENDA 👑', color: 'text-amber-400 border-amber-400/20 bg-amber-400/10', months: diffMonths };
+        if (diffMonths >= 5) return { level: 'VIP 🌟', color: 'text-purple-400 border-purple-400/20 bg-purple-400/10', months: diffMonths };
+        if (diffMonths >= 2) return { level: 'Fiel 🤝', color: 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10', months: diffMonths };
+        
+        return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: diffMonths };
+
+    }, [sales]);
+
     return {
         filteredSales, totalFilteredMoney, totalItems: filteredSales.length, 
         getClientPreviousProfiles, maxAvailableSlots, accountsInventory, 
         packageCatalog: useMemo(() => catalog ? catalog.filter(s => s.type === 'Paquete') : [], [catalog]),
         getStatusIcon, getStatusColor, getDaysRemaining, 
         expiringToday, expiringTomorrow, overdueSales,
-        getPlatformBaseName // Exportamos por si el Dashboard lo usa para iconos
+        getPlatformBaseName,
+        getClientLoyalty // ✅ Exportamos la nueva función
     };
 };
