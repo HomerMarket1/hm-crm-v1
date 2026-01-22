@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
-import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench } from 'lucide-react';
+import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react'; 
 import AppleCalendar from '../components/AppleCalendar';
+import { doc, updateDoc } from 'firebase/firestore'; 
+// 👇 IMPORTANTE: Importamos auth aquí arriba para evitar el error de conexión
+import { db, auth } from '../firebase/config'; 
 
 // --- ⚡️ CONSTANTES & CONFIGURACIÓN GLOBAL ---
 const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
@@ -38,7 +41,12 @@ const getCardStyles = (sale, days, darkMode) => {
     let text = darkMode ? 'text-white' : 'text-slate-800';
     let subText = darkMode ? 'text-slate-400' : 'text-slate-500';
 
-    if (isFree) {
+    if (sale.markedForDeletion) {
+        // ESTILO: FONDO ROJIZO MUY SUAVE SI ESTÁ MARCADO
+        bg = darkMode ? "bg-rose-950/20 border-rose-900/30" : "bg-rose-50 border-rose-100";
+        text = "text-rose-400";
+        subText = "text-rose-400/60";
+    } else if (isFree) {
         bg = darkMode ? "bg-emerald-900/10 border-emerald-500/20" : "bg-emerald-50/50 border-emerald-100";
         text = darkMode ? "text-emerald-400" : "text-emerald-900";
         subText = darkMode ? "text-emerald-400/70" : "text-emerald-700/70";
@@ -55,7 +63,9 @@ const getCardStyles = (sale, days, darkMode) => {
     }
 
     let statusColor = darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600';
-    if (isFree) statusColor = darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-600';
+    
+    if (sale.markedForDeletion) statusColor = 'bg-rose-500 text-white'; 
+    else if (isFree) statusColor = darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-600';
     else if (isProblem) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-500';
     else if (days < 0) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-600';
     else if (days <= 3) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-600';
@@ -69,19 +79,33 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
     const { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
 
-    // 🏆 CÁLCULO DE LEALTAD
     const loyalty = !isFree && getClientLoyalty ? getClientLoyalty(sale.client) : null;
 
     const iconLetter = useMemo(() => {
+        if (sale.markedForDeletion) return <CalendarX size={18} />;
         const lower = sale.service ? sale.service.toLowerCase() : '';
         return lower.includes('netflix') ? 'N' : lower.includes('disney') ? 'D' : 'S';
-    }, [sale.service]);
+    }, [sale.service, sale.markedForDeletion]);
 
     const formattedDate = sale.endDate ? sale.endDate.split('-').reverse().slice(0,2).join('/') : '--';
 
     return (
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
-            <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center">
+            
+            {/* 🛑 ZONA FANTASMA (Esquina Izquierda) 🛑 */}
+            {!isFree && !isAdmin && (
+                <div className="absolute top-0 left-0 w-12 h-12 z-50 flex items-start justify-start p-1 opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); handlers.toggleMark(sale); }}
+                        className={`w-6 h-6 rounded-full flex items-center justify-center shadow-md border ${sale.markedForDeletion ? 'bg-rose-500 border-rose-600 text-white' : 'bg-slate-200 border-slate-300 text-slate-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`}
+                        title={sale.markedForDeletion ? "Restaurar Cliente" : "Marcar: NO RENUEVA"}
+                    >
+                        {sale.markedForDeletion ? <RotateCcw size={10} /> : <UserMinus size={10} />}
+                    </button>
+                </div>
+            )}
+
+            <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center relative z-10">
                 
                 {/* COL 1: Info Principal */}
                 <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
@@ -92,19 +116,24 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                         <div className="flex justify-between items-start">
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    {/* Nombre Cliente */}
                                     <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>
                                         {isFree ? 'Espacio Libre' : sale.client}
                                     </div>
                                     
-                                    {/* 🏆 INSIGNIA DE LEALTAD (SOLO SI NO ES ADMIN NI PROBLEMA) 🏆 */}
-                                    {loyalty && loyalty.level && !isFree && !isProblem && !isAdmin && (
+                                    {/* 🔴 ETIQUETA ROJA: NO RENUEVA 🔴 */}
+                                    {sale.markedForDeletion && (
+                                        <span className="text-[8px] px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500 text-white font-black uppercase tracking-wider animate-pulse">
+                                            BAJA PROGRAMADA
+                                        </span>
+                                    )}
+
+                                    {/* Insignia Lealtad (Oculta si no renueva) */}
+                                    {!sale.markedForDeletion && loyalty && loyalty.level && !isFree && !isProblem && !isAdmin && (
                                         <span className={`text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider flex items-center gap-1 ${loyalty.color}`}>
                                             {loyalty.level}
                                         </span>
                                     )}
 
-                                    {/* Badge Cuenta Completa */}
                                     {isFullAccount && !isFree && (
                                         <span className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase ${darkMode ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'}`}>
                                             <Layers size={8} /> Completa
@@ -114,7 +143,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                                 <div className={`text-[11px] md:text-xs font-medium truncate mt-0.5 ${subText}`}>{sale.service}</div>
                             </div>
                             
-                            {/* PRECIO (SOLO SI NO ES ADMIN NI PROBLEMA) */}
                             {!isFree && !isProblem && !isAdmin && (
                                 <div className="text-right md:hidden leading-tight flex flex-col items-end">
                                     {cost > 0 && <span className={`text-xs font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</span>}
@@ -325,6 +353,27 @@ const Dashboard = ({
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
+    // 🏆 MANEJADOR PARA MARCAR/DESMARCAR BAJA PROGRAMADA (CORREGIDO) 🏆
+    const handleToggleMark = useCallback(async (sale) => {
+        try {
+            // Usamos la auth importada directamente, más seguro
+            const currentUser = auth.currentUser;
+            
+            if (!currentUser) {
+                console.error("No hay usuario autenticado para realizar esta acción.");
+                return;
+            }
+
+            const saleRef = doc(db, `users/${currentUser.uid}/sales`, sale.id);
+            await updateDoc(saleRef, {
+                markedForDeletion: !sale.markedForDeletion
+            });
+        } catch (error) {
+            console.error("Error al marcar para baja:", error);
+            // Quitamos el alert para no interrumpir el flujo si es un error menor
+        }
+    }, []);
+
     // Handlers memoizados
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
@@ -339,8 +388,9 @@ const Dashboard = ({
         edit: (sale) => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); },
         migrate: openMigration, 
         renew: handleQuickRenew,
-        liberate: triggerLiberate
-    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration]);
+        liberate: triggerLiberate,
+        toggleMark: handleToggleMark 
+    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 
     // --- CLASIFICACIÓN DE DATOS ---
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
