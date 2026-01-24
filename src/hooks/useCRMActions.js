@@ -122,7 +122,6 @@ export const useCRMActions = (user, setNotification) => {
             Object.keys(cleanFormData).forEach(key => cleanFormData[key] === undefined && delete cleanFormData[key]);
 
             // ✅ FIX 1: Herencia de Credenciales (Blindaje)
-            // Si el usuario no editó el email/pass, usamos los originales para que no se pierdan.
             const finalEmail = cleanFormData.email !== undefined ? cleanFormData.email : originalSale.email;
             const finalPass = cleanFormData.pass !== undefined ? cleanFormData.pass : originalSale.pass;
 
@@ -309,19 +308,46 @@ export const useCRMActions = (user, setNotification) => {
         } catch (e) { notify('Error migrando.', 'error'); return false; }
     };
 
-    const quickRenew = async (id, date) => {
-        if(!id || !date) return;
+    // --- 4. RENOVACIÓN RÁPIDA INTELIGENTE (FIX 30 FEB) ---
+    const quickRenew = async (id, dateString) => {
+        if (!id || !dateString) return;
         try {
-            const [y, m, d] = date.split('-').map(Number);
-            const currentEndDate = new Date(y, m - 1, d);
-            currentEndDate.setMonth(currentEndDate.getMonth() + 1);
-            const nextYear = currentEndDate.getFullYear();
-            const nextMonth = String(currentEndDate.getMonth() + 1).padStart(2, '0');
-            const nextDay = String(currentEndDate.getDate()).padStart(2, '0');
+            // 1. Desglosar fecha original (para evitar líos de zona horaria)
+            const [y, m, d] = dateString.split('-').map(Number);
+            
+            // 2. Crear fecha base (Meses en JS son 0-11, por eso m-1)
+            const date = new Date(y, m - 1, d);
+            
+            // 3. Sumar 1 mes
+            date.setMonth(date.getMonth() + 1);
+
+            // 4. 🛡️ CORRECCIÓN MÁGICA:
+            // Si el día cambió (ej: era 31 y ahora es 3), significa que el mes nuevo es más corto.
+            // Retrocedemos al día 0 del mes actual (que es el último día del mes anterior).
+            if (date.getDate() !== d) {
+                date.setDate(0);
+            }
+
+            // 5. Formatear a YYYY-MM-DD
+            const nextYear = date.getFullYear();
+            const nextMonth = String(date.getMonth() + 1).padStart(2, '0');
+            const nextDay = String(date.getDate()).padStart(2, '0');
             const finalDate = `${nextYear}-${nextMonth}-${nextDay}`;
-            await updateDoc(doc(db, userPath, 'sales', id), { endDate: finalDate, updatedAt: serverTimestamp() });
-            notify('Renovado: Mismo día, próximo mes.', 'success'); return true;
-        } catch(e) { console.error("Error renovando:", e); notify('Error al renovar.', 'error'); return false; }
+
+            // 6. Guardar
+            await updateDoc(doc(db, userPath, 'sales', id), { 
+                endDate: finalDate, 
+                updatedAt: serverTimestamp() 
+            });
+            
+            notify(`Renovado hasta el ${finalDate}`, 'success'); 
+            return true;
+
+        } catch (e) { 
+            console.error("Error renovando:", e); 
+            notify('Error al renovar.', 'error'); 
+            return false; 
+        }
     };
 
     const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio creado.'); return true; } catch(e){ return false; } };

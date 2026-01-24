@@ -1,4 +1,4 @@
-import React, { useState, useReducer, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useReducer, useEffect, Suspense, lazy, useCallback } from 'react';
 import { Loader } from 'lucide-react';
 
 // Reducers y Hooks
@@ -20,7 +20,7 @@ import ConfirmModal from './components/ConfirmModal';
 import EditAccountModal from './components/EditAccountModal';
 import EditClientModal from './components/EditClientModal';
 
-// VISTAS (Lazy Loading) - ✅ StockManager eliminado
+// VISTAS (Lazy Loading)
 const LoginScreen = lazy(() => import('./views/LoginScreen'));
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Config = lazy(() => import('./views/Config'));
@@ -71,7 +71,7 @@ const App = () => {
         getClientPreviousProfiles, maxAvailableSlots, packageCatalog,
         getStatusIcon, getStatusColor, getDaysRemaining,
         expiringToday, expiringTomorrow, overdueSales,
-        getClientLoyalty // <--- ✅ IMPORTANTE: Aquí extraemos la función de lealtad
+        getClientLoyalty
     } = useSalesData(sales, catalog, clientManagement.allClients, uiState, formData);
 
     const sortedCatalog = [...catalog].sort((a, b) => a.name.localeCompare(b.name));
@@ -169,10 +169,17 @@ const App = () => {
         const EXEMPT = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         const isExempt = EXEMPT.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
 
+        // 🧠 FECHA SEGURA: Evita el bug de 30 de febrero
         if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
             const now = new Date();
+            const currentDay = now.getDate();
             now.setMonth(now.getMonth() + 1);
-            finalEndDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            
+            // Si el día cambió (ej: era 31 y saltó a marzo), retrocedemos al último día válido
+            if (now.getDate() !== currentDay) {
+                now.setDate(0); 
+            }
+            finalEndDate = now.toISOString().split('T')[0];
         }
 
         const dataToSave = { ...formData, endDate: finalEndDate };
@@ -187,13 +194,23 @@ const App = () => {
         if (formData.id) {
             success = await handleGenericSave(dataToSave);
         } else {
-            const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
-            success = await crmActions.processBatchSale(dataWithCorrectCost, quantity, freeRows, bulkProfiles, catalog);
-            if (success && quantity === 1) await handleGenericSave(dataToSave); 
+            // 🧹 LÓGICA LIMPIA: Batch O Single, no mezclados
+            if (quantity > 1) {
+                const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
+                success = await crmActions.processBatchSale(dataWithCorrectCost, quantity, freeRows, bulkProfiles, catalog);
+            } else {
+                success = await handleGenericSave(dataToSave);
+            }
         }
 
         if (success) { setView('dashboard'); resetForm(); }
     };
+
+    // ⚡ CALLBACK: Optimizado para no renderizar Dashboard en cada letra
+    const handleDashboardRenew = useCallback((id) => {
+        const s = sales.find(i => i.id === id);
+        crmActions.quickRenew(id, s?.endDate);
+    }, [sales, crmActions]);
 
     const handleWhatsAppShare = (sale, actionType) => {
         if (sale.client === 'LIBRE') return;
@@ -246,7 +263,7 @@ const App = () => {
             {editClientModal.show && <EditClientModal modal={editClientModal} setModal={setEditClientModal} onConfirm={handleSaveEditClient} darkMode={darkMode} />}
 
             <Suspense fallback={<div className="flex h-full items-center justify-center min-h-[60vh]"><Loader className="animate-spin text-indigo-500 w-10 h-10" /></div>}>
-                {view === 'dashboard' && <Dashboard sales={sales} filteredSales={filteredSales} catalog={sortedCatalog} filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter} totalItems={totalItems} totalFilteredMoney={moneyToShow} getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining} NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} handleQuickRenew={(id) => { const s = sales.find(i => i.id === id); crmActions.quickRenew(id, s?.endDate); }} triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData} expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales} darkMode={darkMode} saveSale={handleSaveSale} onMigrate={crmActions.migrateService} getClientLoyalty={getClientLoyalty} /* ✅ PASAMOS LA FUNCIÓN AL DASHBOARD */ />}
+                {view === 'dashboard' && <Dashboard sales={sales} filteredSales={filteredSales} catalog={sortedCatalog} filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter} totalItems={totalItems} totalFilteredMoney={moneyToShow} getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining} NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} handleQuickRenew={handleDashboardRenew} triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData} expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales} darkMode={darkMode} saveSale={handleSaveSale} onMigrate={crmActions.migrateService} getClientLoyalty={getClientLoyalty} />}
                 {view === 'inventory' && <InventoryMaster sales={sales} catalog={sortedCatalog} darkMode={darkMode} setFormData={setFormData} setView={setView} user={user} setNotification={setNotification} />}
                 {view === 'config' && <Config sales={sales} catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm} handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog} handleEditCatalogService={handleEditCatalogService} triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients} triggerDeleteClient={clientManagement.triggerDeleteClient} triggerEditClient={triggerOpenEditClient} setNotification={setNotification} formData={formData} setFormData={setFormData} darkMode={darkMode} />}
                 {view === 'form' && <SaleForm formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles} allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={sales} getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange} handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange} handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog} darkMode={darkMode} />}
