@@ -308,12 +308,23 @@ const Dashboard = ({
         setMigrationModal({ show: false, sale: null, matches: [] });
     };
 
-    // --- WHATSAPP LOGIC ---
+    // --- 🟢 WHATSAPP LOGIC 3.0 (MINIMALISTA / APPLE STYLE) ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
+        const serviceName = cleanServiceName(sale.service).toUpperCase(); // Siempre mayúsculas para el título
+        const lowerService = serviceName.toLowerCase();
         let message = '';
 
+        // Fechas con formato limpio: "15 de Febrero"
+        const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        let dateText = "Indefinido";
+        if (endDate) {
+            const [y, m, d] = endDate.split('-').map(Number);
+            dateText = `${d} de ${months[m-1]}`;
+        }
+
+        // --- MODO RECORDATORIO (COBRO) - Mantenemos simple pero con iconos de alerta necesarios ---
         if (actionType === 'reminder') {
             const related = sales.filter(s => {
                 if (s.client !== client) return false;
@@ -330,37 +341,59 @@ const Dashboard = ({
                 if(!acc[key]) acc[key] = { name, isFull, count: 0 };
                 acc[key].count++;
                 return acc;
-            }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Ctas Completas':'Cuenta Completa') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
+            }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Cuentas':'Cuenta') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
+            
             if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.`;
             else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
-            else if (targetDays === 1) message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
-            else message = `Hola ${client}, recordatorio: ${summary} vence en ${targetDays} días.`;
-        } else if (actionType === 'data') {
-            const cleanName = cleanServiceName(sale.service);
-            const isFull = sale.type === 'Cuenta';
-            const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-            let dateText = "Indefinido";
-            if (endDate) {
-                const [y, m, d] = endDate.split('-').map(Number);
-                dateText = `${d} de ${months[m-1]}`;
+            else message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
+        
+        } 
+        // --- MODO DATOS DE ACCESO (MINIMALISTA) ---
+        else if (actionType === 'data') {
+            
+            // 📺 CASO 1: IPTV / MAGIS (Estructura: Usuario/Pass/URL)
+            if (lowerService.includes('iptv') || lowerService.includes('magis') || lowerService.includes('tivify')) {
+                message = `${serviceName}\n\n` +
+                          `USUARIO:\n${sale.profile || 'N/A'}\n` +
+                          `CONTRASEÑA:\n${sale.pin || 'N/A'}\n` +
+                          `URL / DNS:\n${sale.pass || 'Solicitar'}\n\n` +
+                          `☑️Su servicio vence el día ${dateText}☑️`;
+            } 
+            
+            // 🍿 CASO 2: NETFLIX / DISNEY (Perfil) -> SIN CONTRASEÑA, CON CORREO
+            else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
+                message = `${serviceName} 1 PERFIL\n\n` +
+                          `CORREO:\n${sale.email}\n` +
+                          `PERFIL:\n${sale.profile}\n` +
+                          `PIN:\n${sale.pin || 'Sin PIN'}\n\n` +
+                          `NOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n` + // <--- TEXTO SIMPLIFICADO AQUÍ
+                          `☑️Su Perfil Vence el día ${dateText}☑️`;
             }
-            message = `${cleanName.toUpperCase()} ${isFull ? 'CUENTA COMPLETA' : '1 PERFIL'}\n\n` +
-                      `CORREO:\n${sale.email}\n` +
-                      `CONTRASEÑA:\n${sale.pass}\n` +
-                      `${!isFull ? `PERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n` : ''}` +
-                      `\n☑️Su Perfil Vence el día ${dateText}☑️`;
+            
+            // 📧 CASO 3: ESTÁNDAR / CUENTAS COMPLETAS (Estructura Clásica Vertical)
+            else {
+                const isFull = sale.type === 'Cuenta';
+                const typeLabel = isFull ? 'CUENTA COMPLETA' : '1 PERFIL';
+                
+                message = `${serviceName} ${typeLabel}\n\n` +
+                          `CORREO:\n${sale.email}\n` +
+                          `CONTRASEÑA:\n${sale.pass}\n` +
+                          `${!isFull ? `PERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n` : ''}` +
+                          `\n☑️Su Perfil Vence el día ${dateText}☑️`;
+            }
         }
+        
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
-    // 🏆 MANEJADOR PARA MARCAR/DESMARCAR BAJA PROGRAMADA (CORREGIDO) 🏆
+    // 🏆 MANEJADOR PARA MARCAR/DESMARCAR BAJA PROGRAMADA 🏆
     const handleToggleMark = useCallback(async (sale) => {
         try {
             // Usamos la auth importada directamente, más seguro
             const currentUser = auth.currentUser;
             
             if (!currentUser) {
-                console.error("No hay usuario autenticado para realizar esta acción.");
+                console.error("No hay usuario autenticado.");
                 return;
             }
 
@@ -370,7 +403,6 @@ const Dashboard = ({
             });
         } catch (error) {
             console.error("Error al marcar para baja:", error);
-            // Quitamos el alert para no interrumpir el flujo si es un error menor
         }
     }, []);
 
