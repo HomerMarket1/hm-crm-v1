@@ -53,7 +53,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         // Resto de plataformas (Agrupación Estándar)
         if (lower.includes('netflix')) return 'Netflix';
         if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
-        if (lower.includes('max') || lower.includes('hbo')) return 'Max';
+        if (lower.includes('hbomax')) return 'HBOmax';
         if (lower.includes('paramount')) return 'Paramount+';
         if (lower.includes('vix')) return 'Vix';
         if (lower.includes('plex')) return 'Plex';
@@ -65,6 +65,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         if (lower.includes('apple')) return 'Apple TV';
         if (lower.includes('flow')) return 'Flow';
         if (lower.includes('universal')) return 'Universal+';
+        if (lower.includes('max')) return 'Max';
         
         // Fallback: Limpieza genérica
         return serviceName.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();

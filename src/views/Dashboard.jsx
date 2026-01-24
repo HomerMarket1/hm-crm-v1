@@ -93,7 +93,8 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
             
             {/* 🛑 ZONA FANTASMA (Esquina Izquierda) 🛑 */}
-            {!isFree && !isAdmin && (
+            {/* Se muestra si NO es libre, O SI TIENE MARCA DE BAJA (para poder quitarla aunque sea libre) */}
+            {(!isFree || sale.markedForDeletion) && !isAdmin && (
                 <div className="absolute top-0 left-0 w-12 h-12 z-50 flex items-start justify-start p-1 opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
                     <button 
                         onClick={(e) => { e.stopPropagation(); handlers.toggleMark(sale); }}
@@ -312,7 +313,7 @@ const Dashboard = ({
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
-        const serviceName = cleanServiceName(sale.service).toUpperCase(); // Siempre mayúsculas para el título
+        const serviceName = cleanServiceName(sale.service).toUpperCase(); 
         const lowerService = serviceName.toLowerCase();
         let message = '';
 
@@ -324,7 +325,7 @@ const Dashboard = ({
             dateText = `${d} de ${months[m-1]}`;
         }
 
-        // --- MODO RECORDATORIO (COBRO) - Mantenemos simple pero con iconos de alerta necesarios ---
+        // --- MODO RECORDATORIO (COBRO) ---
         if (actionType === 'reminder') {
             const related = sales.filter(s => {
                 if (s.client !== client) return false;
@@ -351,7 +352,7 @@ const Dashboard = ({
         // --- MODO DATOS DE ACCESO (MINIMALISTA) ---
         else if (actionType === 'data') {
             
-            // 📺 CASO 1: IPTV / MAGIS (Estructura: Usuario/Pass/URL)
+            // 📺 CASO 1: IPTV / MAGIS
             if (lowerService.includes('iptv') || lowerService.includes('magis') || lowerService.includes('tivify')) {
                 message = `${serviceName}\n\n` +
                           `USUARIO:\n${sale.profile || 'N/A'}\n` +
@@ -359,18 +360,16 @@ const Dashboard = ({
                           `URL / DNS:\n${sale.pass || 'Solicitar'}\n\n` +
                           `☑️Su servicio vence el día ${dateText}☑️`;
             } 
-            
-            // 🍿 CASO 2: NETFLIX / DISNEY (Perfil) -> SIN CONTRASEÑA, CON CORREO
+            // 🍿 CASO 2: NETFLIX / DISNEY
             else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
                 message = `${serviceName} 1 PERFIL\n\n` +
                           `CORREO:\n${sale.email}\n` +
                           `PERFIL:\n${sale.profile}\n` +
                           `PIN:\n${sale.pin || 'Sin PIN'}\n\n` +
-                          `NOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n` + // <--- TEXTO SIMPLIFICADO AQUÍ
+                          `NOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n` + 
                           `☑️Su Perfil Vence el día ${dateText}☑️`;
             }
-            
-            // 📧 CASO 3: ESTÁNDAR / CUENTAS COMPLETAS (Estructura Clásica Vertical)
+            // 📧 CASO 3: ESTÁNDAR
             else {
                 const isFull = sale.type === 'Cuenta';
                 const typeLabel = isFull ? 'CUENTA COMPLETA' : '1 PERFIL';
@@ -389,14 +388,11 @@ const Dashboard = ({
     // 🏆 MANEJADOR PARA MARCAR/DESMARCAR BAJA PROGRAMADA 🏆
     const handleToggleMark = useCallback(async (sale) => {
         try {
-            // Usamos la auth importada directamente, más seguro
             const currentUser = auth.currentUser;
-            
             if (!currentUser) {
                 console.error("No hay usuario autenticado.");
                 return;
             }
-
             const saleRef = doc(db, `users/${currentUser.uid}/sales`, sale.id);
             await updateDoc(saleRef, {
                 markedForDeletion: !sale.markedForDeletion
@@ -416,11 +412,37 @@ const Dashboard = ({
             btn.innerHTML = `<span class="text-emerald-500 text-[10px] font-bold">OK</span>`;
             setTimeout(() => btn.innerHTML = original, 1500);
         },
-        assign: (sale) => { setFormData(sale); setView('form'); },
-        edit: (sale) => { setFormData({...sale, profilesToBuy: 1}); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); },
+        assign: (sale) => { 
+            const isFull = sale.type === 'Cuenta' || sale.service?.toLowerCase().includes('completa');
+            setFormData({ ...sale, profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 }); 
+            setView('form'); 
+        },
+        edit: (sale) => { 
+            const isFull = sale.type === 'Cuenta' || sale.service?.toLowerCase().includes('completa');
+            setFormData({
+                ...sale,
+                profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 
+            }); 
+            setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); 
+            setView('form'); 
+        },
         migrate: openMigration, 
         renew: handleQuickRenew,
-        liberate: triggerLiberate,
+        
+        // 🧹 LIMPIEZA AUTOMÁTICA AL LIBERAR
+        liberate: async (id) => {
+            try {
+                const currentUser = auth.currentUser;
+                if (currentUser) {
+                    const saleRef = doc(db, `users/${currentUser.uid}/sales`, id);
+                    await updateDoc(saleRef, { markedForDeletion: false });
+                }
+            } catch (error) {
+                console.error("Error limpiando baja al liberar:", error);
+            }
+            triggerLiberate(id);
+        },
+
         toggleMark: handleToggleMark 
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 

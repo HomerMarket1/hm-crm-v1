@@ -15,7 +15,7 @@ const getPlatformBaseName = (serviceName) => {
     if (lower.includes('disney')) return 'Disney+';
     if (lower.includes('netflix')) return 'Netflix';
     if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
-    if (lower.includes('max') || lower.includes('hbo')) return 'Max';
+    if (lower.includes('hbomax')) return 'HBOmax';
     if (lower.includes('paramount')) return 'Paramount+';
     if (lower.includes('vix')) return 'Vix';
     if (lower.includes('plex')) return 'Plex';
@@ -27,6 +27,7 @@ const getPlatformBaseName = (serviceName) => {
     if (lower.includes('apple')) return 'Apple TV';
     if (lower.includes('flow')) return 'Flow';
     if (lower.includes('universal')) return 'Universal+';
+    if (lower.includes('max')) return 'Max';
     return serviceName; 
 };
 
