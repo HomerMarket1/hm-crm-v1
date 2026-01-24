@@ -57,11 +57,14 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         if (lower.includes('paramount')) return 'Paramount+';
         if (lower.includes('vix')) return 'Vix';
         if (lower.includes('plex')) return 'Plex';
-        if (lower.includes('iptv') || lower.includes('magis')) return 'IPTV / Magis';
+        if (lower.includes('iptv')) return 'IPTV';
+        if (lower.includes('flujo')) return 'FlujoTv';
         if (lower.includes('crunchyroll')) return 'Crunchyroll';
         if (lower.includes('spotify')) return 'Spotify';
-        if (lower.includes('youtube')) return 'YouTube';
+        if (lower.includes('youtube')) return 'Youtube';
         if (lower.includes('apple')) return 'Apple TV';
+        if (lower.includes('flow')) return 'Flow';
+        if (lower.includes('universal')) return 'Universal+';
         
         // Fallback: Limpieza genérica
         return serviceName.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
