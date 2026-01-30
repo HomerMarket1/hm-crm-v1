@@ -303,7 +303,7 @@ const SaleForm = ({
                             </div>
                         )}
 
-                        {/* 2. DATOS DEL CLIENTE Y CUENTA (EDITABLES) */}
+                        {/* 2. DATOS DEL CLIENTE */}
                         <div className="space-y-2">
                             {/* A. CLIENTE */}
                             <div className="relative group">
@@ -318,18 +318,7 @@ const SaleForm = ({
                                 </button>
                             )}
 
-                            {/* B. CORREO / USUARIO (NUEVO: Ahora visible y editable) */}
-                            <div className="relative group animate-in slide-in-from-top-1">
-                                <Mail size={16} className={ICON_CLASS}/>
-                                <input 
-                                    type="text" 
-                                    className={INPUT_CLASS} 
-                                    value={formData.email} 
-                                    onChange={e => setFormData({...formData, email: e.target.value})} 
-                                    placeholder="Correo o Usuario (IPTV)"
-                                    required 
-                                />
-                            </div>
+                            {/* [ELIMINADO] AQUÍ ESTABA EL INPUT DE CORREO QUE PEDISTE QUITAR */}
 
                             {!stockMode && (
                                 <div className="space-y-2">
