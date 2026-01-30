@@ -354,7 +354,12 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                                 </select>
                             </div>
                             
-                            <div><label className={theme.label}>Correo</label><input type="email" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.email} onChange={e => setNewAccData({...newAccData, email: e.target.value})} placeholder="email@cuenta.com"/></div>
+                            <div>
+                                <label className={theme.label}>Correo / Usuario</label>
+                                {/* ✅ CORRECCIÓN: type="text" para aceptar usuarios sin arroba */}
+                                <input type="text" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.email} onChange={e => setNewAccData({...newAccData, email: e.target.value})} placeholder="Correo o Usuario (IPTV)"/>
+                            </div>
+
                             <div><label className={theme.label}>Contraseña</label><input type="text" required className={`w-full mt-1 p-4 rounded-2xl outline-none border transition-all ${theme.input}`} value={newAccData.pass} onChange={e => setNewAccData({...newAccData, pass: e.target.value})} placeholder="Clave"/></div>
                             
                             {newAccData.type === 'Perfil' && (
