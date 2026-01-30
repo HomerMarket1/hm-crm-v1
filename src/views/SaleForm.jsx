@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2, Database, Lock, Star, History, Link as LinkIcon } from 'lucide-react';
+import { Copy, Package, User, Smartphone, DollarSign, Layers, X, Save, CheckCircle2, Database, Lock, Star, History, Link as LinkIcon, Mail } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
 
 // ✅ HELPER PARA CATEGORIZAR SERVICIOS
@@ -303,8 +303,9 @@ const SaleForm = ({
                             </div>
                         )}
 
-                        {/* 2. DATOS DEL CLIENTE */}
+                        {/* 2. DATOS DEL CLIENTE Y CUENTA (EDITABLES) */}
                         <div className="space-y-2">
+                            {/* A. CLIENTE */}
                             <div className="relative group">
                                 {stockMode ? <Lock size={16} className={ICON_CLASS}/> : <User size={16} className={ICON_CLASS}/>}
                                 <input list="clients-suggestions" className={`${INPUT_CLASS} ${stockMode ? 'opacity-50 cursor-not-allowed' : ''}`} value={stockMode ? 'LIBRE' : (isNewSale ? '' : formData.client)} onChange={handleClientNameChange} placeholder="Nombre del Cliente" disabled={stockMode} autoFocus={!stockMode} required />
@@ -317,13 +318,26 @@ const SaleForm = ({
                                 </button>
                             )}
 
+                            {/* B. CORREO / USUARIO (NUEVO: Ahora visible y editable) */}
+                            <div className="relative group animate-in slide-in-from-top-1">
+                                <Mail size={16} className={ICON_CLASS}/>
+                                <input 
+                                    type="text" 
+                                    className={INPUT_CLASS} 
+                                    value={formData.email} 
+                                    onChange={e => setFormData({...formData, email: e.target.value})} 
+                                    placeholder="Correo o Usuario (IPTV)"
+                                    required 
+                                />
+                            </div>
+
                             {!stockMode && (
                                 <div className="space-y-2">
                                     <div className="relative group">
                                         <Smartphone size={16} className={ICON_CLASS}/>
                                         <input type="tel" className={INPUT_CLASS} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="WhatsApp (Opcional)"/>
                                     </div>
-                                    <div className="relative group animate-in slide-in-from-top-1">
+                                    <div className="relative group">
                                         <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${theme.iconColor}`}>
                                             <LinkIcon size={16}/>
                                         </div>
@@ -367,9 +381,8 @@ const SaleForm = ({
                             <div className="space-y-2">
                                 {(parseInt(formData.profilesToBuy) > 1 ? bulkProfiles : [bulkProfiles[0] || {profile: formData.profile, pin: formData.pin}]).map((p, i) => (
                                     <div key={i} className="flex gap-2 animate-in slide-in-from-left-2" style={{animationDelay: `${i*50}ms`}}>
-                                        {/* 🔥 Focus Glow aplicado aquí también */}
-                                        <input className={`flex-1 p-2.5 rounded-lg text-xs font-bold outline-none border focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder={`Nombre Perfil ${i+1}`} value={parseInt(formData.profilesToBuy) > 1 ? p.profile : formData.profile} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/>
-                                        <input className={`w-16 p-2.5 text-center rounded-lg text-xs font-mono font-bold outline-none border focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder="PIN" value={parseInt(formData.profilesToBuy) > 1 ? p.pin : formData.pin} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/>
+                                        <input className={`flex-1 p-2.5 rounded-lg text-xs font-bold outline-none border transition-all ${theme.focusRing} ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder={`Nombre Perfil ${i+1}`} value={parseInt(formData.profilesToBuy) > 1 ? p.profile : formData.profile} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'profile', e.target.value) : handleSingleProfileChange(e.target.value)} list="suggested-profiles"/>
+                                        <input className={`w-16 p-2.5 text-center rounded-lg text-xs font-mono font-bold outline-none border transition-all ${theme.focusRing} ${theme.inputBg} ${theme.border} ${theme.text} placeholder:text-slate-500`} placeholder="PIN" value={parseInt(formData.profilesToBuy) > 1 ? p.pin : formData.pin} onChange={(e) => parseInt(formData.profilesToBuy) > 1 ? handleBulkProfileChange(i, 'pin', e.target.value) : setFormData({...formData, pin: e.target.value})}/>
                                     </div>
                                 ))}
                             </div>
@@ -380,8 +393,7 @@ const SaleForm = ({
                             <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50/50 border-indigo-100/50'}`}>
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase mb-1"><Package size={12}/> Cambiar Plan</label>
                                 <div className="relative">
-                                    {/* 🔥 Focus Glow en el Selector */}
-                                    <select className={`w-full p-2.5 rounded-lg text-[10px] font-bold outline-none border transition-all focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(34,211,238,0.4)] appearance-none cursor-pointer ${darkMode ? 'bg-[#0B0F19] border-white/10 text-indigo-300' : 'bg-white border-indigo-100 text-indigo-900'}`} onChange={(e) => { const selected = catalog.find(s => s.name === e.target.value); if (selected) setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots })); }} value={formData.service}>
+                                    <select className={`w-full p-2.5 rounded-lg text-[10px] font-bold outline-none border transition-all ${theme.focusRing} appearance-none cursor-pointer ${darkMode ? 'bg-[#0B0F19] border-white/10 text-indigo-300' : 'bg-white border-indigo-100 text-indigo-900'}`} onChange={(e) => { const selected = catalog.find(s => s.name === e.target.value); if (selected) setFormData(prev => ({ ...prev, service: selected.name, cost: selected.cost, profilesToBuy: selected.defaultSlots })); }} value={formData.service}>
                                         <option value={formData.service}>{formData.service} (Actual)</option>
                                         <option disabled>──────────</option>
                                         {filteredConversionCatalog.map(item => <option key={item.id} value={item.name}>{item.name} - ${item.cost}</option>)}
