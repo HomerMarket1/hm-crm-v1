@@ -344,9 +344,9 @@ const Dashboard = ({
                 return acc;
             }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Cuentas':'Cuenta') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
             
-            if (targetDays < 0) message = `Hola ${client}, tiene un pago pendiente por: ${summary}.`;
-            else if (targetDays === 0) message = `Hola ${client}, su servicio de ${summary} vence HOY.`;
-            else message = `Hola ${client}, recordatorio: ${summary} vence en ${targetDays} días.`;
+            if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.`;
+            else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
+            else message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
         
         } 
         // --- MODO DATOS DE ACCESO (MINIMALISTA) ---
@@ -446,15 +446,15 @@ const Dashboard = ({
         toggleMark: handleToggleMark 
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 
-    // --- CLASIFICACIÓN DE DATOS (CON MEMORIA GLOBAL + FIX ADMIN) ---
+    // --- CLASIFICACIÓN DE DATOS (CON MEMORIA GLOBAL Y EXCLUSIÓN DE ADMIN) ---
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
-        // 1. ESCANEO GLOBAL
+        // 1. ESCANEO GLOBAL (EXCLUYENDO ADMIN DE LA LISTA NEGRA)
         const problemEmails = new Set();
         sales.forEach(s => {
             const textToCheck = (s.client + " " + s.service + " " + (s.type || "")).toLowerCase();
             const isProblem = PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(s.client);
             
-            // OJO: Excluimos 'Admin' de la lista negra global
+            // OJO: Si es 'Admin', NO lo metemos a la lista negra
             if (isProblem && s.email && s.client !== 'Admin') problemEmails.add(s.email.trim().toLowerCase());
         });
 
@@ -494,7 +494,7 @@ const Dashboard = ({
             if (isFree) {
                 free.push(...group);
             } else if (isAdmin) {
-                // ✅ REGLA DE ORO: Si es Admin, siempre va a Activos (Healthy), nunca a Garantía
+                // ✅ ADMIN SIEMPRE A ACTIVOS (HEALTHY)
                 healthy.push(...group);
             } else if (isGlobalProblem || hasVisibleProblem) {
                 warranty.push(...group); 
@@ -504,7 +504,7 @@ const Dashboard = ({
         });
         
         return { healthySales: healthy, freeSales: free, warrantySales: warranty, maintenanceSales: maintenance };
-    }, [filteredSales, sales]); // Dependencias clave: filteredSales (vista actual) y sales (global)
+    }, [filteredSales, sales]);
 
     let currentList = [];
     if (activeTab === 'healthy') currentList = healthySales;
