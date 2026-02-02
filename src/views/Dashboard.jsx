@@ -446,8 +446,17 @@ const Dashboard = ({
         toggleMark: handleToggleMark 
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 
-    // --- CLASIFICACIÓN DE DATOS ---
+    // --- CLASIFICACIÓN DE DATOS (CON LÓGICA DE MEMORIA GLOBAL PARA FILTROS) ---
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
+        // 1. ESCANEO GLOBAL: Detectamos qué correos tienen problemas en TODA la base de datos
+        // (Esto evita que el buscador oculte el problema y mueva al cliente a Activos por error)
+        const problemEmails = new Set();
+        sales.forEach(s => {
+            const textToCheck = (s.client + " " + s.service + " " + (s.type || "")).toLowerCase();
+            const isProblem = PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(s.client);
+            if (isProblem && s.email) problemEmails.add(s.email.trim().toLowerCase());
+        });
+
         const groups = {};
         const healthy = [];
         const free = [];
@@ -463,29 +472,36 @@ const Dashboard = ({
         });
 
         Object.values(groups).forEach(group => {
-            const realItems = group; 
-            const hasProblem = realItems.some(sale => {
+            const representative = group[0];
+            const email = representative.email ? representative.email.trim().toLowerCase() : '';
+            
+            // ¿Este cliente tiene problemas ocultos? (Consultamos la lista global)
+            const isGlobalProblem = problemEmails.has(email);
+
+            // ¿Este grupo visible tiene problemas?
+            const hasVisibleProblem = group.some(sale => {
                 const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
                 const isFree = sale.client.toLowerCase().includes('libre');
                 if (isFree || sale.client === 'Admin') return false;
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
-            const isFragmented = realItems.length > 1;
-            
-            if (hasProblem) {
-                if (isFragmented) warranty.push(...group); 
-                else maintenance.push(...group); 
+
+            // Lógica de Clasificación
+            const clientName = (representative.client || '').toLowerCase();
+            const isFree = clientName.includes('libre') || clientName.includes('espacio libre') || clientName.includes('disponible');
+
+            if (isFree) {
+                free.push(...group);
+            } else if (isGlobalProblem || hasVisibleProblem) {
+                // ✅ LÓGICA CORREGIDA: Si hay problemas (visibles o globales), va a Garantía.
+                warranty.push(...group); 
             } else {
-                group.forEach(sale => {
-                    const clientName = (sale.client || '').toLowerCase();
-                    const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
-                    if (isFree) free.push(sale);
-                    else healthy.push(sale);
-                });
+                healthy.push(...group);
             }
         });
+        
         return { healthySales: healthy, freeSales: free, warrantySales: warranty, maintenanceSales: maintenance };
-    }, [filteredSales]);
+    }, [filteredSales, sales]); // Dependemos de filteredSales (vista actual) y sales (vista global)
 
     let currentList = [];
     if (activeTab === 'healthy') currentList = healthySales;
