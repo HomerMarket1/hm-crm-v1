@@ -344,9 +344,9 @@ const Dashboard = ({
                 return acc;
             }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Cuentas':'Cuenta') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
             
-            if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.`;
-            else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
-            else message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
+            if (targetDays < 0) message = `Hola ${client}, tiene un pago pendiente por: ${summary}.`;
+            else if (targetDays === 0) message = `Hola ${client}, su servicio de ${summary} vence HOY.`;
+            else message = `Hola ${client}, recordatorio: ${summary} vence en ${targetDays} días.`;
         
         } 
         // --- MODO DATOS DE ACCESO (MINIMALISTA) ---
@@ -446,15 +446,16 @@ const Dashboard = ({
         toggleMark: handleToggleMark 
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 
-    // --- CLASIFICACIÓN DE DATOS (CON LÓGICA DE MEMORIA GLOBAL PARA FILTROS) ---
+    // --- CLASIFICACIÓN DE DATOS (CON MEMORIA GLOBAL + FIX ADMIN) ---
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
-        // 1. ESCANEO GLOBAL: Detectamos qué correos tienen problemas en TODA la base de datos
-        // (Esto evita que el buscador oculte el problema y mueva al cliente a Activos por error)
+        // 1. ESCANEO GLOBAL
         const problemEmails = new Set();
         sales.forEach(s => {
             const textToCheck = (s.client + " " + s.service + " " + (s.type || "")).toLowerCase();
             const isProblem = PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(s.client);
-            if (isProblem && s.email) problemEmails.add(s.email.trim().toLowerCase());
+            
+            // OJO: Excluimos 'Admin' de la lista negra global
+            if (isProblem && s.email && s.client !== 'Admin') problemEmails.add(s.email.trim().toLowerCase());
         });
 
         const groups = {};
@@ -475,25 +476,27 @@ const Dashboard = ({
             const representative = group[0];
             const email = representative.email ? representative.email.trim().toLowerCase() : '';
             
-            // ¿Este cliente tiene problemas ocultos? (Consultamos la lista global)
             const isGlobalProblem = problemEmails.has(email);
 
-            // ¿Este grupo visible tiene problemas?
             const hasVisibleProblem = group.some(sale => {
                 const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
                 const isFree = sale.client.toLowerCase().includes('libre');
-                if (isFree || sale.client === 'Admin') return false;
+                // Admin nunca es problema
+                if (isFree || sale.client === 'Admin') return false; 
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
 
             // Lógica de Clasificación
             const clientName = (representative.client || '').toLowerCase();
             const isFree = clientName.includes('libre') || clientName.includes('espacio libre') || clientName.includes('disponible');
+            const isAdmin = clientName === 'admin'; 
 
             if (isFree) {
                 free.push(...group);
+            } else if (isAdmin) {
+                // ✅ REGLA DE ORO: Si es Admin, siempre va a Activos (Healthy), nunca a Garantía
+                healthy.push(...group);
             } else if (isGlobalProblem || hasVisibleProblem) {
-                // ✅ LÓGICA CORREGIDA: Si hay problemas (visibles o globales), va a Garantía.
                 warranty.push(...group); 
             } else {
                 healthy.push(...group);
@@ -501,7 +504,7 @@ const Dashboard = ({
         });
         
         return { healthySales: healthy, freeSales: free, warrantySales: warranty, maintenanceSales: maintenance };
-    }, [filteredSales, sales]); // Dependemos de filteredSales (vista actual) y sales (vista global)
+    }, [filteredSales, sales]); // Dependencias clave: filteredSales (vista actual) y sales (global)
 
     let currentList = [];
     if (activeTab === 'healthy') currentList = healthySales;
