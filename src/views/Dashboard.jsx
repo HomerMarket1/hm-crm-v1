@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
-import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react'; 
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react';
 import AppleCalendar from '../components/AppleCalendar';
-import { doc, updateDoc } from 'firebase/firestore'; 
+import { doc, updateDoc } from 'firebase/firestore';
 // 👇 IMPORTANTE: Importamos auth aquí arriba para evitar el error de conexión
-import { db, auth } from '../firebase/config'; 
+import { db, auth } from '../firebase/config';
 
 // --- ⚡️ CONSTANTES & CONFIGURACIÓN GLOBAL ---
 const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
@@ -42,7 +42,6 @@ const getCardStyles = (sale, days, darkMode) => {
     let subText = darkMode ? 'text-slate-400' : 'text-slate-500';
 
     if (sale.markedForDeletion) {
-        // ESTILO: FONDO ROJIZO MUY SUAVE SI ESTÁ MARCADO
         bg = darkMode ? "bg-rose-950/20 border-rose-900/30" : "bg-rose-50 border-rose-100";
         text = "text-rose-400";
         subText = "text-rose-400/60";
@@ -78,7 +77,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
     const days = safeGetDays(sale.endDate);
     const { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
-
     const loyalty = !isFree && getClientLoyalty ? getClientLoyalty(sale.client) : null;
 
     const iconLetter = useMemo(() => {
@@ -91,9 +89,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
 
     return (
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
-            
-            {/* 🛑 ZONA FANTASMA (Esquina Izquierda) 🛑 */}
-            {/* Se muestra si NO es libre, O SI TIENE MARCA DE BAJA (para poder quitarla aunque sea libre) */}
             {(!isFree || sale.markedForDeletion) && !isAdmin && (
                 <div className="absolute top-0 left-0 w-12 h-12 z-50 flex items-start justify-start p-1 opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
                     <button 
@@ -107,8 +102,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
             )}
 
             <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center relative z-10">
-                
-                {/* COL 1: Info Principal */}
                 <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 ${statusColor}`}>
                         {iconLetter}
@@ -120,21 +113,16 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                                     <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>
                                         {isFree ? 'Espacio Libre' : sale.client}
                                     </div>
-                                    
-                                    {/* 🔴 ETIQUETA ROJA: NO RENUEVA 🔴 */}
                                     {sale.markedForDeletion && (
                                         <span className="text-[8px] px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500 text-white font-black uppercase tracking-wider animate-pulse">
                                             BAJA PROGRAMADA
                                         </span>
                                     )}
-
-                                    {/* Insignia Lealtad (Oculta si no renueva) */}
                                     {!sale.markedForDeletion && loyalty && loyalty.level && !isFree && !isProblem && !isAdmin && (
                                         <span className={`text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider flex items-center gap-1 ${loyalty.color}`}>
                                             {loyalty.level}
                                         </span>
                                     )}
-
                                     {isFullAccount && !isFree && (
                                         <span className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase ${darkMode ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'}`}>
                                             <Layers size={8} /> Completa
@@ -171,7 +159,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                     </div>
                 </div>
 
-                {/* COL 2: Credenciales */}
                 <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-2">
                     <div className={`rounded-xl px-3 py-2 border md:border-none ${darkMode ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/20 md:bg-transparent'}`}>
                         <div className={`flex items-center justify-between gap-2 mb-1 ${subText}`}>
@@ -190,7 +177,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                     </div>
                 </div>
 
-                {/* COL 3: Estado y Métricas (Desktop) */}
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
                     {!isFree && !isProblem && !isAdmin ? (
                         <div className="flex items-center gap-6">
@@ -213,7 +199,6 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                     )}
                 </div>
 
-                {/* COL 4: Botonera de Acciones */}
                 <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
                     {isFree ? (
                         <div className="flex w-full md:w-auto gap-2 justify-end">
@@ -317,7 +302,6 @@ const Dashboard = ({
         const lowerService = serviceName.toLowerCase();
         let message = '';
 
-        // Fechas con formato limpio: "15 de Febrero"
         const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         let dateText = "Indefinido";
         if (endDate) {
@@ -325,7 +309,6 @@ const Dashboard = ({
             dateText = `${d} de ${months[m-1]}`;
         }
 
-        // --- MODO RECORDATORIO (COBRO) ---
         if (actionType === 'reminder') {
             const related = sales.filter(s => {
                 if (s.client !== client) return false;
@@ -348,32 +331,23 @@ const Dashboard = ({
             else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
             else message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
         
-        } 
-        // --- MODO DATOS DE ACCESO (MINIMALISTA) ---
-        else if (actionType === 'data') {
-            
-            // 📺 CASO 1: IPTV / MAGIS
+        } else if (actionType === 'data') {
             if (lowerService.includes('iptv') || lowerService.includes('magis') || lowerService.includes('tivify')) {
                 message = `${serviceName}\n\n` +
                           `USUARIO:\n${sale.profile || 'N/A'}\n` +
                           `CONTRASEÑA:\n${sale.pin || 'N/A'}\n` +
                           `URL / DNS:\n${sale.pass || 'Solicitar'}\n\n` +
                           `☑️Su servicio vence el día ${dateText}☑️`;
-            } 
-            // 🍿 CASO 2: NETFLIX / DISNEY
-            else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
+            } else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
                 message = `${serviceName} 1 PERFIL\n\n` +
                           `CORREO:\n${sale.email}\n` +
                           `PERFIL:\n${sale.profile}\n` +
                           `PIN:\n${sale.pin || 'Sin PIN'}\n\n` +
                           `NOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n` + 
                           `☑️Su Perfil Vence el día ${dateText}☑️`;
-            }
-            // 📧 CASO 3: ESTÁNDAR
-            else {
+            } else {
                 const isFull = sale.type === 'Cuenta';
                 const typeLabel = isFull ? 'CUENTA COMPLETA' : '1 PERFIL';
-                
                 message = `${serviceName} ${typeLabel}\n\n` +
                           `CORREO:\n${sale.email}\n` +
                           `CONTRASEÑA:\n${sale.pass}\n` +
@@ -381,11 +355,9 @@ const Dashboard = ({
                           `\n☑️Su Perfil Vence el día ${dateText}☑️`;
             }
         }
-        
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
-    // 🏆 MANEJADOR PARA MARCAR/DESMARCAR BAJA PROGRAMADA 🏆
     const handleToggleMark = useCallback(async (sale) => {
         try {
             const currentUser = auth.currentUser;
@@ -402,7 +374,6 @@ const Dashboard = ({
         }
     }, []);
 
-    // Handlers memoizados
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
         copy: (e, email, pass) => {
@@ -428,8 +399,6 @@ const Dashboard = ({
         },
         migrate: openMigration, 
         renew: handleQuickRenew,
-        
-        // 🧹 LIMPIEZA AUTOMÁTICA AL LIBERAR
         liberate: async (id) => {
             try {
                 const currentUser = auth.currentUser;
@@ -442,7 +411,6 @@ const Dashboard = ({
             }
             triggerLiberate(id);
         },
-
         toggleMark: handleToggleMark 
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 
@@ -486,7 +454,6 @@ const Dashboard = ({
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
 
-            // Lógica de Clasificación
             const clientName = (representative.client || '').toLowerCase();
             const isFree = clientName.includes('libre') || clientName.includes('espacio libre') || clientName.includes('disponible');
             const isAdmin = clientName === 'admin'; 
@@ -552,7 +519,6 @@ const Dashboard = ({
 
     return (
         <div className="w-full pb-32 space-y-4 animate-in fade-in">
-            {/* ALERTAS */}
             {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     {overdueSales.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencidas', list: overdueSales })} className="flex-1 p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Ban size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Vencidas</span><p className="text-sm font-black">{overdueSales.length}</p></div></div><ChevronRight size={14}/></button>)}
@@ -561,7 +527,6 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* TABS */}
             <div className="px-1 grid grid-cols-4 gap-2">
                 <button onClick={() => setActiveTab('healthy')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' ? (darkMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-600 text-white shadow-lg') : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Activity size={18} className={`mb-1 ${activeTab === 'healthy' ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Activos</span><span className="text-xs font-black">{healthySales.length}</span></button>
                 <button onClick={() => setActiveTab('free')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' ? 'bg-emerald-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Box size={18} className={`mb-1 ${activeTab === 'free' ? 'animate-bounce' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Stock</span><span className="text-xs font-black">{freeSales.length}</span></button>
@@ -569,7 +534,6 @@ const Dashboard = ({
                 <button onClick={() => setActiveTab('maintenance')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'maintenance' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Wrench size={18} className={`mb-1 ${activeTab === 'maintenance' ? 'animate-spin-slow' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Soporte</span><span className="text-xs font-black">{maintenanceSales.length}</span></button>
             </div>
 
-            {/* FILTROS */}
             <div className={`sticky top-0 z-40 -mx-4 px-4 py-3 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-b border-white/5' : 'bg-[#F2F2F7]/90 border-b border-slate-200/50'}`}>
                 <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
                     <div className="relative group w-full shadow-sm">
@@ -603,7 +567,6 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {/* KPI */}
             {activeTab === 'healthy' && (
                 <div className="flex items-end justify-between px-2 md:px-4 animate-in fade-in">
                     <div><h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p></div>
@@ -611,7 +574,6 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* LISTA */}
             <div className="space-y-3">
                 {visibleSales.length > 0 ? visibleSales.map((sale, i) => (
                     <div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}>
@@ -630,7 +592,6 @@ const Dashboard = ({
                 {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODALES */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
@@ -649,7 +610,6 @@ const Dashboard = ({
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
                         <div className="p-6 border-b border-white/5">
                             <div className="flex justify-between items-start mb-4"><div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div><button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><X size={20} /></button></div>
-                            {/* ... Resto del modal de migración ... */}
                             <div className="mb-4 animate-in slide-in-from-top-2"><button onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)} className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/50 text-slate-300 shadow-sm' : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600'}`}><div className="flex items-center gap-2 overflow-hidden"><Lock size={14} className="text-indigo-500 shrink-0"/><div className="text-left"><p className="text-[9px] font-bold uppercase opacity-50 leading-none mb-1">Cuenta anterior</p><p className="text-[11px] font-bold truncate">{migrationModal.sale?.email}</p></div></div><div className="flex items-center gap-2 shrink-0 ml-2"><span className="text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity uppercase">Copiar Acceso</span><Copy size={16} className="text-indigo-500"/></div></button></div>
                             <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}><p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}><User size={12}/> Datos a trasladar:</p><div className="flex gap-4"><div className="flex-1"><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>Perfil Actual</span><span className={`text-base font-black truncate block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.profile || 'N/A'}</span></div><div className={`flex-1 border-l pl-4 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>PIN Actual</span><span className={`text-base font-mono font-black block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.pin || '---'}</span></div></div></div>
                         </div>
