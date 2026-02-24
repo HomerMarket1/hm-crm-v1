@@ -111,7 +111,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         sales.forEach(s => {
             const exactService = s.service || 'Sin Servicio';
             const key = `${s.email}|${s.pass}|${exactService}`;
-            
             if (!groups[key]) {
                 groups[key] = { id: s.id, email: s.email, pass: s.pass, service: exactService, total: 0, free: 0, ids: [] };
             }
@@ -187,58 +186,76 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     }, [todayAnchor]);
 
-    // 🏆 CALCULADORA DE LEALTAD (CON PRUEBA DE DÍAS ACTIVADA)
+    // 🏆 CALCULADORA DE LEALTAD (CON AGENDA GLOBAL Y TRUCO DE FECHA)
     const getClientLoyalty = useCallback((clientName, clientPhone = '') => {
         if (!clientName || !sales.length) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
 
         const nameToSearch = normalizeText(clientName);
         const phoneToSearch = clientPhone ? normalizeText(clientPhone).replace(/\D/g, '') : '';
         
-        // 1. Filtrar exactamente a ESTE cliente (Nombre + Teléfono)
+        let oldestTimestamp = new Date().getTime(); 
+
+        // 1. REVISIÓN INFALIBLE: LA AGENDA GLOBAL (allClients)
+        if (allClients && allClients.length > 0) {
+            const globalClient = allClients.find(c => {
+                const cName = c.name || c.client || '';
+                if (normalizeText(cName) !== nameToSearch) return false;
+                const cPhone = c.phone ? normalizeText(c.phone).replace(/\D/g, '') : '';
+                if (phoneToSearch && cPhone && phoneToSearch !== cPhone) return false;
+                return true;
+            });
+            if (globalClient && globalClient.createdAt) {
+                oldestTimestamp = globalClient.createdAt.toDate ? globalClient.createdAt.toDate().getTime() : new Date(globalClient.createdAt).getTime();
+            }
+        }
+
+        // 2. REVISIÓN DE RESPALDO: VENTAS ACTUALES Y TRUCO DE VENCIMIENTO
         const clientHistory = sales.filter(s => {
             if (normalizeText(s.client) !== nameToSearch) return false;
-            
             const sPhone = s.phone ? normalizeText(s.phone).replace(/\D/g, '') : '';
             if (phoneToSearch && sPhone && phoneToSearch !== sPhone) return false;
-            
             return true;
         });
         
-        if (clientHistory.length === 0) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
-
-        // 2. Encontramos la fecha de inicio más antigua de sus servicios ACTIVOS
-        let oldestTimestamp = new Date().getTime();
-
         clientHistory.forEach(s => {
-            let startDate = new Date().getTime();
+            let possibleStart = new Date().getTime();
             
             if (s.clientSince) {
-                startDate = new Date(s.clientSince).getTime();
+                possibleStart = new Date(s.clientSince).getTime();
             } else if (s.createdAt) {
-                startDate = s.createdAt.toDate ? s.createdAt.toDate().getTime() : new Date(s.createdAt).getTime();
+                possibleStart = s.createdAt.toDate ? s.createdAt.toDate().getTime() : new Date(s.createdAt).getTime();
             }
 
-            if (startDate < oldestTimestamp) {
-                oldestTimestamp = startDate;
+            // TRUCO SALVAVIDAS: Si vence en el futuro (ej: 1 marzo), mínimo lo compró hace 1 mes (30 días)
+            if (s.endDate) {
+                const [y, m, d] = s.endDate.split('-').map(Number);
+                const endT = new Date(y, m - 1, d).getTime();
+                const estimatedStart = endT - (1000 * 60 * 60 * 24 * 30); 
+                if (estimatedStart < possibleStart) {
+                    possibleStart = estimatedStart;
+                }
+            }
+
+            if (possibleStart < oldestTimestamp) {
+                oldestTimestamp = possibleStart;
             }
         });
 
+        // 3. CÁLCULO FINAL DE MESES
         const firstSaleDate = new Date(oldestTimestamp);
         const now = new Date();
 
-        // 3. Diferencia en meses y DÍAS EXACTOS (Para tu prueba)
         const diffTime = Math.abs(now - firstSaleDate);
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Días totales
-        const diffMonths = Math.floor(diffDays / 30); // Meses exactos (dividiendo por 30 días)
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); 
+        const diffMonths = Math.floor(diffDays / 30); 
 
-        // 4. Asignamos Nivel MOSTRANDO LOS DÍAS EN PANTALLA
         if (diffMonths >= 10) return { level: `LEYENDA 👑 (${diffDays} d)`, color: 'text-amber-400 border-amber-400/20 bg-amber-400/10', months: diffMonths };
         if (diffMonths >= 5) return { level: `VIP 🌟 (${diffDays} d)`, color: 'text-purple-400 border-purple-400/20 bg-purple-400/10', months: diffMonths };
         if (diffMonths >= 2) return { level: `Fiel 🤝 (${diffDays} d)`, color: 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10', months: diffMonths };
         
         return { level: `Nuevo 🐣 (${diffDays} d)`, color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: diffMonths };
 
-    }, [sales]);
+    }, [sales, allClients]);
 
     return {
         filteredSales, totalFilteredMoney, totalItems: filteredSales.length, 
