@@ -169,17 +169,25 @@ const App = () => {
         const EXEMPT = ['Admin', 'Actualizar', 'Caída', 'Dominio', 'EXPIRED', 'Vencido', 'Problemas', 'Garantía'];
         const isExempt = EXEMPT.some(status => formData.client.trim().toLowerCase() === status.toLowerCase());
 
-        // 🧠 FECHA SEGURA: Evita el bug de 30 de febrero
+        // 🧠 FECHA SEGURA 2.0: Sin bug de febrero Y sin bug de zona horaria (UTC)
         if (!finalEndDate && formData.client !== 'LIBRE' && !isExempt) {
             const now = new Date();
             const currentDay = now.getDate();
+            
+            // 1. Sumamos el mes
             now.setMonth(now.getMonth() + 1);
             
-            // Si el día cambió (ej: era 31 y saltó a marzo), retrocedemos al último día válido
+            // 2. Corrección "30 de febrero": Si el día cambió, volvemos al último día válido
             if (now.getDate() !== currentDay) {
                 now.setDate(0); 
             }
-            finalEndDate = now.toISOString().split('T')[0];
+
+            // 3. ✅ CORRECCIÓN UTC: Usamos componentes locales para evitar el cambio de día después de las 7 PM
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0'); // Meses van de 0 a 11
+            const day = String(now.getDate()).padStart(2, '0');
+            
+            finalEndDate = `${year}-${month}-${day}`;
         }
 
         const dataToSave = { ...formData, endDate: finalEndDate };
@@ -194,7 +202,7 @@ const App = () => {
         if (formData.id) {
             success = await handleGenericSave(dataToSave);
         } else {
-            // 🧹 LÓGICA LIMPIA: Batch O Single, no mezclados
+            // 🧹 LÓGICA LIMPIA: Batch O Single
             if (quantity > 1) {
                 const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
                 success = await crmActions.processBatchSale(dataWithCorrectCost, quantity, freeRows, bulkProfiles, catalog);

@@ -160,7 +160,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
 
 
 
-    const loyalty = !isFree && getClientLoyalty ? getClientLoyalty(sale.client) : null;
+    const loyalty = !isFree && getClientLoyalty ? getClientLoyalty(sale.client, sale.phone) : null;
 
 
 

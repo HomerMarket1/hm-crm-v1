@@ -8,7 +8,6 @@ const normalizeText = (text) => {
     return String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
-// Mantenemos esta función SOLO para iconos y colores, NO para filtrar
 const getPlatformBaseName = (serviceName) => {
     if (!serviceName) return 'Desconocido';
     const lower = serviceName.toLowerCase();
@@ -52,7 +51,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return calculateDaysDiff(endDate, todayAnchor);
     }, [todayAnchor]);
 
-    // --- MOTOR DE FILTRADO ---
     const filteredSales = useMemo(() => {
         if (!sales) return [];
         const term = filterClient ? normalizeText(filterClient) : '';
@@ -62,7 +60,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         const effectiveDateTo = (dateFrom && !dateTo) ? dateFrom : dateTo;
 
         return sales.filter(sale => {
-            // A. Filtro Texto (Buscador)
             if (term) {
                 const matchName = normalizeText(sale.client).includes(term);
                 const matchEmail = normalizeText(sale.email).includes(term);
@@ -70,15 +67,9 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                 const matchService = normalizeText(sale.service).includes(term);
                 if (!matchName && !matchEmail && !matchPhone && !matchService) return false;
             }
-
-            // ✅ B. FILTRO SERVICIO (LITERAL Y EXACTO)
             if (isFilteringService) {
-                // Comparamos el texto exacto. Si en el filtro dice "Disney+ En Vivo",
-                // la venta debe decir exactamente "Disney+ En Vivo".
                 if (sale.service.trim() !== filterService.trim()) return false;
             }
-
-            // C. Filtro Estado
             if (isFilteringStatus) {
                 const clientLower = (sale.client || '').toLowerCase();
                 const isFree = clientLower.includes('libre');
@@ -92,8 +83,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                     if (days >= 0) return false; 
                 }
             }
-
-            // D. Filtro Fecha
             if (hasDateFilter) {
                 if (!sale.endDate) return false;
                 const targetDate = String(sale.endDate).trim();
@@ -117,7 +106,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return sum + (Number(s.cost) || 0);
     }, 0), [filteredSales]);
 
-    // ✅ INVENTARIO / BÓVEDA
     const accountsInventory = useMemo(() => {
         const groups = {};
         sales.forEach(s => {
@@ -125,22 +113,12 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             const key = `${s.email}|${s.pass}|${exactService}`;
             
             if (!groups[key]) {
-                groups[key] = { 
-                    id: s.id, 
-                    email: s.email, 
-                    pass: s.pass, 
-                    service: exactService, 
-                    total: 0, 
-                    free: 0,
-                    ids: [] 
-                };
+                groups[key] = { id: s.id, email: s.email, pass: s.pass, service: exactService, total: 0, free: 0, ids: [] };
             }
-            
             groups[key].total++;
             if ((s.client || '').toLowerCase().includes('libre')) groups[key].free++;
             groups[key].ids.push(s.id);
         });
-        
         return Object.values(groups).sort((a, b) => {
             if (b.free !== a.free) return b.free - a.free;
             return a.service.localeCompare(b.service);
@@ -164,7 +142,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         ).length;
     }, [sales, currentFormData.service, currentFormData.email]);
 
-    // --- HELPERS VISUALES ---
     const isBillable = useCallback((s) => {
         const c = (s.client || '').toLowerCase();
         if (c.includes('libre') || !s.endDate) return false;
@@ -210,37 +187,56 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     }, [todayAnchor]);
 
-    // 🏆 CALCULADORA DE LEALTAD (NUEVA FUNCIÓN)
-    const getClientLoyalty = useCallback((clientName) => {
+    // 🏆 CALCULADORA DE LEALTAD (CON PRUEBA DE DÍAS ACTIVADA)
+    const getClientLoyalty = useCallback((clientName, clientPhone = '') => {
         if (!clientName || !sales.length) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
 
         const nameToSearch = normalizeText(clientName);
+        const phoneToSearch = clientPhone ? normalizeText(clientPhone).replace(/\D/g, '') : '';
         
-        // 1. Buscamos todas las ventas históricas de este cliente
-        const clientHistory = sales.filter(s => normalizeText(s.client) === nameToSearch);
+        // 1. Filtrar exactamente a ESTE cliente (Nombre + Teléfono)
+        const clientHistory = sales.filter(s => {
+            if (normalizeText(s.client) !== nameToSearch) return false;
+            
+            const sPhone = s.phone ? normalizeText(s.phone).replace(/\D/g, '') : '';
+            if (phoneToSearch && sPhone && phoneToSearch !== sPhone) return false;
+            
+            return true;
+        });
         
         if (clientHistory.length === 0) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
 
-        // 2. Encontramos la fecha de la PRIMERA compra (ordenamos ascendente)
-        const sortedHistory = clientHistory.sort((a, b) => {
-            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : new Date().getTime();
-            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : new Date().getTime();
-            return dateA - dateB;
+        // 2. Encontramos la fecha de inicio más antigua de sus servicios ACTIVOS
+        let oldestTimestamp = new Date().getTime();
+
+        clientHistory.forEach(s => {
+            let startDate = new Date().getTime();
+            
+            if (s.clientSince) {
+                startDate = new Date(s.clientSince).getTime();
+            } else if (s.createdAt) {
+                startDate = s.createdAt.toDate ? s.createdAt.toDate().getTime() : new Date(s.createdAt).getTime();
+            }
+
+            if (startDate < oldestTimestamp) {
+                oldestTimestamp = startDate;
+            }
         });
 
-        const firstSaleDate = sortedHistory[0].createdAt ? new Date(sortedHistory[0].createdAt) : new Date();
+        const firstSaleDate = new Date(oldestTimestamp);
         const now = new Date();
 
-        // 3. Calculamos la diferencia en meses
+        // 3. Diferencia en meses y DÍAS EXACTOS (Para tu prueba)
         const diffTime = Math.abs(now - firstSaleDate);
-        const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30)); 
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Días totales
+        const diffMonths = Math.floor(diffDays / 30); // Meses exactos (dividiendo por 30 días)
 
-        // 4. Asignamos Nivel
-        if (diffMonths >= 10) return { level: 'LEYENDA 👑', color: 'text-amber-400 border-amber-400/20 bg-amber-400/10', months: diffMonths };
-        if (diffMonths >= 5) return { level: 'VIP 🌟', color: 'text-purple-400 border-purple-400/20 bg-purple-400/10', months: diffMonths };
-        if (diffMonths >= 2) return { level: 'Fiel 🤝', color: 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10', months: diffMonths };
+        // 4. Asignamos Nivel MOSTRANDO LOS DÍAS EN PANTALLA
+        if (diffMonths >= 10) return { level: `LEYENDA 👑 (${diffDays} d)`, color: 'text-amber-400 border-amber-400/20 bg-amber-400/10', months: diffMonths };
+        if (diffMonths >= 5) return { level: `VIP 🌟 (${diffDays} d)`, color: 'text-purple-400 border-purple-400/20 bg-purple-400/10', months: diffMonths };
+        if (diffMonths >= 2) return { level: `Fiel 🤝 (${diffDays} d)`, color: 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10', months: diffMonths };
         
-        return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: diffMonths };
+        return { level: `Nuevo 🐣 (${diffDays} d)`, color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: diffMonths };
 
     }, [sales]);
 
@@ -251,6 +247,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         getStatusIcon, getStatusColor, getDaysRemaining, 
         expiringToday, expiringTomorrow, overdueSales,
         getPlatformBaseName,
-        getClientLoyalty // ✅ Exportamos la nueva función
+        getClientLoyalty
     };
 };

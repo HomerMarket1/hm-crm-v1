@@ -54,10 +54,12 @@ export const useCRMActions = (user, setNotification) => {
                         finalServiceName = originalService ? originalService.name : findBaseServiceName(saleToFree.service);
                     }
 
+                    // ✅ AL LIBERAR: Borramos `clientSince` para que, si el slot se reusa, empiece de cero.
                     batch.update(doc(db, userPath, 'sales', modalData.id), {
                         client: 'LIBRE', phone: '', endDate: '', cost: 0, 
                         service: finalServiceName, updatedAt: serverTimestamp(), 
-                        type: targetType, profile: targetProfile, pin: ''
+                        type: targetType, profile: targetProfile, pin: '',
+                        clientSince: null // 🧹 Limpiamos el historial
                     });
                     operationCount++;
                 }
@@ -112,7 +114,7 @@ export const useCRMActions = (user, setNotification) => {
         } catch(e) { console.error(e); notify('Error al agregar stock.', 'error'); return false; }
     };
 
-    // --- 3. PROCESAR VENTA (FIX PRECIO + FIX CREDENCIALES) ---
+    // --- 3. PROCESAR VENTA (FIX PRECIO + FIX CREDENCIALES + FIX LEALTAD) ---
     const processSale = async (formData, originalSale, catalog, sales, profilesToSell = 1, bulkProfiles = []) => {
         try {
             if (!originalSale?.id) throw new Error("ID no encontrado");
@@ -121,9 +123,18 @@ export const useCRMActions = (user, setNotification) => {
             const cleanFormData = { ...formData };
             Object.keys(cleanFormData).forEach(key => cleanFormData[key] === undefined && delete cleanFormData[key]);
 
-            // ✅ FIX 1: Herencia de Credenciales (Blindaje)
             const finalEmail = cleanFormData.email !== undefined ? cleanFormData.email : originalSale.email;
             const finalPass = cleanFormData.pass !== undefined ? cleanFormData.pass : originalSale.pass;
+
+            // ✅ SELLO DE LEALTAD: Si el cliente de origen era "LIBRE" (es decir, estamos asignando a alguien nuevo en esta cuenta)
+            // guardamos la fecha de hoy. Si ya era de alguien (ej: solo estamos editando precio), conservamos su fecha.
+            const isAssigningNewClient = SAFE_STATUSES.includes((originalSale.client || '').toLowerCase());
+            if (isAssigningNewClient && cleanFormData.client && !SAFE_STATUSES.includes(cleanFormData.client.toLowerCase())) {
+                cleanFormData.clientSince = new Date().toISOString(); 
+            } else if (originalSale.clientSince) {
+                // Mantenemos la fecha original si solo estamos editando
+                cleanFormData.clientSince = originalSale.clientSince;
+            }
 
             // 1. Detección del Tipo DESTINO
             const targetCatalogItem = catalog.find(c => c.name === formData.service);
@@ -152,7 +163,8 @@ export const useCRMActions = (user, setNotification) => {
                 const baseName = findBaseServiceName(formData.service);
                 const cleanName = `${baseName} Cuenta Completa`;
                 batch.update(doc(db, userPath, 'sales', originalSale.id), { 
-                    ...cleanFormData, service: cleanName, cost: 0, type: 'Cuenta', profile: '', updatedAt: serverTimestamp() 
+                    ...cleanFormData, service: cleanName, cost: 0, type: 'Cuenta', profile: '', updatedAt: serverTimestamp(),
+                    clientSince: null // Borramos el sello si vuelve al stock
                 });
                 await batch.commit();
                 notify('Cuenta actualizada (Unidad Mantenida).', 'success');
@@ -175,17 +187,15 @@ export const useCRMActions = (user, setNotification) => {
                 const baseName = findBaseServiceName(formData.service);
                 const cleanName = `${baseName} Cuenta Completa`;
 
-                // 🛡️ CORRECCIÓN: Si el formulario multiplicó el precio (ej: 3250)
-                // pero esto es UNA sola cuenta, lo dividimos para guardar el unitario (650).
                 const realUnitCost = (profilesToSell > 1 && totalCost > 0) 
                     ? (totalCost / profilesToSell) 
                     : totalCost;
 
                 batch.update(doc(db, userPath, 'sales', originalSale.id), { 
                     ...cleanFormData, 
-                    email: finalEmail, pass: finalPass, // Aseguramos credenciales
+                    email: finalEmail, pass: finalPass,
                     service: cleanName, type: 'Cuenta', profile: '', pin: '', 
-                    cost: realUnitCost, // Guardamos precio corregido
+                    cost: realUnitCost, 
                     updatedAt: serverTimestamp() 
                 });
                 await batch.commit(); 
@@ -227,7 +237,6 @@ export const useCRMActions = (user, setNotification) => {
                         const pData = bulkProfiles[i] || {}; 
                         let slotData = {};
                         
-                        // Usamos finalEmail/finalPass para asegurar que no se creen slots "huerfanos"
                         if (isSold) {
                             const profileName = (profilesToSell === 1) ? (pData.profile || cleanFormData.profile || `Perfil ${i+1}`) : (pData.profile || `Perfil ${i+1}`);
                             const pinCode = (pData.pin) ? pData.pin : cleanFormData.pin;
@@ -239,8 +248,8 @@ export const useCRMActions = (user, setNotification) => {
                         } else {
                             slotData = { 
                                 client: 'LIBRE', phone: '', service: freeServiceName, type: 'Perfil', cost: 0, 
-                                email: finalEmail, pass: finalPass, // Heredamos credenciales
-                                profile: `Perfil ${i+1}`, pin: '', endDate: '' 
+                                email: finalEmail, pass: finalPass,
+                                profile: `Perfil ${i+1}`, pin: '', endDate: '', clientSince: null
                             };
                         }
                         if (i === 0) batch.update(doc(db, userPath, 'sales', originalSale.id), { ...slotData, updatedAt: serverTimestamp() });
@@ -294,14 +303,17 @@ export const useCRMActions = (user, setNotification) => {
             if (!sSnap.exists()) return;
             const sData = sSnap.data();
 
+            // ✅ AL MIGRAR: Heredamos la antigüedad (clientSince) a la nueva cuenta
             batch.update(tRef, {
                 client: sData.client, phone: sData.phone || '', endDate: sData.endDate || '', cost: sData.cost || 0,
-                profile: sData.profile || '', pin: sData.pin || '', updatedAt: serverTimestamp()
+                profile: sData.profile || '', pin: sData.pin || '', updatedAt: serverTimestamp(),
+                clientSince: sData.clientSince || sData.createdAt // Traspasamos la memoria
             });
 
+            // Y la cuenta vieja la reseteamos
             const resetData = oldStatus === 'LIBRE' 
-                ? { client: 'LIBRE', phone: '', endDate: '', cost: 0, profile: '', pin: '', lastCode: '' }
-                : { client: oldStatus, phone: '', endDate: '', cost: 0 };
+                ? { client: 'LIBRE', phone: '', endDate: '', cost: 0, profile: '', pin: '', lastCode: '', clientSince: null }
+                : { client: oldStatus, phone: '', endDate: '', cost: 0, clientSince: null };
 
             batch.update(sRef, { ...resetData, updatedAt: serverTimestamp() });
             await batch.commit(); notify('Migración exitosa.', 'success'); return true;
@@ -312,29 +324,19 @@ export const useCRMActions = (user, setNotification) => {
     const quickRenew = async (id, dateString) => {
         if (!id || !dateString) return;
         try {
-            // 1. Desglosar fecha original (para evitar líos de zona horaria)
             const [y, m, d] = dateString.split('-').map(Number);
-            
-            // 2. Crear fecha base (Meses en JS son 0-11, por eso m-1)
             const date = new Date(y, m - 1, d);
-            
-            // 3. Sumar 1 mes
             date.setMonth(date.getMonth() + 1);
 
-            // 4. 🛡️ CORRECCIÓN MÁGICA:
-            // Si el día cambió (ej: era 31 y ahora es 3), significa que el mes nuevo es más corto.
-            // Retrocedemos al día 0 del mes actual (que es el último día del mes anterior).
             if (date.getDate() !== d) {
                 date.setDate(0);
             }
 
-            // 5. Formatear a YYYY-MM-DD
             const nextYear = date.getFullYear();
             const nextMonth = String(date.getMonth() + 1).padStart(2, '0');
             const nextDay = String(date.getDate()).padStart(2, '0');
             const finalDate = `${nextYear}-${nextMonth}-${nextDay}`;
 
-            // 6. Guardar
             await updateDoc(doc(db, userPath, 'sales', id), { 
                 endDate: finalDate, 
                 updatedAt: serverTimestamp() 
