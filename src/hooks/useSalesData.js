@@ -186,7 +186,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     }, [todayAnchor]);
 
-    // 🏆 CALCULADORA DE LEALTAD (CON AGENDA GLOBAL Y TRUCO DE FECHA)
+    // 🏆 CALCULADORA DE LEALTAD (CON AGENDA GLOBAL Y FIX DE FEBRERO)
     const getClientLoyalty = useCallback((clientName, clientPhone = '') => {
         if (!clientName || !sales.length) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
 
@@ -221,18 +221,25 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             let possibleStart = new Date().getTime();
             
             if (s.clientSince) {
+                // ✅ Si la cuenta tiene el nuevo sello (como Franco), confiamos 100% en él.
                 possibleStart = new Date(s.clientSince).getTime();
-            } else if (s.createdAt) {
-                possibleStart = s.createdAt.toDate ? s.createdAt.toDate().getTime() : new Date(s.createdAt).getTime();
-            }
+            } else {
+                // ⚠️ Si NO tiene el sello (clientes antiguos), buscamos createdAt y usamos el truco
+                if (s.createdAt) {
+                    possibleStart = s.createdAt.toDate ? s.createdAt.toDate().getTime() : new Date(s.createdAt).getTime();
+                }
 
-            // TRUCO SALVAVIDAS: Si vence en el futuro (ej: 1 marzo), mínimo lo compró hace 1 mes (30 días)
-            if (s.endDate) {
-                const [y, m, d] = s.endDate.split('-').map(Number);
-                const endT = new Date(y, m - 1, d).getTime();
-                const estimatedStart = endT - (1000 * 60 * 60 * 24 * 30); 
-                if (estimatedStart < possibleStart) {
-                    possibleStart = estimatedStart;
+                // TRUCO SALVAVIDAS: Restamos "1 mes", no 30 días (para que Febrero no nos engañe)
+                if (s.endDate) {
+                    const [y, m, d] = s.endDate.split('-').map(Number);
+                    // m-2 porque: 'm' viene de texto (ej. marzo=3). En Javascript los meses van de 0 a 11.
+                    // Así que el mes actual es m-1. Y hace un mes es m-2.
+                    const estimatedDate = new Date(y, m - 2, d); 
+                    const estimatedStart = estimatedDate.getTime();
+                    
+                    if (estimatedStart < possibleStart) {
+                        possibleStart = estimatedStart;
+                    }
                 }
             }
 
