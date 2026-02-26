@@ -2,16 +2,12 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react'; 
 import AppleCalendar from '../components/AppleCalendar';
 import { doc, updateDoc } from 'firebase/firestore'; 
-
-// 👇 IMPORTANTE: Importamos auth aquí arriba para evitar el error de conexión
 import { db, auth } from '../firebase/config'; 
 
-// --- ⚡️ CONSTANTES & CONFIGURACIÓN GLOBAL ---
 const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin', 'Stock', 'Reposicion'];
 const BURY_LIST = ['admin', 'actualizar', 'dominio', 'caida', 'caída', 'stock', 'reposicion'];
 
-// --- HELPERS PUROS ---
 const cleanServiceName = (name) => name ? name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim() : '';
 
 const getWhatsAppUrl = (phone, message) => {
@@ -28,12 +24,10 @@ const safeGetDays = (dateString) => {
     return Math.ceil((new Date(y, m - 1, d) - today) / (1000 * 60 * 60 * 24));
 };
 
-// --- LOGICA VISUAL DE TARJETAS ---
 const getCardStyles = (sale, days, darkMode) => {
     const clientName = sale.client ? sale.client.toLowerCase() : '';
     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
     const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
-    
     const isAdmin = sale.client === 'Admin';
     const isProblem = !isAdmin && (PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client));
     const isFullAccount = sale.type === 'Cuenta';
@@ -43,7 +37,6 @@ const getCardStyles = (sale, days, darkMode) => {
     let subText = darkMode ? 'text-slate-400' : 'text-slate-500';
 
     if (sale.markedForDeletion) {
-        // ESTILO: FONDO ROJIZO MUY SUAVE SI ESTÁ MARCADO
         bg = darkMode ? "bg-rose-950/20 border-rose-900/30" : "bg-rose-50 border-rose-100";
         text = "text-rose-400";
         subText = "text-rose-400/60";
@@ -74,12 +67,10 @@ const getCardStyles = (sale, days, darkMode) => {
     return { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount };
 };
 
-// --- SUB-COMPONENTE: SALE CARD ---
 const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => {
     const days = safeGetDays(sale.endDate);
     const { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
-
     const loyalty = !isFree && getClientLoyalty ? getClientLoyalty(sale.client, sale.phone) : null;
 
     const iconLetter = useMemo(() => {
@@ -92,22 +83,14 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
 
     return (
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
-            {/* 🛑 ZONA FANTASMA (Esquina Izquierda) 🛑 */}
-            {/* Se muestra si NO es libre, O SI TIENE MARCA DE BAJA (para poder quitarla aunque sea libre) */}
             {(!isFree || sale.markedForDeletion) && !isAdmin && (
                 <div className="absolute top-0 left-0 w-12 h-12 z-50 flex items-start justify-start p-1 opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); handlers.toggleMark(sale); }}
-                        className={`w-6 h-6 rounded-full flex items-center justify-center shadow-md border ${sale.markedForDeletion ? 'bg-rose-500 border-rose-600 text-white' : 'bg-slate-200 border-slate-300 text-slate-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`}
-                        title={sale.markedForDeletion ? "Restaurar Cliente" : "Marcar: NO RENUEVA"}
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); handlers.toggleMark(sale); }} className={`w-6 h-6 rounded-full flex items-center justify-center shadow-md border ${sale.markedForDeletion ? 'bg-rose-500 border-rose-600 text-white' : 'bg-slate-200 border-slate-300 text-slate-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`} title={sale.markedForDeletion ? "Restaurar Cliente" : "Marcar: NO RENUEVA"}>
                         {sale.markedForDeletion ? <RotateCcw size={10} /> : <UserMinus size={10} />}
                     </button>
                 </div>
             )}
-
             <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center relative z-10">
-                {/* COL 1: Info Principal */}
                 <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 ${statusColor}`}>
                         {iconLetter}
@@ -116,42 +99,18 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                         <div className="flex justify-between items-start">
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>
-                                        {isFree ? 'Espacio Libre' : sale.client}
-                                    </div>
-                                    
-                                    {/* 🔴 ETIQUETA ROJA: NO RENUEVA 🔴 */}
-                                    {sale.markedForDeletion && (
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500 text-white font-black uppercase tracking-wider animate-pulse">
-                                            BAJA PROGRAMADA
-                                        </span>
-                                    )}
-
-                                    {/* Insignia Lealtad (Oculta si no renueva) */}
-                                    {!sale.markedForDeletion && loyalty && loyalty.level && !isFree && !isProblem && !isAdmin && (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider flex items-center gap-1 ${loyalty.color}`}>
-                                            {loyalty.level}
-                                        </span>
-                                    )}
-
-                                    {isFullAccount && !isFree && (
-                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase ${darkMode ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'}`}>
-                                            <Layers size={8} /> Completa
-                                        </span>
-                                    )}
+                                    <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>{isFree ? 'Espacio Libre' : sale.client}</div>
+                                    {sale.markedForDeletion && <span className="text-[8px] px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500 text-white font-black uppercase tracking-wider animate-pulse">BAJA PROGRAMADA</span>}
+                                    {!sale.markedForDeletion && loyalty && loyalty.level && !isFree && !isProblem && !isAdmin && <span className={`text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider flex items-center gap-1 ${loyalty.color}`}>{loyalty.level}</span>}
+                                    {isFullAccount && !isFree && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase ${darkMode ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'}`}><Layers size={8} /> Completa</span>}
                                 </div>
                                 <div className={`text-[11px] md:text-xs font-medium truncate mt-0.5 ${subText}`}>{sale.service}</div>
                             </div>
-                            
                             {!isFree && !isProblem && !isAdmin && (
                                 <div className="text-right md:hidden leading-tight flex flex-col items-end">
                                     {cost > 0 && <span className={`text-xs font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</span>}
-                                    <div className={`text-[9px] font-bold ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>
-                                        {days}d
-                                    </div>
-                                    <div className={`text-[9px] font-bold opacity-60 uppercase ${subText}`}>
-                                        {formattedDate}
-                                    </div>
+                                    <div className={`text-[9px] font-bold ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
+                                    <div className={`text-[9px] font-bold opacity-60 uppercase ${subText}`}>{formattedDate}</div>
                                 </div>
                             )}
                         </div>
@@ -161,16 +120,10 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                                 {sale.pin && <span className="text-[9px] opacity-60 font-mono">PIN: {sale.pin}</span>}
                             </div>
                         )}
-                        {isProblem && (
-                            <div className="md:hidden mt-1 flex items-center gap-1 text-amber-500 font-bold text-[10px] animate-pulse">
-                                <AlertTriangle size={10} /> <span>Revisar Cuenta</span>
-                            </div>
-                        )}
+                        {isProblem && <div className="md:hidden mt-1 flex items-center gap-1 text-amber-500 font-bold text-[10px] animate-pulse"><AlertTriangle size={10} /> <span>Revisar Cuenta</span></div>}
                         {!isFree && !isProblem && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
                     </div>
                 </div>
-
-                {/* COL 2: Credenciales */}
                 <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-2">
                     <div className={`rounded-xl px-3 py-2 border md:border-none ${darkMode ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/20 md:bg-transparent'}`}>
                         <div className={`flex items-center justify-between gap-2 mb-1 ${subText}`}>
@@ -188,17 +141,10 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                         </div>
                     </div>
                 </div>
-
-                {/* COL 3: Estado y Métricas (Desktop) */}
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
                     {!isFree && !isProblem && !isAdmin ? (
                         <div className="flex items-center gap-6">
-                            {cost > 0 && (
-                                <div className="text-center">
-                                    <div className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</div>
-                                    <div className="text-[9px] font-bold opacity-40 uppercase text-slate-400">Precio</div>
-                                </div>
-                            )}
+                            {cost > 0 && <div className="text-center"><div className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</div><div className="text-[9px] font-bold opacity-40 uppercase text-slate-400">Precio</div></div>}
                             {cost > 0 && <div className={`w-px h-8 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>}
                             <div className="text-center leading-none">
                                 <div className={`text-2xl font-black tracking-tighter ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{days}<span className="text-[10px] opacity-40 align-top ml-0.5 font-bold">DÍAS</span></div>
@@ -206,22 +152,14 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                             </div>
                         </div>
                     ) : (isFree ? <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg uppercase">DISPONIBLE</span> : 
-                        <span className={`flex items-center gap-2 text-xs font-black px-3 py-1 rounded-full ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
-                            <ShieldAlert size={14}/> {isAdmin ? 'ADMIN' : (isFullAccount ? 'SOPORTE' : 'GARANTÍA')}
-                        </span>
+                        <span className={`flex items-center gap-2 text-xs font-black px-3 py-1 rounded-full ${darkMode ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}><ShieldAlert size={14}/> {isAdmin ? 'ADMIN' : (isFullAccount ? 'SOPORTE' : 'GARANTÍA')}</span>
                     )}
                 </div>
-
-                {/* COL 4: Botonera de Acciones */}
                 <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
                     {isFree ? (
                         <div className="flex w-full md:w-auto gap-2 justify-end">
-                            <button onClick={() => handlers.edit(sale)} className={`w-9 h-9 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 border ${darkMode ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-white border-slate-200 text-emerald-600 shadow-sm'}`}>
-                                <Edit2 size={14}/>
-                            </button>
-                            <button onClick={() => handlers.assign(sale)} className="flex-1 md:flex-none md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">
-                                Asignar <ChevronRight size={14}/>
-                            </button>
+                            <button onClick={() => handlers.edit(sale)} className={`w-9 h-9 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 border ${darkMode ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-white border-slate-200 text-emerald-600 shadow-sm'}`}><Edit2 size={14}/></button>
+                            <button onClick={() => handlers.assign(sale)} className="flex-1 md:flex-none md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">Asignar <ChevronRight size={14}/></button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
@@ -229,11 +167,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                             {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
                             <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
-                            {!isProblem && (
-                                <button onClick={() => handlers.renew(sale.id, sale.endDate)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes">
-                                    <CalendarPlus size={14}/>
-                                </button>
-                            )}
+                            {!isProblem && <button onClick={() => handlers.renew(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes"><CalendarPlus size={14}/></button>}
                             <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} title="Liberar / Recuperar"><RotateCcw size={14}/></button>
                         </div>
                     )}
@@ -243,27 +177,28 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
     );
 });
 
-// --- COMPONENTE PRINCIPAL: DASHBOARD ---
 const Dashboard = ({
     sales = [], filteredSales = [], catalog = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
     handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, saveSale, onMigrate, 
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
-    darkMode,
-    getClientLoyalty
+    darkMode, getClientLoyalty
 }) => {
-
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [] });
     const [migrationModal, setMigrationModal] = useState({ show: false, sale: null, matches: [] });
     const [migrationSourceStatus, setMigrationSourceStatus] = useState('Caída'); 
-    
     const [sentIds, setSentIds] = useState([]); 
     const [displayLimit, setDisplayLimit] = useState(50);
     const [activeTab, setActiveTab] = useState('healthy'); 
     const observer = useRef();
 
-    useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo, activeTab]);
+    // ✅ LA LUZ DE CHECK ENGINE: Bajas que vencen HOY o ya vencieron
+    const pendingBajas = useMemo(() => sales.filter(s => s.markedForDeletion && safeGetDays(s.endDate) <= 0), [sales]);
+    const [showPendingBajas, setShowPendingBajas] = useState(false);
+
+    useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo, activeTab, showPendingBajas]);
+    useEffect(() => { if (pendingBajas.length === 0) setShowPendingBajas(false); }, [pendingBajas.length]);
 
     useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
@@ -282,16 +217,13 @@ const Dashboard = ({
         });
     };
 
-    // --- MIGRATION LOGIC ---
     const openMigration = useCallback((sale) => {
         const cleanTargetService = cleanServiceName(sale.service).toLowerCase();
         const matches = sales.filter(s => {
             const sName = (s.client || '').toLowerCase();
             const sService = cleanServiceName(s.service).toLowerCase();
             const sType = (s.type || '').toLowerCase();
-            return (sName.includes('libre') || sName.includes('disponible')) 
-                   && sType === 'perfil' 
-                   && sService.includes(cleanTargetService);
+            return (sName.includes('libre') || sName.includes('disponible')) && sType === 'perfil' && sService.includes(cleanTargetService);
         });
         setMigrationSourceStatus('Caída'); 
         setMigrationModal({ show: true, sale, matches });
@@ -308,15 +240,12 @@ const Dashboard = ({
         setMigrationModal({ show: false, sale: null, matches: [] });
     };
 
-    // --- 🟢 WHATSAPP LOGIC 3.0 (MINIMALISTA / APPLE STYLE) ---
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
         const serviceName = cleanServiceName(sale.service).toUpperCase(); 
         const lowerService = serviceName.toLowerCase();
         let message = '';
-
-        // Fechas con formato limpio: "15 de Febrero"
         const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         let dateText = "Indefinido";
         if (endDate) {
@@ -324,12 +253,12 @@ const Dashboard = ({
             dateText = `${d} de ${months[m-1]}`;
         }
 
-        // --- MODO RECORDATORIO (COBRO) ---
         if (actionType === 'reminder') {
             const related = sales.filter(s => {
                 if (s.client !== client) return false;
                 if (NON_BILLABLE_STATUSES.includes(s.client)) return false;
                 if (s.client === 'LIBRE') return false;
+                if (s.markedForDeletion) return false; 
                 const currentDays = safeGetDays(s.endDate);
                 if (targetDays < 0) return currentDays < 0; 
                 return currentDays === targetDays;
@@ -343,67 +272,37 @@ const Dashboard = ({
                 return acc;
             }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Cuentas':'Cuenta') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
             
-            if (targetDays < 0) {
-                message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.`;
-            } else if (targetDays === 0) {
-                message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
-            } else if (targetDays === 1) {
-                message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
-            } else {
-                message = `⚠️ Buen día ${client}, recordatorio: ${summary} vence en ${targetDays} días. ¿Deseas renovar?`;
-            }
+            const totalToPay = related.reduce((sum, s) => sum + (Number(s.cost) || 0), 0);
+            const totalText = totalToPay > 0 ? ` Total a pagar: $${totalToPay}.` : '';
+
+            if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.${totalText}`;
+            else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY.${totalText} Por favor realiza tu pago para mantener el servicio activo.`;
+            else if (targetDays === 1) message = `⚠️ Buen día ${client}, mañana vence: ${summary}.${totalText} ¿Deseas renovar?`;
+            else message = `⚠️ Buen día ${client}, recordatorio: ${summary} vence en ${targetDays} días.${totalText} ¿Deseas renovar?`;
         } 
-        // --- MODO DATOS DE ACCESO (MINIMALISTA) ---
         else if (actionType === 'data') {
-            // 📺 CASO 1: IPTV / MAGIS
             if (lowerService.includes('iptv') || lowerService.includes('magis') || lowerService.includes('tivify')) {
-                message = `${serviceName}\n\n` +
-                          `USUARIO:\n${sale.profile || 'N/A'}\n` +
-                          `CONTRASEÑA:\n${sale.pin || 'N/A'}\n` +
-                          `URL / DNS:\n${sale.pass || 'Solicitar'}\n\n` +
-                          `☑️Su servicio vence el día ${dateText}☑️`;
-            } 
-            // 🍿 CASO 2: NETFLIX / DISNEY
-            else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
-                message = `${serviceName} 1 PERFIL\n\n` +
-                          `CORREO:\n${sale.email}\n` +
-                          `PERFIL:\n${sale.profile}\n` +
-                          `PIN:\n${sale.pin || 'Sin PIN'}\n\n` +
-                          `NOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n` + 
-                          `☑️Su Perfil Vence el día ${dateText}☑️`;
-            }
-            // 📧 CASO 3: ESTÁNDAR
-            else {
+                message = `${serviceName}\n\nUSUARIO:\n${sale.profile || 'N/A'}\nCONTRASEÑA:\n${sale.pin || 'N/A'}\nURL / DNS:\n${sale.pass || 'Solicitar'}\n\n☑️Su servicio vence el día ${dateText}☑️`;
+            } else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
+                message = `${serviceName} 1 PERFIL\n\nCORREO:\n${sale.email}\nPERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n\nNOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n☑️Su Perfil Vence el día ${dateText}☑️`;
+            } else {
                 const isFull = sale.type === 'Cuenta';
                 const typeLabel = isFull ? 'CUENTA COMPLETA' : '1 PERFIL';
-                message = `${serviceName} ${typeLabel}\n\n` +
-                          `CORREO:\n${sale.email}\n` +
-                          `CONTRASEÑA:\n${sale.pass}\n` +
-                          `${!isFull ? `PERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n` : ''}` +
-                          `\n☑️Su Perfil Vence el día ${dateText}☑️`;
+                message = `${serviceName} ${typeLabel}\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n${!isFull ? `PERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n` : ''}\n☑️Su Perfil Vence el día ${dateText}☑️`;
             }
         }
         window.open(getWhatsAppUrl(phone, message), '_blank');
     }, [sales]);
 
-    // 🏆 MANEJADOR PARA MARCAR/DESMARCAR BAJA PROGRAMADA 🏆
     const handleToggleMark = useCallback(async (sale) => {
         try {
             const currentUser = auth.currentUser;
-            if (!currentUser) {
-                console.error("No hay usuario autenticado.");
-                return;
-            }
+            if (!currentUser) return;
             const saleRef = doc(db, `users/${currentUser.uid}/sales`, sale.id);
-            await updateDoc(saleRef, {
-                markedForDeletion: !sale.markedForDeletion
-            });
-        } catch (error) {
-            console.error("Error al marcar para baja:", error);
-        }
+            await updateDoc(saleRef, { markedForDeletion: !sale.markedForDeletion });
+        } catch (error) {}
     }, []);
 
-    // Handlers memoizados
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
         copy: (e, email, pass) => {
@@ -415,45 +314,22 @@ const Dashboard = ({
         },
         assign: (sale) => { 
             const isFull = sale.type === 'Cuenta' || sale.service?.toLowerCase().includes('completa');
-            setFormData({ ...sale, profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 }); 
-            setView('form'); 
+            setFormData({ ...sale, profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 }); setView('form'); 
         },
         edit: (sale) => { 
             const isFull = sale.type === 'Cuenta' || sale.service?.toLowerCase().includes('completa');
-            setFormData({
-                ...sale,
-                profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 
-            }); 
-            setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); 
-            setView('form'); 
+            setFormData({ ...sale, profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 }); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); 
         },
-        migrate: openMigration, 
-        renew: handleQuickRenew,
-        
-        // 🧹 LIMPIEZA AUTOMÁTICA AL LIBERAR
+        migrate: openMigration, renew: handleQuickRenew,
         liberate: async (id) => {
-            try {
-                const currentUser = auth.currentUser;
-                if (currentUser) {
-                    const saleRef = doc(db, `users/${currentUser.uid}/sales`, id);
-                    await updateDoc(saleRef, { markedForDeletion: false });
-                }
-            } catch (error) {
-                console.error("Error limpiando baja al liberar:", error);
-            }
+            try { const currentUser = auth.currentUser; if (currentUser) { await updateDoc(doc(db, `users/${currentUser.uid}/sales`, id), { markedForDeletion: false }); } } catch (error) {}
             triggerLiberate(id);
         },
         toggleMark: handleToggleMark 
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
 
-    // --- CLASIFICACIÓN DE DATOS ---
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
-        const groups = {};
-        const healthy = [];
-        const free = [];
-        const warranty = [];
-        const maintenance = [];
-
+        const groups = {}; const healthy = []; const free = []; const warranty = []; const maintenance = [];
         (filteredSales || []).forEach(sale => {
             const emailKey = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
             const serviceKey = cleanServiceName(sale.service).toLowerCase(); 
@@ -461,25 +337,20 @@ const Dashboard = ({
             if (!groups[uniqueGroupKey]) groups[uniqueGroupKey] = [];
             groups[uniqueGroupKey].push(sale);
         });
-
         Object.values(groups).forEach(group => {
-            const realItems = group; 
-            const hasProblem = realItems.some(sale => {
+            const hasProblem = group.some(sale => {
                 const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
                 const isFree = sale.client.toLowerCase().includes('libre');
                 if (isFree || sale.client === 'Admin') return false;
                 return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
             });
-            const isFragmented = realItems.length > 1;
-            
+            const isFragmented = group.length > 1;
             if (hasProblem) {
-                if (isFragmented) warranty.push(...group); 
-                else maintenance.push(...group); 
+                if (isFragmented) warranty.push(...group); else maintenance.push(...group); 
             } else {
                 group.forEach(sale => {
                     const clientName = (sale.client || '').toLowerCase();
-                    const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
-                    if (isFree) free.push(sale);
+                    if (clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible') free.push(sale);
                     else healthy.push(sale);
                 });
             }
@@ -488,7 +359,8 @@ const Dashboard = ({
     }, [filteredSales]);
 
     let currentList = [];
-    if (activeTab === 'healthy') currentList = healthySales;
+    if (showPendingBajas) currentList = pendingBajas;
+    else if (activeTab === 'healthy') currentList = healthySales;
     else if (activeTab === 'free') currentList = freeSales;
     else if (activeTab === 'warranty') currentList = warrantySales;
     else currentList = maintenanceSales; 
@@ -503,8 +375,7 @@ const Dashboard = ({
                 const clientB = (b.client || '').toLowerCase();
                 const isSystemA = BURY_LIST.some(k => clientA.includes(k));
                 const isSystemB = BURY_LIST.some(k => clientB.includes(k));
-                if (isSystemA && !isSystemB) return 1; 
-                if (!isSystemA && isSystemB) return -1;
+                if (isSystemA && !isSystemB) return 1; if (!isSystemA && isSystemB) return -1;
                 return clientA.localeCompare(clientB);
             });
         }
@@ -514,18 +385,15 @@ const Dashboard = ({
     const lastElementRef = useCallback(node => {
         if (loadingData) return;
         if (observer.current) observer.current.disconnect();
-        observer.current = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && displayLimit < currentList.length) {
-                setDisplayLimit(prev => prev + 50);
-            }
-        });
+        observer.current = new IntersectionObserver(entries => { if (entries[0].isIntersecting && displayLimit < currentList.length) setDisplayLimit(prev => prev + 50); });
         if (node) observer.current.observe(node);
     }, [loadingData, displayLimit, currentList.length]);
 
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400"><div className="w-12 h-12 rounded-full border-4 border-current border-t-transparent animate-spin mb-4"/>Sincronizando...</div>;
 
     const getPlaceholder = () => {
-        if (activeTab === 'healthy') return "Buscar Cliente Activo...";
+        if (showPendingBajas) return "Limpiando bajas de hoy...";
+        if (activeTab === 'healthy') return "Buscar Cliente...";
         if (activeTab === 'free') return "Buscar Espacio Libre...";
         if (activeTab === 'maintenance') return "Buscar Soporte / Caídas...";
         return "Buscar Cuenta en Garantía...";
@@ -533,7 +401,6 @@ const Dashboard = ({
 
     return (
         <div className="w-full pb-32 space-y-4 animate-in fade-in">
-            {/* ALERTAS */}
             {(expiringToday.length > 0 || expiringTomorrow.length > 0 || overdueSales.length > 0) && ( 
                 <div className="flex gap-2 px-1 animate-in slide-in-from-top-4">
                     {overdueSales.length > 0 && (<button onClick={() => setBulkModal({ show: true, title: 'Vencidas', list: overdueSales })} className="flex-1 p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between"><div className="flex gap-2 items-center"><Ban size={16} className="opacity-80"/><div className="text-left leading-none"><span className="text-[9px] font-bold uppercase opacity-80">Vencidas</span><p className="text-sm font-black">{overdueSales.length}</p></div></div><ChevronRight size={14}/></button>)}
@@ -542,76 +409,75 @@ const Dashboard = ({
                 </div>
             )}
 
-            {/* TABS */}
             <div className="px-1 grid grid-cols-4 gap-2">
-                <button onClick={() => setActiveTab('healthy')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' ? (darkMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-600 text-white shadow-lg') : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Activity size={18} className={`mb-1 ${activeTab === 'healthy' ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Activos</span><span className="text-xs font-black">{healthySales.length}</span></button>
-                <button onClick={() => setActiveTab('free')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' ? 'bg-emerald-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Box size={18} className={`mb-1 ${activeTab === 'free' ? 'animate-bounce' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Stock</span><span className="text-xs font-black">{freeSales.length}</span></button>
-                <button onClick={() => setActiveTab('warranty')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'warranty' ? 'bg-rose-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><ShieldAlert size={18} className={`mb-1 ${activeTab === 'warranty' ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Garantía</span><span className="text-xs font-black">{warrantySales.length}</span></button>
-                <button onClick={() => setActiveTab('maintenance')} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'maintenance' ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Wrench size={18} className={`mb-1 ${activeTab === 'maintenance' ? 'animate-spin-slow' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Soporte</span><span className="text-xs font-black">{maintenanceSales.length}</span></button>
+                <button onClick={() => { setActiveTab('healthy'); setShowPendingBajas(false); }} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'healthy' && !showPendingBajas ? (darkMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-600 text-white shadow-lg') : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Activity size={18} className={`mb-1 ${activeTab === 'healthy' && !showPendingBajas ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Activos</span><span className="text-xs font-black">{healthySales.length}</span></button>
+                <button onClick={() => { setActiveTab('free'); setShowPendingBajas(false); }} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'free' && !showPendingBajas ? 'bg-emerald-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Box size={18} className={`mb-1 ${activeTab === 'free' && !showPendingBajas ? 'animate-bounce' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Stock</span><span className="text-xs font-black">{freeSales.length}</span></button>
+                <button onClick={() => { setActiveTab('warranty'); setShowPendingBajas(false); }} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'warranty' && !showPendingBajas ? 'bg-rose-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><ShieldAlert size={18} className={`mb-1 ${activeTab === 'warranty' && !showPendingBajas ? 'animate-pulse' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Garantía</span><span className="text-xs font-black">{warrantySales.length}</span></button>
+                <button onClick={() => { setActiveTab('maintenance'); setShowPendingBajas(false); }} className={`flex flex-col items-center justify-center p-2 rounded-2xl transition-all relative overflow-hidden ${activeTab === 'maintenance' && !showPendingBajas ? 'bg-amber-600 text-white shadow-lg' : (darkMode ? 'bg-white/5 text-slate-400' : 'bg-white text-slate-500')}`}><Wrench size={18} className={`mb-1 ${activeTab === 'maintenance' && !showPendingBajas ? 'animate-spin-slow' : ''}`} /><span className="text-[8px] md:text-[9px] font-bold uppercase opacity-80">Soporte</span><span className="text-xs font-black">{maintenanceSales.length}</span></button>
             </div>
 
-            {/* FILTROS */}
             <div className={`sticky top-0 z-40 -mx-4 px-4 py-3 backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-b border-white/5' : 'bg-[#F2F2F7]/90 border-b border-slate-200/50'}`}>
                 <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
-                    <div className="relative group w-full shadow-sm">
-                        <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}><Search size={18} weight="bold" /></div>
-                        <input type="text" placeholder={getPlaceholder()} className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${darkMode ? 'bg-[#0B0F19] text-white placeholder-slate-600 border border-[#1E293B] focus:border-cyan-400' : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50'}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} />
+                    <div className="flex gap-2 items-center w-full">
+                        {pendingBajas.length > 0 && (
+                            <button onClick={() => setShowPendingBajas(!showPendingBajas)} className={`relative shrink-0 w-[46px] h-[46px] rounded-2xl flex items-center justify-center transition-all shadow-sm border ${showPendingBajas ? 'bg-rose-500 text-white border-rose-600' : (darkMode ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse' : 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse')}`} title="Bajas Programadas para Hoy">
+                                <UserMinus size={20} />
+                                {!showPendingBajas && <span className={`absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-sm border-2 ${darkMode ? 'border-[#0B0F19]' : 'border-white'}`}>{pendingBajas.length}</span>}
+                            </button>
+                        )}
+                        <div className="relative group w-full shadow-sm">
+                            <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-500'}`}><Search size={18} weight="bold" /></div>
+                            <input type="text" placeholder={getPlaceholder()} className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${darkMode ? 'bg-[#0B0F19] text-white placeholder-slate-600 border border-[#1E293B] focus:border-cyan-400' : 'bg-white text-slate-900 placeholder-slate-400 border border-slate-200 focus:border-indigo-500/50'}`} value={filterClient} onChange={e => setFilter('filterClient', e.target.value)} disabled={showPendingBajas} />
+                        </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="relative flex-grow md:flex-grow-0 md:w-auto min-w-[140px]">
-                            <select className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${filterService !== 'Todos' ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-indigo-600 text-white border-indigo-600') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-white' : 'bg-white text-slate-700 border-slate-200')}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)}>
+                            <select className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${filterService !== 'Todos' ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-indigo-600 text-white border-indigo-600') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-white' : 'bg-white text-slate-700 border-slate-200')}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)} disabled={showPendingBajas}>
                                 <option value="Todos">Todos los Servicios</option>
                                 {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                             </select>
                             <Filter size={10} className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${filterService !== 'Todos' ? 'text-white' : 'text-slate-400'}`}/>
                         </div>
-                        {activeTab === 'healthy' && (
+                        {activeTab === 'healthy' && !showPendingBajas && (
                             <button onClick={() => setFilter('filterStatus', filterStatus === 'Vencidos' ? 'Todos' : 'Vencidos')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${filterStatus === 'Vencidos' ? 'bg-rose-500 text-white border-rose-500' : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-200' : 'bg-white text-slate-700 border-slate-200')}`}>Vencidos</button>
                         )}
-                        <div className={`flex flex-1 items-center justify-between min-w-[210px] h-[46px] px-2 rounded-2xl border transition-all shadow-sm ${darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-white border-slate-200'}`}>
-                            <div className="flex-1">
-                                <AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} />
-                            </div>
+                        <div className={`flex flex-1 items-center justify-between min-w-[210px] h-[46px] px-2 rounded-2xl border transition-all shadow-sm ${darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-white border-slate-200'} ${showPendingBajas ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <div className="flex-1"><AppleCalendar value={dateFrom} onChange={(val) => setFilter('dateFrom', val)} label="Desde" darkMode={darkMode} ghost={true} /></div>
                             <div className={`w-px h-4 mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`} />
-                            <div className="flex-1">
-                                <AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} />
-                            </div>
+                            <div className="flex-1"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
                         </div>
-                        {(dateFrom || dateTo || filterService !== 'Todos' || filterStatus === 'Vencidos') && (
+                        {(dateFrom || dateTo || filterService !== 'Todos' || filterStatus === 'Vencidos') && !showPendingBajas && (
                             <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); setFilter('filterService', 'Todos'); setFilter('filterStatus', 'Todos'); }} className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all ml-auto md:ml-0"><X size={14} strokeWidth={3}/></button>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* KPI */}
-            {activeTab === 'healthy' && (
+            {activeTab === 'healthy' && !showPendingBajas && (
                 <div className="flex items-end justify-between px-2 md:px-4 animate-in fade-in">
                     <div><h1 className={`text-4xl md:text-5xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-slate-900'}`}><span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-400">${totalFilteredMoney.toLocaleString()}</span></h1><p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Facturación Mensual</p></div>
                     <div className="text-right"><div className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalItems}</div><div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Activos</div></div>
                 </div>
             )}
 
-            {/* LISTA */}
+            {showPendingBajas && (
+                <div className="flex items-end justify-between px-2 md:px-4 animate-in fade-in">
+                    <div><h1 className="text-3xl md:text-4xl font-black tracking-tighter text-rose-500">Limpieza</h1><p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest pl-1">Bajas de Hoy</p></div>
+                    <div className="text-right"><div className="text-2xl font-black text-rose-500">{pendingBajas.length}</div><div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Pendientes</div></div>
+                </div>
+            )}
+
             <div className="space-y-3">
                 {visibleSales.length > 0 ? visibleSales.map((sale, i) => (
                     <div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}>
-                        <SaleCard 
-                            sale={sale} 
-                            darkMode={darkMode} 
-                            handlers={handlers} 
-                            getClientLoyalty={getClientLoyalty}
-                        />
+                        <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} getClientLoyalty={getClientLoyalty} />
                     </div>
                 )) : (
-                    <div className="py-20 text-center opacity-40">
-                        {activeTab === 'maintenance' ? <Wrench size={32} className="mx-auto mb-2 text-slate-500"/> : <p className="font-bold">Sin resultados</p>}
-                    </div>
+                    <div className="py-20 text-center opacity-40">{activeTab === 'maintenance' ? <Wrench size={32} className="mx-auto mb-2 text-slate-500"/> : <p className="font-bold">Sin resultados</p>}</div>
                 )}
                 {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
 
-            {/* MODALES */}
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
                     <div className={`w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] shadow-2xl flex flex-col max-h-[85vh] ${darkMode ? 'bg-[#161B28]' : 'bg-white'}`}>
@@ -630,7 +496,6 @@ const Dashboard = ({
                     <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden ${darkMode ? 'bg-[#161B28] border border-white/10' : 'bg-white'}`}>
                         <div className="p-6 border-b border-white/5">
                             <div className="flex justify-between items-start mb-4"><div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div><button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><X size={20} /></button></div>
-                            {/* ... Resto del modal de migración ... */}
                             <div className="mb-4 animate-in slide-in-from-top-2"><button onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)} className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/50 text-slate-300 shadow-sm' : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600'}`}><div className="flex items-center gap-2 overflow-hidden"><Lock size={14} className="text-indigo-500 shrink-0"/><div className="text-left"><p className="text-[9px] font-bold uppercase opacity-50 leading-none mb-1">Cuenta anterior</p><p className="text-[11px] font-bold truncate">{migrationModal.sale?.email}</p></div></div><div className="flex items-center gap-2 shrink-0 ml-2"><span className="text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity uppercase">Copiar Acceso</span><Copy size={16} className="text-indigo-500"/></div></button></div>
                             <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}><p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}><User size={12}/> Datos a trasladar:</p><div className="flex gap-4"><div className="flex-1"><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>Perfil Actual</span><span className={`text-base font-black truncate block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.profile || 'N/A'}</span></div><div className={`flex-1 border-l pl-4 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>PIN Actual</span><span className={`text-base font-mono font-black block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.pin || '---'}</span></div></div></div>
                         </div>

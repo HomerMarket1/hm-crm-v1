@@ -65,6 +65,8 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                 const matchEmail = normalizeText(sale.email).includes(term);
                 const matchPhone = sale.phone ? normalizeText(sale.phone).includes(term) : false;
                 const matchService = normalizeText(sale.service).includes(term);
+                
+                // ✅ RETIRADO: Ya no busca por nombre de perfil para evitar ruido en la búsqueda
                 if (!matchName && !matchEmail && !matchPhone && !matchService) return false;
             }
             if (isFilteringService) {
@@ -103,6 +105,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
     const totalFilteredMoney = useMemo(() => filteredSales.reduce((sum, s) => {
         const clientLower = (s.client || '').toLowerCase();
         if (NON_BILLABLE.some(st => clientLower.includes(st))) return sum;
+        if (s.markedForDeletion) return sum; 
         return sum + (Number(s.cost) || 0);
     }, 0), [filteredSales]);
 
@@ -145,6 +148,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         const c = (s.client || '').toLowerCase();
         if (c.includes('libre') || !s.endDate) return false;
         if (NON_BILLABLE.some(status => c.includes(status))) return false;
+        if (s.markedForDeletion) return false; // ✅ AGREGADO: Ignorar los que tienen Baja Programada
         return true;
     }, []);
 
@@ -186,16 +190,13 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         return 'bg-blue-50 text-blue-600 border border-blue-200'; 
     }, [todayAnchor]);
 
-    // 🏆 CALCULADORA DE LEALTAD (CON AGENDA GLOBAL Y FIX DE FEBRERO)
     const getClientLoyalty = useCallback((clientName, clientPhone = '') => {
         if (!clientName || !sales.length) return { level: 'Nuevo 🐣', color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: 0 };
-
         const nameToSearch = normalizeText(clientName);
         const phoneToSearch = clientPhone ? normalizeText(clientPhone).replace(/\D/g, '') : '';
         
         let oldestTimestamp = new Date().getTime(); 
 
-        // 1. REVISIÓN INFALIBLE: LA AGENDA GLOBAL (allClients)
         if (allClients && allClients.length > 0) {
             const globalClient = allClients.find(c => {
                 const cName = c.name || c.client || '';
@@ -209,7 +210,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             }
         }
 
-        // 2. REVISIÓN DE RESPALDO: VENTAS ACTUALES Y TRUCO DE VENCIMIENTO
         const clientHistory = sales.filter(s => {
             if (normalizeText(s.client) !== nameToSearch) return false;
             const sPhone = s.phone ? normalizeText(s.phone).replace(/\D/g, '') : '';
@@ -221,19 +221,13 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             let possibleStart = new Date().getTime();
             
             if (s.clientSince) {
-                // ✅ Si la cuenta tiene el nuevo sello (como Franco), confiamos 100% en él.
                 possibleStart = new Date(s.clientSince).getTime();
             } else {
-                // ⚠️ Si NO tiene el sello (clientes antiguos), buscamos createdAt y usamos el truco
                 if (s.createdAt) {
                     possibleStart = s.createdAt.toDate ? s.createdAt.toDate().getTime() : new Date(s.createdAt).getTime();
                 }
-
-                // TRUCO SALVAVIDAS: Restamos "1 mes", no 30 días (para que Febrero no nos engañe)
                 if (s.endDate) {
                     const [y, m, d] = s.endDate.split('-').map(Number);
-                    // m-2 porque: 'm' viene de texto (ej. marzo=3). En Javascript los meses van de 0 a 11.
-                    // Así que el mes actual es m-1. Y hace un mes es m-2.
                     const estimatedDate = new Date(y, m - 2, d); 
                     const estimatedStart = estimatedDate.getTime();
                     
@@ -242,25 +236,22 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                     }
                 }
             }
-
             if (possibleStart < oldestTimestamp) {
                 oldestTimestamp = possibleStart;
             }
         });
 
-        // 3. CÁLCULO FINAL DE MESES
         const firstSaleDate = new Date(oldestTimestamp);
         const now = new Date();
-
         const diffTime = Math.abs(now - firstSaleDate);
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); 
         const diffMonths = Math.floor(diffDays / 30); 
 
-        if (diffMonths >= 10) return { level: `LEYENDA 👑 (${diffDays} d)`, color: 'text-amber-400 border-amber-400/20 bg-amber-400/10', months: diffMonths };
-        if (diffMonths >= 5) return { level: `VIP 🌟 (${diffDays} d)`, color: 'text-purple-400 border-purple-400/20 bg-purple-400/10', months: diffMonths };
-        if (diffMonths >= 2) return { level: `Fiel 🤝 (${diffDays} d)`, color: 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10', months: diffMonths };
+        if (diffMonths >= 10) return { level: `LEYENDA 👑`, color: 'text-amber-400 border-amber-400/20 bg-amber-400/10', months: diffMonths };
+        if (diffMonths >= 5) return { level: `VIP 🌟`, color: 'text-purple-400 border-purple-400/20 bg-purple-400/10', months: diffMonths };
+        if (diffMonths >= 2) return { level: `Fiel 🤝`, color: 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10', months: diffMonths };
         
-        return { level: `Nuevo 🐣 (${diffDays} d)`, color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: diffMonths };
+        return { level: `Nuevo 🐣`, color: 'text-slate-400 border-slate-400/20 bg-slate-400/10', months: diffMonths };
 
     }, [sales, allClients]);
 
