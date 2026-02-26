@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
 import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react'; 
 import AppleCalendar from '../components/AppleCalendar';
-import { doc, updateDoc } from 'firebase/firestore'; 
+import { doc, updateDoc, writeBatch } from 'firebase/firestore'; 
 import { db, auth } from '../firebase/config'; 
 
 const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicion', 'falla', 'garantía', 'garantia', 'revisar', 'problema', 'error', 'verificar'];
@@ -29,7 +29,7 @@ const getCardStyles = (sale, days, darkMode) => {
     const isFree = clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible';
     const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
     const isAdmin = sale.client === 'Admin';
-    const isProblem = !isAdmin && (PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client));
+    const isProblemSlot = !isAdmin && (PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client));
     const isFullAccount = sale.type === 'Cuenta';
 
     let bg = darkMode ? 'bg-[#161B28] border-white/5' : 'bg-white/60 border-white/40';
@@ -44,7 +44,7 @@ const getCardStyles = (sale, days, darkMode) => {
         bg = darkMode ? "bg-emerald-900/10 border-emerald-500/20" : "bg-emerald-50/50 border-emerald-100";
         text = darkMode ? "text-emerald-400" : "text-emerald-900";
         subText = darkMode ? "text-emerald-400/70" : "text-emerald-700/70";
-    } else if (isProblem) {
+    } else if (isProblemSlot) {
         bg = darkMode ? "bg-amber-900/10 border-amber-500/20" : "bg-amber-50/50 border-amber-100";
         text = darkMode ? "text-amber-300" : "text-amber-900"; 
         subText = darkMode ? "text-amber-200/60" : "text-amber-800/60";
@@ -57,19 +57,18 @@ const getCardStyles = (sale, days, darkMode) => {
     }
 
     let statusColor = darkMode ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600';
-    
     if (sale.markedForDeletion) statusColor = 'bg-rose-500 text-white'; 
     else if (isFree) statusColor = darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-600';
-    else if (isProblem) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-500';
+    else if (isProblemSlot) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-500';
     else if (days < 0) statusColor = darkMode ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-100 text-rose-600';
     else if (days <= 3) statusColor = darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-600';
 
-    return { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount };
+    return { bg, text, subText, statusColor, isFree, isProblemSlot, isAdmin, isFullAccount };
 };
 
 const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => {
     const days = safeGetDays(sale.endDate);
-    const { bg, text, subText, statusColor, isFree, isProblem, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
+    const { bg, text, subText, statusColor, isFree, isProblemSlot, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
     const loyalty = !isFree && getClientLoyalty ? getClientLoyalty(sale.client, sale.phone) : null;
 
@@ -83,13 +82,24 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
 
     return (
         <div className={`p-3 md:p-4 rounded-[20px] transition-all duration-300 w-full relative group border shadow-sm hover:shadow-md ${bg}`}>
+            {/* 🔴 ZONA FANTASMA SUPERIOR IZQUIERDA (Baja Programada) */}
             {(!isFree || sale.markedForDeletion) && !isAdmin && (
-                <div className="absolute top-0 left-0 w-12 h-12 z-50 flex items-start justify-start p-1 opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
-                    <button onClick={(e) => { e.stopPropagation(); handlers.toggleMark(sale); }} className={`w-6 h-6 rounded-full flex items-center justify-center shadow-md border ${sale.markedForDeletion ? 'bg-rose-500 border-rose-600 text-white' : 'bg-slate-200 border-slate-300 text-slate-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`} title={sale.markedForDeletion ? "Restaurar Cliente" : "Marcar: NO RENUEVA"}>
+                <div className={`absolute top-0 left-0 w-10 h-10 z-50 flex items-start justify-start p-1.5 transition-all duration-300 cursor-pointer ${sale.markedForDeletion ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}>
+                    <button onClick={(e) => { e.stopPropagation(); handlers.toggleMark(sale); }} className={`w-6 h-6 rounded-full flex items-center justify-center shadow-sm border transition-all duration-300 ${sale.markedForDeletion ? 'bg-rose-500 border-rose-600 text-white animate-pulse shadow-rose-500/40' : 'bg-slate-100/90 border-slate-200 text-slate-400 backdrop-blur-sm hover:bg-rose-500 hover:border-rose-500 hover:text-white hover:scale-110 dark:bg-white/10 dark:border-white/20 dark:hover:bg-rose-500 dark:hover:border-rose-500'}`} title={sale.markedForDeletion ? "Restaurar Cliente" : "Marcar: NO RENUEVA"}>
                         {sale.markedForDeletion ? <RotateCcw size={10} /> : <UserMinus size={10} />}
                     </button>
                 </div>
             )}
+
+            {/* 🟠 ZONA FANTASMA INFERIOR IZQUIERDA (Falla / Alerta Naranja) */}
+            {(!isFree || sale.isProblem) && !isAdmin && (
+                <div className={`absolute bottom-0 left-0 w-10 h-10 z-50 flex items-end justify-start p-1.5 transition-all duration-300 cursor-pointer ${sale.isProblem ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}>
+                    <button onClick={(e) => { e.stopPropagation(); handlers.toggleProblem(sale); }} className={`w-6 h-6 rounded-full flex items-center justify-center shadow-sm border transition-all duration-300 ${sale.isProblem ? 'bg-amber-500 border-amber-600 text-white animate-pulse shadow-amber-500/40' : 'bg-slate-100/90 border-slate-200 text-slate-400 backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-white hover:scale-110 dark:bg-white/10 dark:border-white/20 dark:hover:bg-amber-500 dark:hover:border-amber-500'}`} title={sale.isProblem ? "Falla Reportada (Quitar)" : "Reportar Falla"}>
+                        <AlertTriangle size={10} />
+                    </button>
+                </div>
+            )}
+
             <div className="flex flex-col gap-2 md:grid md:grid-cols-12 md:gap-4 items-center relative z-10">
                 <div className="col-span-12 md:col-span-4 w-full flex items-start gap-3">
                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 ${statusColor}`}>
@@ -101,12 +111,12 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <div className={`font-bold text-sm md:text-base leading-tight truncate ${text}`}>{isFree ? 'Espacio Libre' : sale.client}</div>
                                     {sale.markedForDeletion && <span className="text-[8px] px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500 text-white font-black uppercase tracking-wider animate-pulse">BAJA PROGRAMADA</span>}
-                                    {!sale.markedForDeletion && loyalty && loyalty.level && !isFree && !isProblem && !isAdmin && <span className={`text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider flex items-center gap-1 ${loyalty.color}`}>{loyalty.level}</span>}
+                                    {!sale.markedForDeletion && loyalty && loyalty.level && !isFree && !isProblemSlot && !isAdmin && <span className={`text-[9px] px-1.5 py-0.5 rounded border font-black uppercase tracking-wider flex items-center gap-1 ${loyalty.color}`}>{loyalty.level}</span>}
                                     {isFullAccount && !isFree && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-1 uppercase ${darkMode ? 'bg-indigo-500 text-white' : 'bg-indigo-600 text-white'}`}><Layers size={8} /> Completa</span>}
                                 </div>
                                 <div className={`text-[11px] md:text-xs font-medium truncate mt-0.5 ${subText}`}>{sale.service}</div>
                             </div>
-                            {!isFree && !isProblem && !isAdmin && (
+                            {!isFree && !isProblemSlot && !isAdmin && (
                                 <div className="text-right md:hidden leading-tight flex flex-col items-end">
                                     {cost > 0 && <span className={`text-xs font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</span>}
                                     <div className={`text-[9px] font-bold ${days < 0 ? 'text-rose-500' : days <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{days}d</div>
@@ -120,8 +130,8 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                                 {sale.pin && <span className="text-[9px] opacity-60 font-mono">PIN: {sale.pin}</span>}
                             </div>
                         )}
-                        {isProblem && <div className="md:hidden mt-1 flex items-center gap-1 text-amber-500 font-bold text-[10px] animate-pulse"><AlertTriangle size={10} /> <span>Revisar Cuenta</span></div>}
-                        {!isFree && !isProblem && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
+                        {isProblemSlot && <div className="md:hidden mt-1 flex items-center gap-1 text-amber-500 font-bold text-[10px] animate-pulse"><AlertTriangle size={10} /> <span>Revisar Cuenta</span></div>}
+                        {!isFree && !isProblemSlot && <div className={`md:hidden mt-1 flex items-center gap-1 ${subText}`}><Smartphone size={10}/> <span className="text-[10px]">{sale.phone}</span></div>}
                     </div>
                 </div>
                 <div className="col-span-12 md:col-span-3 w-full pl-0 md:pl-2">
@@ -142,7 +152,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                     </div>
                 </div>
                 <div className="hidden md:flex col-span-3 w-full flex-col items-center justify-center">
-                    {!isFree && !isProblem && !isAdmin ? (
+                    {!isFree && !isProblemSlot && !isAdmin ? (
                         <div className="flex items-center gap-6">
                             {cost > 0 && <div className="text-center"><div className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>${cost}</div><div className="text-[9px] font-bold opacity-40 uppercase text-slate-400">Precio</div></div>}
                             {cost > 0 && <div className={`w-px h-8 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>}
@@ -163,11 +173,11 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
-                            {!isProblem && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
-                            {!isProblem && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
+                            {!isProblemSlot && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
+                            {!isProblemSlot && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
                             <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
                             <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
-                            {!isProblem && <button onClick={() => handlers.renew(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes"><CalendarPlus size={14}/></button>}
+                            {!isProblemSlot && <button onClick={() => handlers.renew(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes"><CalendarPlus size={14}/></button>}
                             <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} title="Liberar / Recuperar"><RotateCcw size={14}/></button>
                         </div>
                     )}
@@ -193,7 +203,6 @@ const Dashboard = ({
     const [activeTab, setActiveTab] = useState('healthy'); 
     const observer = useRef();
 
-    // ✅ LA LUZ DE CHECK ENGINE: Bajas que vencen HOY o ya vencieron
     const pendingBajas = useMemo(() => sales.filter(s => s.markedForDeletion && safeGetDays(s.endDate) <= 0), [sales]);
     const [showPendingBajas, setShowPendingBajas] = useState(false);
 
@@ -275,10 +284,10 @@ const Dashboard = ({
             const totalToPay = related.reduce((sum, s) => sum + (Number(s.cost) || 0), 0);
             const totalText = totalToPay > 0 ? ` Total a pagar: $${totalToPay}.` : '';
 
-            if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.${totalText}`;
-            else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY.${totalText} Por favor realiza tu pago para mantener el servicio activo.`;
-            else if (targetDays === 1) message = `⚠️ Buen día ${client}, mañana vence: ${summary}.${totalText} ¿Deseas renovar?`;
-            else message = `⚠️ Buen día ${client}, recordatorio: ${summary} vence en ${targetDays} días.${totalText} ¿Deseas renovar?`;
+            if (targetDays < 0) message = `🔴 Hola ${client}, recordatorio de pago pendiente por: ${summary}.`;
+            else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
+            else if (targetDays === 1) message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
+            else message = `⚠️ Buen día ${client}, recordatorio: ${summary} vence en ${targetDays} días. ¿Deseas renovar?`;
         } 
         else if (actionType === 'data') {
             if (lowerService.includes('iptv') || lowerService.includes('magis') || lowerService.includes('tivify')) {
@@ -303,6 +312,28 @@ const Dashboard = ({
         } catch (error) {}
     }, []);
 
+    const handleToggleProblem = useCallback(async (sale) => {
+        try {
+            const currentUser = auth.currentUser;
+            if (!currentUser) return;
+            const newState = !sale.isProblem;
+            const batch = writeBatch(db);
+            const userPath = `users/${currentUser.uid}/sales`;
+            
+            const targetService = cleanServiceName(sale.service).toLowerCase();
+            const siblings = sales.filter(s => 
+                s.email === sale.email && 
+                cleanServiceName(s.service).toLowerCase() === targetService
+            );
+            
+            siblings.forEach(sib => {
+                const saleRef = doc(db, userPath, sib.id);
+                batch.update(saleRef, { isProblem: newState });
+            });
+            await batch.commit();
+        } catch (error) {}
+    }, [sales]);
+
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
         copy: (e, email, pass) => {
@@ -322,41 +353,60 @@ const Dashboard = ({
         },
         migrate: openMigration, renew: handleQuickRenew,
         liberate: async (id) => {
-            try { const currentUser = auth.currentUser; if (currentUser) { await updateDoc(doc(db, `users/${currentUser.uid}/sales`, id), { markedForDeletion: false }); } } catch (error) {}
+            try { const currentUser = auth.currentUser; if (currentUser) { await updateDoc(doc(db, `users/${currentUser.uid}/sales`, id), { markedForDeletion: false, isProblem: false }); } } catch (error) {}
             triggerLiberate(id);
         },
-        toggleMark: handleToggleMark 
-    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark]);
+        toggleMark: handleToggleMark,
+        toggleProblem: handleToggleProblem
+    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark, handleToggleProblem]);
 
+    // ✅ RE-INSERTADO: Lógica de conteo de pestañas dentro de Dashboard para evitar errores 'undefined'
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
-        const groups = {}; const healthy = []; const free = []; const warranty = []; const maintenance = [];
+        const globalGroups = {};
+        (sales || []).forEach(sale => {
+            const emailKey = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
+            const serviceKey = cleanServiceName(sale.service).toLowerCase(); 
+            const uniqueGroupKey = `${emailKey}|${serviceKey}`; 
+            
+            if (!globalGroups[uniqueGroupKey]) {
+                globalGroups[uniqueGroupKey] = { items: [], hasProblem: false };
+            }
+            globalGroups[uniqueGroupKey].items.push(sale);
+            
+            if (sale.isProblem) {
+                globalGroups[uniqueGroupKey].hasProblem = true;
+            } else {
+                const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
+                const isFree = sale.client.toLowerCase().includes('libre');
+                if (!isFree && sale.client !== 'Admin' && (PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client))) {
+                    globalGroups[uniqueGroupKey].hasProblem = true;
+                }
+            }
+        });
+
+        const healthy = []; const free = []; const warranty = []; const maintenance = [];
+        
         (filteredSales || []).forEach(sale => {
             const emailKey = sale.email ? sale.email.trim().toLowerCase() : `no-email-${sale.id}`;
             const serviceKey = cleanServiceName(sale.service).toLowerCase(); 
             const uniqueGroupKey = `${emailKey}|${serviceKey}`; 
-            if (!groups[uniqueGroupKey]) groups[uniqueGroupKey] = [];
-            groups[uniqueGroupKey].push(sale);
-        });
-        Object.values(groups).forEach(group => {
-            const hasProblem = group.some(sale => {
-                const textToCheck = (sale.client + " " + sale.service + " " + (sale.type || "")).toLowerCase();
-                const isFree = sale.client.toLowerCase().includes('libre');
-                if (isFree || sale.client === 'Admin') return false;
-                return PROBLEM_KEYWORDS.some(k => textToCheck.includes(k)) || NON_BILLABLE_STATUSES.includes(sale.client);
-            });
-            const isFragmented = group.length > 1;
+            
+            const gGroup = globalGroups[uniqueGroupKey];
+            const hasProblem = gGroup ? gGroup.hasProblem : false;
+            const isFragmented = gGroup ? gGroup.items.length > 1 : false;
+            
             if (hasProblem) {
-                if (isFragmented) warranty.push(...group); else maintenance.push(...group); 
+                if (isFragmented) warranty.push(sale); 
+                else maintenance.push(sale); 
             } else {
-                group.forEach(sale => {
-                    const clientName = (sale.client || '').toLowerCase();
-                    if (clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible') free.push(sale);
-                    else healthy.push(sale);
-                });
+                const clientName = (sale.client || '').toLowerCase();
+                if (clientName === 'libre' || clientName === 'espacio libre' || clientName === 'disponible') free.push(sale);
+                else healthy.push(sale);
             }
         });
+        
         return { healthySales: healthy, freeSales: free, warrantySales: warranty, maintenanceSales: maintenance };
-    }, [filteredSales]);
+    }, [filteredSales, sales]);
 
     let currentList = [];
     if (showPendingBajas) currentList = pendingBajas;
@@ -364,6 +414,15 @@ const Dashboard = ({
     else if (activeTab === 'free') currentList = freeSales;
     else if (activeTab === 'warranty') currentList = warrantySales;
     else currentList = maintenanceSales; 
+
+    useEffect(() => {
+        if (filterClient && filteredSales.length > 0 && currentList.length === 0) {
+            if (healthySales.length > 0) { setActiveTab('healthy'); setShowPendingBajas(false); }
+            else if (warrantySales.length > 0) { setActiveTab('warranty'); setShowPendingBajas(false); }
+            else if (maintenanceSales.length > 0) { setActiveTab('maintenance'); setShowPendingBajas(false); }
+            else if (freeSales.length > 0) { setActiveTab('free'); setShowPendingBajas(false); }
+        }
+    }, [filterClient, filteredSales.length, currentList.length, healthySales.length, warrantySales.length, maintenanceSales.length, freeSales.length]);
 
     const visibleSales = useMemo(() => {
         const sorted = [...currentList];

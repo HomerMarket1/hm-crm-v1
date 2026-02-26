@@ -55,7 +55,7 @@ export const useCRMActions = (user, setNotification) => {
                         client: 'LIBRE', phone: '', endDate: '', cost: 0, 
                         service: finalServiceName, updatedAt: serverTimestamp(), 
                         type: targetType, profile: targetProfile, pin: '',
-                        clientSince: null, billingDay: null // 🧹 Limpiamos el historial
+                        clientSince: null, billingDay: null, isProblem: false
                     });
                     operationCount++;
                 }
@@ -90,7 +90,7 @@ export const useCRMActions = (user, setNotification) => {
                 const newDocRef = doc(collection(db, userPath, 'sales'));
                 batch.set(newDocRef, {
                     client: 'LIBRE', service: cleanServiceName, email: form.email, pass: form.pass, cost: 0,
-                    type: 'Cuenta', createdAt: serverTimestamp(), profile: '', pin: ''
+                    type: 'Cuenta', createdAt: serverTimestamp(), profile: '', pin: '', isProblem: false
                 });
                 notify(`Cuenta Madre agregada.`, 'success');
             } else {
@@ -99,7 +99,7 @@ export const useCRMActions = (user, setNotification) => {
                     const newDocRef = doc(collection(db, userPath, 'sales'));
                     batch.set(newDocRef, {
                         client: 'LIBRE', service: form.service, email: form.email, pass: form.pass, cost: 0,
-                        type: form.type || 'Perfil', createdAt: serverTimestamp(), profile: `Perfil ${i+1}`, pin: ''
+                        type: form.type || 'Perfil', createdAt: serverTimestamp(), profile: `Perfil ${i+1}`, pin: '', isProblem: false
                     });
                 }
                 notify(`Generados ${loops} perfiles.`, 'success');
@@ -127,7 +127,6 @@ export const useCRMActions = (user, setNotification) => {
                 cleanFormData.clientSince = originalSale.clientSince;
             }
 
-            // ✅ GUARDAR MEMORIA DE DÍA (Día Ancla) cuando hay edición manual
             const finalEndDate = cleanFormData.endDate || originalSale.endDate || '';
             if (finalEndDate && finalEndDate.includes('-')) {
                 cleanFormData.billingDay = parseInt(finalEndDate.split('-')[2], 10);
@@ -154,7 +153,7 @@ export const useCRMActions = (user, setNotification) => {
                 const cleanName = `${baseName} Cuenta Completa`;
                 batch.update(doc(db, userPath, 'sales', originalSale.id), { 
                     ...cleanFormData, service: cleanName, cost: 0, type: 'Cuenta', profile: '', updatedAt: serverTimestamp(),
-                    clientSince: null, billingDay: null
+                    clientSince: null, billingDay: null, isProblem: false
                 });
                 await batch.commit();
                 notify('Cuenta actualizada (Unidad Mantenida).', 'success');
@@ -179,7 +178,7 @@ export const useCRMActions = (user, setNotification) => {
                     ...cleanFormData, 
                     email: finalEmail, pass: finalPass,
                     service: cleanName, type: 'Cuenta', profile: '', pin: '', 
-                    cost: realUnitCost, 
+                    cost: realUnitCost, isProblem: false,
                     updatedAt: serverTimestamp() 
                 });
                 await batch.commit(); 
@@ -221,12 +220,12 @@ export const useCRMActions = (user, setNotification) => {
                             const profileName = (profilesToSell === 1) ? (pData.profile || cleanFormData.profile || `Perfil ${i+1}`) : (pData.profile || `Perfil ${i+1}`);
                             const pinCode = (pData.pin) ? pData.pin : cleanFormData.pin;
                             slotData = { 
-                                ...cleanFormData, email: finalEmail, pass: finalPass, cost: unitCost, profile: profileName, pin: pinCode || '', type: 'Perfil' 
+                                ...cleanFormData, email: finalEmail, pass: finalPass, cost: unitCost, profile: profileName, pin: pinCode || '', type: 'Perfil', isProblem: false 
                             };
                         } else {
                             slotData = { 
                                 client: 'LIBRE', phone: '', service: freeServiceName, type: 'Perfil', cost: 0, 
-                                email: finalEmail, pass: finalPass, profile: `Perfil ${i+1}`, pin: '', endDate: '', clientSince: null, billingDay: null
+                                email: finalEmail, pass: finalPass, profile: `Perfil ${i+1}`, pin: '', endDate: '', clientSince: null, billingDay: null, isProblem: false
                             };
                         }
                         if (i === 0) batch.update(doc(db, userPath, 'sales', originalSale.id), { ...slotData, updatedAt: serverTimestamp() });
@@ -238,14 +237,14 @@ export const useCRMActions = (user, setNotification) => {
                     
                     const pData0 = bulkProfiles[0] || {};
                     batch.update(doc(db, userPath, 'sales', originalSale.id), { 
-                        ...cleanFormData, email: finalEmail, pass: finalPass, cost: unitCost, profile: pData0.profile || cleanFormData.profile, pin: pData0.pin || cleanFormData.pin || '', updatedAt: serverTimestamp() 
+                        ...cleanFormData, email: finalEmail, pass: finalPass, cost: unitCost, profile: pData0.profile || cleanFormData.profile, pin: pData0.pin || cleanFormData.pin || '', isProblem: false, updatedAt: serverTimestamp() 
                     });
                     
                     for (let i = 1; i < slotsToOccupy; i++) {
                         const targetDoc = availableSiblings[i-1];
                         const pData = bulkProfiles[i] || {};
                         batch.update(doc(db, userPath, 'sales', targetDoc.id), { 
-                            ...cleanFormData, email: finalEmail, pass: finalPass, cost: unitCost, profile: pData.profile || `Perfil ${i+1}`, pin: pData.pin || '', updatedAt: serverTimestamp() 
+                            ...cleanFormData, email: finalEmail, pass: finalPass, cost: unitCost, profile: pData.profile || `Perfil ${i+1}`, pin: pData.pin || '', isProblem: false, updatedAt: serverTimestamp() 
                         });
                     }
                 }
@@ -253,7 +252,7 @@ export const useCRMActions = (user, setNotification) => {
             }
 
             batch.update(doc(db, userPath, 'sales', originalSale.id), { 
-                ...cleanFormData, cost: totalCost, updatedAt: serverTimestamp() 
+                ...cleanFormData, cost: totalCost, isProblem: false, updatedAt: serverTimestamp() 
             });
             await batch.commit(); notify('Guardado correctamente.', 'success'); return true;
         } catch (error) { console.error("Error:", error); notify('Error al guardar.', 'error'); return false; }
@@ -277,25 +276,23 @@ export const useCRMActions = (user, setNotification) => {
                 client: sData.client, phone: sData.phone || '', endDate: sData.endDate || '', cost: sData.cost || 0,
                 profile: sData.profile || '', pin: sData.pin || '', updatedAt: serverTimestamp(),
                 clientSince: sData.clientSince || sData.createdAt,
-                billingDay: sData.billingDay || null // Heredamos la memoria de cobro
+                billingDay: sData.billingDay || null,
+                isProblem: false
             });
 
             const resetData = oldStatus === 'LIBRE' 
-                ? { client: 'LIBRE', phone: '', endDate: '', cost: 0, profile: '', pin: '', lastCode: '', clientSince: null, billingDay: null }
-                : { client: oldStatus, phone: '', endDate: '', cost: 0, clientSince: null, billingDay: null };
+                ? { client: 'LIBRE', phone: '', endDate: '', cost: 0, profile: '', pin: '', lastCode: '', clientSince: null, billingDay: null, isProblem: false }
+                : { client: oldStatus, phone: '', endDate: '', cost: 0, clientSince: null, billingDay: null, isProblem: false };
 
             batch.update(sRef, { ...resetData, updatedAt: serverTimestamp() });
             await batch.commit(); notify('Migración exitosa.', 'success'); return true;
         } catch (e) { notify('Error migrando.', 'error'); return false; }
     };
 
-    // ✅ 4. RENOVACIÓN INTELIGENTE: Pide 'sale' completo para leer su billingDay
     const quickRenew = async (sale) => {
         if (!sale || !sale.id || !sale.endDate) return;
         try {
             const [y, m, d] = sale.endDate.split('-').map(Number);
-            
-            // Leemos el día ancla (o usamos el actual si no tiene)
             const anchorDay = sale.billingDay || d; 
 
             let nextYear = y;
@@ -305,10 +302,7 @@ export const useCRMActions = (user, setNotification) => {
                 nextYear++;
             }
 
-            // Calculamos límite del nuevo mes
             const daysInNextMonth = new Date(nextYear, nextMonth, 0).getDate();
-            
-            // El nuevo día respeta la memoria, pero no se pasa del fin de mes
             const targetDay = Math.min(anchorDay, daysInNextMonth);
 
             const finalDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;

@@ -65,8 +65,6 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
                 const matchEmail = normalizeText(sale.email).includes(term);
                 const matchPhone = sale.phone ? normalizeText(sale.phone).includes(term) : false;
                 const matchService = normalizeText(sale.service).includes(term);
-                
-                // ✅ RETIRADO: Ya no busca por nombre de perfil para evitar ruido en la búsqueda
                 if (!matchName && !matchEmail && !matchPhone && !matchService) return false;
             }
             if (isFilteringService) {
@@ -75,7 +73,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
             if (isFilteringStatus) {
                 const clientLower = (sale.client || '').toLowerCase();
                 const isFree = clientLower.includes('libre');
-                const isProblem = NON_BILLABLE.some(s => clientLower.includes(s));
+                const isProblem = sale.isProblem || NON_BILLABLE.some(s => clientLower.includes(s));
                 const days = calculateDaysDiff(sale.endDate, todayAnchor);
                 if (filterStatus === 'Libres' && !isFree) return false;
                 if (filterStatus === 'Ocupados' && (isFree || isProblem)) return false;
@@ -148,7 +146,7 @@ export const useSalesData = (sales, catalog, allClients, uiState, currentFormDat
         const c = (s.client || '').toLowerCase();
         if (c.includes('libre') || !s.endDate) return false;
         if (NON_BILLABLE.some(status => c.includes(status))) return false;
-        if (s.markedForDeletion) return false; // ✅ AGREGADO: Ignorar los que tienen Baja Programada
+        if (s.markedForDeletion) return false; 
         return true;
     }, []);
 
