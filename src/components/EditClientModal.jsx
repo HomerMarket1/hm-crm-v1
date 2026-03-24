@@ -70,7 +70,7 @@ const EditClientModal = ({ modal, setModal, onConfirm, darkMode }) => {
                                 type="text" 
                                 className={`w-full p-3 pl-11 rounded-xl font-bold text-sm outline-none border transition-all focus:border-indigo-500 ${theme.inputBg} ${theme.inputBorder} ${theme.text}`}
                                 value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
+                                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                                 placeholder="Teléfono"
                             />
                         </div>
