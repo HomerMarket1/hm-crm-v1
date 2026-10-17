@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
-import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, Filter, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react'; 
+import { Search, Lock, Edit2, Ban, XCircle, RotateCcw, X, Calendar, ChevronRight, CalendarPlus, ClipboardCopy, Bell, Send, CheckCircle2, Copy, Smartphone, AlertTriangle, Activity, ShieldAlert, Box, ArrowRightLeft, ArrowRight, User, Layers, Wrench, UserMinus, CalendarX } from 'lucide-react'; 
 import AppleCalendar from '../components/AppleCalendar';
+import SearchableSelect from '../components/SearchableSelect';
+import Pagination from '../components/Pagination';
+import { sendViaBot } from '../utils/botOutbox';
+import { buildAccessMessage, cleanServiceName } from '../utils/accessMessage';
+
+const PAGE_SIZE = 20;
 import { doc, updateDoc, writeBatch } from 'firebase/firestore'; 
 import { db, auth } from '../firebase/config'; 
 
@@ -8,7 +14,6 @@ const PROBLEM_KEYWORDS = ['caída', 'caida', 'actualizar', 'dominio', 'reposicio
 const NON_BILLABLE_STATUSES = ['Caída', 'Actualizar', 'Dominio', 'EXPIRED', 'Vencido', 'Cancelado', 'Problemas', 'Garantía', 'Admin', 'Stock', 'Reposicion'];
 const BURY_LIST = ['admin', 'actualizar', 'dominio', 'caida', 'caída', 'stock', 'reposicion'];
 
-const cleanServiceName = (name) => name ? name.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Renovación|Pantalla|Dispositivo).*$/gi, '').trim() : '';
 
 const getWhatsAppUrl = (phone, message) => {
     if (!phone) return '#';
@@ -16,6 +21,16 @@ const getWhatsAppUrl = (phone, message) => {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     return `https://${isMobile ? 'api' : 'web'}.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
 };
+
+// Momento de la venta: cuándo se asignó el cliente (clientSince) o, si no existe, cuándo se creó el registro
+const toMillis = (value) => {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();   // Timestamp de Firestore
+    if (typeof value.seconds === 'number') return value.seconds * 1000;  // Timestamp serializado
+    const t = new Date(value).getTime();                                 // Date o texto ISO
+    return Number.isNaN(t) ? 0 : t;
+};
+const getSaleTime = (sale) => toMillis(sale.clientSince) || toMillis(sale.createdAt);
 
 const safeGetDays = (dateString) => {
     if (!dateString || !dateString.includes('-')) return 0;
@@ -66,7 +81,7 @@ const getCardStyles = (sale, days, darkMode) => {
     return { bg, text, subText, statusColor, isFree, isProblemSlot, isAdmin, isFullAccount };
 };
 
-const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => {
+const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty, isSending = false }) => {
     const days = safeGetDays(sale.endDate);
     const { bg, text, subText, statusColor, isFree, isProblemSlot, isAdmin, isFullAccount } = getCardStyles(sale, days, darkMode);
     const cost = Math.round(sale.cost || 0);
@@ -138,7 +153,7 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                     <div className={`rounded-xl px-3 py-2 border md:border-none ${darkMode ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/20 md:bg-transparent'}`}>
                         <div className={`flex items-center justify-between gap-2 mb-1 ${subText}`}>
                             <span className="text-[10px] truncate select-all opacity-90">{sale.email}</span>
-                            <button onClick={(e) => handlers.copy(e, sale.email, sale.pass)} className={`hover:text-indigo-500 active:scale-90 transition-transform ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><Copy size={10}/></button>
+                            <button onClick={(e) => handlers.copy(e, sale.email, sale.pass)} title="Copiar correo y contraseña" aria-label="Copiar correo y contraseña" className={`hover:text-indigo-500 active:scale-90 transition-transform ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}><Copy size={10}/></button>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className={`text-[11px] font-mono font-bold select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{sale.pass}</span>
@@ -168,17 +183,18 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
                 <div className="col-span-12 md:col-span-2 w-full flex justify-end gap-1 pt-2 md:pt-0 border-t md:border-none border-dashed border-white/10">
                     {isFree ? (
                         <div className="flex w-full md:w-auto gap-2 justify-end">
-                            <button onClick={() => handlers.edit(sale)} className={`w-9 h-9 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 border ${darkMode ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-white border-slate-200 text-emerald-600 shadow-sm'}`}><Edit2 size={14}/></button>
-                            <button onClick={() => handlers.assign(sale)} className="flex-1 md:flex-none md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">Asignar <ChevronRight size={14}/></button>
+                            <button onClick={() => handlers.edit(sale)} title="Editar" aria-label="Editar" className={`w-9 h-9 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 border ${darkMode ? 'bg-white/5 border-white/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-white border-slate-200 text-emerald-600 shadow-sm'}`}><Edit2 size={14}/></button>
+                            <button onClick={() => handlers.assign(sale)} title="Asignar a un cliente" className="flex-1 md:flex-none md:w-auto px-4 py-1.5 rounded-full font-bold text-xs bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1">Asignar <ChevronRight size={14}/></button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 w-full justify-end">
-                            {!isProblemSlot && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
-                            {!isProblemSlot && <button onClick={() => handlers.whatsapp(sale, 'data')} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}><Lock size={14}/></button>}
-                            <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza Rápida"><ArrowRightLeft size={14}/></button>
-                            <button onClick={() => handlers.edit(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
-                            {!isProblemSlot && <button onClick={() => handlers.renew(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 Mes"><CalendarPlus size={14}/></button>}
-                            <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} title="Liberar / Recuperar"><RotateCcw size={14}/></button>
+                            {!isProblemSlot && days <= 3 && <button onClick={() => handlers.whatsapp(sale, 'reminder')} title={days <= 0 ? 'WhatsApp: aviso de vencimiento (abre el chat)' : 'WhatsApp: recordatorio de pago (abre el chat)'} aria-label="Enviar recordatorio por WhatsApp" className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${days <= 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}><XCircle size={14}/></button>}
+                            {!isProblemSlot && <button onClick={() => handlers.whatsapp(sale, 'data')} disabled={isSending} title={isSending ? 'Enviando por el bot...' : 'Enviar datos de acceso (directo por el bot)'} aria-label="Enviar datos de acceso por WhatsApp" className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 disabled:cursor-wait disabled:hover:scale-100 ${isSending ? 'bg-indigo-500/20 text-indigo-400' : (darkMode ? 'bg-white/5 text-slate-300 hover:bg-indigo-500/20 hover:text-indigo-400' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600')}`}>{isSending ? <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin"/> : <Lock size={14}/>}</button>}
+                            <button onClick={() => handlers.copyAll(sale)} title="Copiar todos los datos (servicio, correo, perfil, PIN, vencimiento)" aria-label="Copiar todos los datos" className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-90 ${darkMode ? 'bg-white/5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-400' : 'bg-slate-100 text-slate-500 hover:bg-cyan-50 hover:text-cyan-600'}`}><ClipboardCopy size={14}/></button>
+                            <button onClick={() => handlers.migrate(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:rotate-180 ${darkMode ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-lg' : 'bg-indigo-500 text-white shadow-lg'}`} title="Mudanza rápida: mover a otra cuenta" aria-label="Mudanza rápida"><ArrowRightLeft size={14}/></button>
+                            <button onClick={() => handlers.edit(sale)} title="Editar venta" aria-label="Editar venta" className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 ${darkMode ? 'bg-white/5 text-slate-300 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Edit2 size={14}/></button>
+                            {!isProblemSlot && <button onClick={() => handlers.renew(sale)} className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-all ${darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`} title="Renovar 1 mes" aria-label="Renovar 1 mes"><CalendarPlus size={14}/></button>}
+                            <button onClick={() => handlers.liberate(sale.id)} className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-rose-500/10 hover:text-rose-500 transition-all ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} title="Liberar: dejar el perfil disponible" aria-label="Liberar perfil"><RotateCcw size={14}/></button>
                         </div>
                     )}
                 </div>
@@ -188,25 +204,29 @@ const SaleCard = React.memo(({ sale, darkMode, handlers, getClientLoyalty }) => 
 });
 
 const Dashboard = ({
-    sales = [], filteredSales = [], catalog = [],
+    sales = [], filteredSales = [],
     totalItems = 0, totalFilteredMoney = 0, loadingData = false,
     filterClient, setFilter, filterService, filterStatus, dateFrom, dateTo,
     handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, saveSale, onMigrate, 
     expiringToday = [], expiringTomorrow = [], overdueSales = [],
-    darkMode, getClientLoyalty
+    darkMode, getClientLoyalty, setNotification
 }) => {
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [] });
     const [migrationModal, setMigrationModal] = useState({ show: false, sale: null, matches: [] });
     const [migrationSourceStatus, setMigrationSourceStatus] = useState('Caída'); 
-    const [sentIds, setSentIds] = useState([]); 
-    const [displayLimit, setDisplayLimit] = useState(50);
+    const [sentIds, setSentIds] = useState([]);
+    const [sendingIds, setSendingIds] = useState([]); // ventas enviándose por el bot
+    const [botFallback, setBotFallback] = useState(null); // { client, phone, message, reason }
+    const [page, setPage] = useState(1);
+    const listTopRef = useRef(null);
+    // Solo servicios con pedidos o stock (el filtro compara por nombre exacto de la venta)
+    const serviceOptions = useMemo(() => [...new Set(sales.map(s => (s.service || '').trim()).filter(Boolean))].sort(), [sales]);
     const [activeTab, setActiveTab] = useState('healthy'); 
-    const observer = useRef();
 
     const pendingBajas = useMemo(() => sales.filter(s => s.markedForDeletion && safeGetDays(s.endDate) <= 0), [sales]);
     const [showPendingBajas, setShowPendingBajas] = useState(false);
 
-    useEffect(() => { setDisplayLimit(50); }, [filterClient, filterService, filterStatus, dateFrom, dateTo, activeTab, showPendingBajas]);
+    useEffect(() => { setPage(1); }, [filterClient, filterService, filterStatus, dateFrom, dateTo, activeTab, showPendingBajas]);
     useEffect(() => { if (pendingBajas.length === 0) setShowPendingBajas(false); }, [pendingBajas.length]);
 
     useEffect(() => {
@@ -228,11 +248,25 @@ const Dashboard = ({
 
     const openMigration = useCallback((sale) => {
         const cleanTargetService = cleanServiceName(sale.service).toLowerCase();
+        const FREE = ['libre', 'espacio libre', 'disponible'];
+        const PROBLEM = ['caída', 'caida', 'actualizar', 'dominio', 'expired', 'garantía', 'garantia', 'problemas', 'seguimiento', 'reposicion'];
+        const accountKey = (s) => `${(s.email || '').trim().toLowerCase()}|${cleanServiceName(s.service).toLowerCase()}`;
+
+        // Cuentas con algún perfil en problema (Caída, Actualizar, Dominio...) o con falla reportada: no sirven de destino
+        const brokenAccounts = new Set(sales
+            .filter(s => PROBLEM.includes((s.client || '').trim().toLowerCase()) || s.isProblem)
+            .map(accountKey));
+        const sourceEmail = (sale.email || '').trim().toLowerCase();
+
         const matches = sales.filter(s => {
-            const sName = (s.client || '').toLowerCase();
+            const sName = (s.client || '').trim().toLowerCase();
             const sService = cleanServiceName(s.service).toLowerCase();
             const sType = (s.type || '').toLowerCase();
-            return (sName.includes('libre') || sName.includes('disponible')) && sType === 'perfil' && sService.includes(cleanTargetService);
+            return FREE.includes(sName)
+                && sType === 'perfil'
+                && sService.includes(cleanTargetService)
+                && !brokenAccounts.has(accountKey(s))
+                && (s.email || '').trim().toLowerCase() !== sourceEmail; // no mudar a la misma cuenta
         });
         setMigrationSourceStatus('Caída'); 
         setMigrationModal({ show: true, sale, matches });
@@ -249,18 +283,39 @@ const Dashboard = ({
         setMigrationModal({ show: false, sale: null, matches: [] });
     };
 
+    // 🤖 ENVÍO DIRECTO POR EL BOT. Si falla o está apagado, se ofrece abrir WhatsApp manualmente.
+    // kind: 'data' (datos de acceso) | 'reminder' (recordatorio de vencimiento)
+    const sendDataByBot = useCallback(async (sale, message, kind = 'data') => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        const what = kind === 'reminder' ? 'el recordatorio' : 'los datos';
+        if (!sale.phone) {
+            setNotification?.({ show: true, message: `${sale.client} no tiene celular registrado.`, type: 'error' });
+            return;
+        }
+        setSendingIds(prev => [...prev, `${sale.id}:${kind}`]);
+        try {
+            const result = await sendViaBot({ uid, phone: sale.phone, text: message, saleId: sale.id, kind });
+            if (result.status === 'sent') {
+                setNotification?.({ show: true, message: `${kind === 'reminder' ? 'Recordatorio enviado' : 'Datos enviados'} a ${sale.client} por el bot.`, type: 'success' });
+            } else {
+                setBotFallback({
+                    what, client: sale.client, phone: sale.phone, message,
+                    reason: result.status === 'error' ? result.error : 'El bot no respondió. ¿Está encendido y conectado?'
+                });
+            }
+        } catch (error) {
+            console.error('Error enviando por el bot:', error);
+            setBotFallback({ what, client: sale.client, phone: sale.phone, message, reason: 'No se pudo crear el envío en Firebase.' });
+        } finally {
+            setSendingIds(prev => prev.filter(id => id !== `${sale.id}:${kind}`));
+        }
+    }, [setNotification]);
+
     const handleUnifiedWhatsApp = useCallback((sale, actionType) => {
         const { client, phone, endDate } = sale;
         const targetDays = safeGetDays(endDate);
-        const serviceName = cleanServiceName(sale.service).toUpperCase(); 
-        const lowerService = serviceName.toLowerCase();
         let message = '';
-        const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-        let dateText = "Indefinido";
-        if (endDate) {
-            const [y, m, d] = endDate.split('-').map(Number);
-            dateText = `${d} de ${months[m-1]}`;
-        }
 
         if (actionType === 'reminder') {
             const related = sales.filter(s => {
@@ -288,20 +343,16 @@ const Dashboard = ({
             else if (targetDays === 0) message = `❌ Hola ${client}, el vencimiento de ${summary} es HOY. Por favor realiza tu pago para mantener el servicio activo.`;
             else if (targetDays === 1) message = `⚠️ Buen día ${client}, mañana vence: ${summary}. ¿Deseas renovar?`;
             else message = `⚠️ Buen día ${client}, recordatorio: ${summary} vence en ${targetDays} días. ¿Deseas renovar?`;
-        } 
+            // ✋ Los recordatorios de vencimiento son MANUALES (botón ❌ y cola Vencidas/Hoy/Mañana):
+            // se abre WhatsApp con el mensaje listo y tú lo envías.
+        }
         else if (actionType === 'data') {
-            if (lowerService.includes('iptv') || lowerService.includes('magis') || lowerService.includes('tivify')) {
-                message = `${serviceName}\n\nUSUARIO:\n${sale.profile || 'N/A'}\nCONTRASEÑA:\n${sale.pin || 'N/A'}\nURL / DNS:\n${sale.pass || 'Solicitar'}\n\n☑️Su servicio vence el día ${dateText}☑️`;
-            } else if ((lowerService.includes('netflix') || lowerService.includes('disney')) && !sale.type?.toLowerCase().includes('cuenta')) {
-                message = `${serviceName} 1 PERFIL\n\nCORREO:\n${sale.email}\nPERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n\nNOTA:\nPara activar, indícame si usarás TV, PC o Celular.\n\n☑️Su Perfil Vence el día ${dateText}☑️`;
-            } else {
-                const isFull = sale.type === 'Cuenta';
-                const typeLabel = isFull ? 'CUENTA COMPLETA' : '1 PERFIL';
-                message = `${serviceName} ${typeLabel}\n\nCORREO:\n${sale.email}\nCONTRASEÑA:\n${sale.pass}\n${!isFull ? `PERFIL:\n${sale.profile}\nPIN:\n${sale.pin || 'Sin PIN'}\n` : ''}\n☑️Su Perfil Vence el día ${dateText}☑️`;
-            }
+            // 🤖 Los datos de acceso se envían directo por el bot (sin abrir el chat)
+            sendDataByBot(sale, buildAccessMessage(sale));
+            return;
         }
         window.open(getWhatsAppUrl(phone, message), '_blank');
-    }, [sales]);
+    }, [sales, sendDataByBot]);
 
     const handleToggleMark = useCallback(async (sale) => {
         try {
@@ -336,6 +387,14 @@ const Dashboard = ({
 
     const handlers = useMemo(() => ({
         whatsapp: handleUnifiedWhatsApp,
+        copyAll: async (sale) => {
+            try {
+                await navigator.clipboard.writeText(buildAccessMessage(sale));
+                setNotification?.({ show: true, message: `Datos de ${sale.client} copiados.`, type: 'success' });
+            } catch {
+                setNotification?.({ show: true, message: 'No se pudo copiar al portapapeles.', type: 'error' });
+            }
+        },
         copy: (e, email, pass) => {
             e.preventDefault(); navigator.clipboard.writeText(`${email}:${pass}`);
             const btn = e.currentTarget; 
@@ -358,7 +417,7 @@ const Dashboard = ({
         },
         toggleMark: handleToggleMark,
         toggleProblem: handleToggleProblem
-    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark, handleToggleProblem]);
+    }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark, handleToggleProblem, setNotification]);
 
     // ✅ RE-INSERTADO: Lógica de conteo de pestañas dentro de Dashboard para evitar errores 'undefined'
     const { healthySales, freeSales, warrantySales, maintenanceSales } = useMemo(() => {
@@ -424,6 +483,14 @@ const Dashboard = ({
         }
     }, [filterClient, filteredSales.length, currentList.length, healthySales.length, warrantySales.length, maintenanceSales.length, freeSales.length]);
 
+    const totalPages = Math.max(1, Math.ceil(currentList.length / PAGE_SIZE));
+    const currentPage = Math.min(page, totalPages);
+
+    const goToPage = (p) => {
+        setPage(Math.min(Math.max(1, p), totalPages));
+        listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
     const visibleSales = useMemo(() => {
         const sorted = [...currentList];
         if (activeTab === 'warranty' || activeTab === 'maintenance') {
@@ -435,18 +502,14 @@ const Dashboard = ({
                 const isSystemA = BURY_LIST.some(k => clientA.includes(k));
                 const isSystemB = BURY_LIST.some(k => clientB.includes(k));
                 if (isSystemA && !isSystemB) return 1; if (!isSystemA && isSystemB) return -1;
-                return clientA.localeCompare(clientB);
+                // 🆕 Última venta primero; a igual fecha, por nombre
+                const byDate = getSaleTime(b) - getSaleTime(a);
+                return byDate !== 0 ? byDate : clientA.localeCompare(clientB);
             });
         }
-        return sorted.slice(0, displayLimit);
-    }, [currentList, displayLimit, activeTab]);
-
-    const lastElementRef = useCallback(node => {
-        if (loadingData) return;
-        if (observer.current) observer.current.disconnect();
-        observer.current = new IntersectionObserver(entries => { if (entries[0].isIntersecting && displayLimit < currentList.length) setDisplayLimit(prev => prev + 50); });
-        if (node) observer.current.observe(node);
-    }, [loadingData, displayLimit, currentList.length]);
+        const start = (currentPage - 1) * PAGE_SIZE;
+        return sorted.slice(start, start + PAGE_SIZE);
+    }, [currentList, currentPage, activeTab]);
 
     if (loadingData) return <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400"><div className="w-12 h-12 rounded-full border-4 border-current border-t-transparent animate-spin mb-4"/>Sincronizando...</div>;
 
@@ -490,12 +553,14 @@ const Dashboard = ({
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <div className="relative flex-grow md:flex-grow-0 md:w-auto min-w-[140px]">
-                            <select className={`w-full appearance-none pl-4 pr-9 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer outline-none shadow-sm ${filterService !== 'Todos' ? (darkMode ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-indigo-600 text-white border-indigo-600') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-white' : 'bg-white text-slate-700 border-slate-200')}`} value={filterService} onChange={e => setFilter('filterService', e.target.value)} disabled={showPendingBajas}>
-                                <option value="Todos">Todos los Servicios</option>
-                                {catalog.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                            </select>
-                            <Filter size={10} className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${filterService !== 'Todos' ? 'text-white' : 'text-slate-400'}`}/>
+                        <div className="relative flex-grow md:flex-grow-0 md:w-[220px] min-w-[140px]">
+                            <SearchableSelect
+                                value={filterService}
+                                options={serviceOptions}
+                                onChange={v => setFilter('filterService', v)}
+                                darkMode={darkMode}
+                                disabled={showPendingBajas}
+                            />
                         </div>
                         {activeTab === 'healthy' && !showPendingBajas && (
                             <button onClick={() => setFilter('filterStatus', filterStatus === 'Vencidos' ? 'Todos' : 'Vencidos')} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all shadow-sm ${filterStatus === 'Vencidos' ? 'bg-rose-500 text-white border-rose-500' : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-200' : 'bg-white text-slate-700 border-slate-200')}`}>Vencidos</button>
@@ -506,7 +571,7 @@ const Dashboard = ({
                             <div className="flex-1"><AppleCalendar value={dateTo} onChange={(val) => setFilter('dateTo', val)} label="Hasta" darkMode={darkMode} ghost={true} /></div>
                         </div>
                         {(dateFrom || dateTo || filterService !== 'Todos' || filterStatus === 'Vencidos') && !showPendingBajas && (
-                            <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); setFilter('filterService', 'Todos'); setFilter('filterStatus', 'Todos'); }} className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all ml-auto md:ml-0"><X size={14} strokeWidth={3}/></button>
+                            <button onClick={() => { setFilter('dateFrom', ''); setFilter('dateTo', ''); setFilter('filterService', 'Todos'); setFilter('filterStatus', 'Todos'); }} title="Limpiar filtros" aria-label="Limpiar filtros" className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all ml-auto md:ml-0"><X size={14} strokeWidth={3}/></button>
                         )}
                     </div>
                 </div>
@@ -526,16 +591,34 @@ const Dashboard = ({
                 </div>
             )}
 
-            <div className="space-y-3">
-                {visibleSales.length > 0 ? visibleSales.map((sale, i) => (
-                    <div key={sale.id} ref={i === visibleSales.length - 1 ? lastElementRef : null}>
-                        <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} getClientLoyalty={getClientLoyalty} />
+            <div ref={listTopRef} className="space-y-3 scroll-mt-24">
+                {visibleSales.length > 0 ? visibleSales.map((sale) => (
+                    <div key={sale.id}>
+                        <SaleCard sale={sale} darkMode={darkMode} handlers={handlers} getClientLoyalty={getClientLoyalty} isSending={sendingIds.includes(`${sale.id}:data`)} />
                     </div>
                 )) : (
                     <div className="py-20 text-center opacity-40">{activeTab === 'maintenance' ? <Wrench size={32} className="mx-auto mb-2 text-slate-500"/> : <p className="font-bold">Sin resultados</p>}</div>
                 )}
-                {displayLimit < currentList.length && <div className="py-4 text-center text-xs opacity-50 animate-pulse">Cargando más...</div>}
             </div>
+
+            <Pagination page={currentPage} pageSize={PAGE_SIZE} totalItems={currentList.length} onPageChange={goToPage} darkMode={darkMode} />
+
+            {/* 🤖 AVISO: el bot no pudo enviar -> opción de abrir WhatsApp manualmente */}
+            {botFallback && (
+                <div className={`fixed bottom-6 right-6 left-6 md:left-auto md:w-[380px] z-[70] p-4 rounded-2xl border shadow-2xl animate-in slide-in-from-bottom-4 ${darkMode ? 'bg-[#161B28] border-amber-500/30' : 'bg-white border-amber-200'}`}>
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 shrink-0"><AlertTriangle size={18}/></div>
+                        <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>No se envió {botFallback.what || 'los datos'} a {botFallback.client}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{botFallback.reason}</p>
+                            <div className="flex gap-2 mt-3">
+                                <button onClick={() => { window.open(getWhatsAppUrl(botFallback.phone, botFallback.message), '_blank'); setBotFallback(null); }} className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"><Send size={12}/> Abrir WhatsApp</button>
+                                <button onClick={() => setBotFallback(null)} className={`px-3 py-2 rounded-xl text-xs font-bold ${darkMode ? 'bg-white/5 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>Cerrar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {bulkModal.show && (
                 <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
@@ -556,7 +639,7 @@ const Dashboard = ({
                         <div className="p-6 border-b border-white/5">
                             <div className="flex justify-between items-start mb-4"><div><h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>Mudanza Express 🚚</h3><p className="text-sm text-slate-400">Cliente: <span className="text-indigo-400 font-bold">{migrationModal.sale?.client}</span></p></div><button onClick={() => setMigrationModal({ ...migrationModal, show: false })} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><X size={20} /></button></div>
                             <div className="mb-4 animate-in slide-in-from-top-2"><button onClick={(e) => handlers.copy(e, migrationModal.sale?.email, migrationModal.sale?.pass)} className={`w-full py-2.5 px-4 rounded-xl border-2 border-dashed flex items-center justify-between transition-all active:scale-[0.98] group ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/50 text-slate-300 shadow-sm' : 'bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-600'}`}><div className="flex items-center gap-2 overflow-hidden"><Lock size={14} className="text-indigo-500 shrink-0"/><div className="text-left"><p className="text-[9px] font-bold uppercase opacity-50 leading-none mb-1">Cuenta anterior</p><p className="text-[11px] font-bold truncate">{migrationModal.sale?.email}</p></div></div><div className="flex items-center gap-2 shrink-0 ml-2"><span className="text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity uppercase">Copiar Acceso</span><Copy size={16} className="text-indigo-500"/></div></button></div>
-                            <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}><p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}><User size={12}/> Datos a trasladar:</p><div className="flex gap-4"><div className="flex-1"><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>Perfil Actual</span><span className={`text-base font-black truncate block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.profile || 'N/A'}</span></div><div className={`flex-1 border-l pl-4 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>PIN Actual</span><span className={`text-base font-mono font-black block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.pin || '---'}</span></div></div></div>
+                            <div className={`p-3 rounded-xl border ${darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}><p className={`text-[10px] font-bold uppercase mb-2 flex items-center gap-1 ${darkMode ? 'text-indigo-200' : 'text-indigo-900/60'}`}><User size={12}/> Perfil anterior (el cliente usará el perfil y PIN del destino):</p><div className="flex gap-4"><div className="flex-1"><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>Perfil Actual</span><span className={`text-base font-black truncate block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.profile || 'N/A'}</span></div><div className={`flex-1 border-l pl-4 ${darkMode ? 'border-indigo-500/20' : 'border-indigo-200'}`}><span className={`text-[10px] font-bold uppercase block mb-0.5 ${darkMode ? 'text-indigo-300/70' : 'text-indigo-900/50'}`}>PIN Actual</span><span className={`text-base font-mono font-black block ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{migrationModal.sale?.pin || '---'}</span></div></div></div>
                         </div>
                         <div className="p-6 space-y-4">
                             <div><label className="block text-xs font-bold uppercase text-slate-500 mb-2">¿Cómo queda la cuenta anterior?</label><div className="grid grid-cols-4 gap-2">{['Caída', 'Actualizar', 'Dominio', 'LIBRE'].map(status => (<button key={status} onClick={() => setMigrationSourceStatus(status)} className={`py-2 rounded-xl text-xs font-bold border transition-all ${migrationSourceStatus === status ? (status === 'LIBRE' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-amber-500 text-white border-amber-500') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-400 hover:bg-[#1E293B]' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100')}`}>{status}</button>))}</div></div>

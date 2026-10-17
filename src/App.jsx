@@ -13,6 +13,8 @@ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, db } from './firebase/config';
 import { doc, setDoc, getDoc } from 'firebase/firestore'; 
 import { sendWhatsApp } from './utils/helpers';
+import { sendViaBot } from './utils/botOutbox';
+import { buildAccessMessage, buildRenewalMessage } from './utils/accessMessage';
 
 // Layout y Componentes
 import MainLayout from './layouts/MainLayout';
@@ -62,8 +64,25 @@ const App = () => {
     // Formularios
     const [bulkProfiles, setBulkProfiles] = useState([{ profile: '', pin: '' }]);
     const [formData, setFormData] = useState({ id: null, client: '', phone: '', service: '', endDate: '', email: '', pass: '', profile: '', pin: '', cost: '', type: 'Perfil', profilesToBuy: 1, lastCode: '' });
-    const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 });
+    const [catalogForm, setCatalogForm] = useState({ name: '', cost: '', type: 'Perfil', defaultSlots: 4, profileCapacity: 5 });
     const [packageForm, setPackageForm] = useState({ name: '', cost: '', slots: 2 });
+
+    // 🤖 Enviar datos por el bot al registrar una venta (preferencia guardada en este navegador)
+    const [autoSendData, setAutoSendDataState] = useState(() => {
+        try { return localStorage.getItem('hm_autoSendData') !== 'false'; } catch { return true; }
+    });
+    const setAutoSendData = (value) => {
+        setAutoSendDataState(value);
+        try { localStorage.setItem('hm_autoSendData', String(value)); } catch { /* sin almacenamiento */ }
+    };
+    // 🤖 Avisar al cliente por el bot al renovar (con su próxima fecha)
+    const [autoSendRenewal, setAutoSendRenewalState] = useState(() => {
+        try { return localStorage.getItem('hm_autoSendRenewal') !== 'false'; } catch { return true; }
+    });
+    const setAutoSendRenewal = (value) => {
+        setAutoSendRenewalState(value);
+        try { localStorage.setItem('hm_autoSendRenewal', String(value)); } catch { /* sin almacenamiento */ }
+    };
 
     // 5. COMPUTED DATA
     const {
@@ -88,7 +107,7 @@ const App = () => {
     };
     const handleLogout = () => signOut(auth);
 
-    const handleAddServiceToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogService(catalogForm)) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4 }); };
+    const handleAddServiceToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogService(catalogForm)) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4, profileCapacity: 5 }); };
     const handleAddPackageToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogPackage(packageForm)) setPackageForm({ name: '', cost: '', slots: 2 }); };
     const handleEditCatalogService = (serviceId, updatedData) => crmActions.updateCatalogService(serviceId, updatedData);
     
@@ -192,33 +211,83 @@ const App = () => {
 
         const dataToSave = { ...formData, endDate: finalEndDate };
         const quantity = parseInt(formData.profilesToBuy || 1);
-        let batchCost = Number(dataToSave.cost) || 0;
-        const isPackage = dataToSave.service.toLowerCase().includes('paquete') || (dataToSave.type && dataToSave.type.toLowerCase() === 'paquete');
-        if (quantity > 1 && !isPackage) batchCost = batchCost * quantity;
-        
-        const dataWithCorrectCost = { ...dataToSave, cost: batchCost };
         let success = false;
-        
-        if (formData.id) {
-            success = await handleGenericSave(dataToSave);
-        } else {
-            // 🧹 LÓGICA LIMPIA: Batch O Single
-            if (quantity > 1) {
-                const freeRows = sales.filter(s => s.email === formData.email && s.service === formData.service && s.client === 'LIBRE');
-                success = await crmActions.processBatchSale(dataWithCorrectCost, quantity, freeRows, bulkProfiles, catalog);
-            } else {
-                success = await handleGenericSave(dataToSave);
-            }
-        }
 
-        if (success) { setView('dashboard'); resetForm(); }
+        // 🤖 ¿Es una venta nueva a un cliente real? (stock libre -> cliente). Se decide ANTES de guardar.
+        const originalSale = formData.id ? sales.find(s => s.id === formData.id) : null;
+        const FREE = ['', 'libre', 'espacio libre', 'disponible'];
+        const wasFree = !originalSale || FREE.includes((originalSale.client || '').trim().toLowerCase());
+        const clientLower = (formData.client || '').trim().toLowerCase();
+        const isRealClient = clientLower && !FREE.includes(clientLower) && clientLower !== 'admin' && !isExempt
+            && !NON_BILLABLE_STATUSES.some(s => String(s).toLowerCase() === clientLower);
+        const shouldAutoSend = autoSendData && formData.id && wasFree && isRealClient && (formData.phone || '').replace(/\D/g, '').length > 5;
+        
+        // 🛡️ Toda venta parte de un perfil o cuenta que ya existe (Asignar / Editar).
+        // Sin id no hay dónde guardarla: avisamos en vez de fingir que se guardó.
+        if (!formData.id) {
+            setNotification({ show: true, message: 'No se pudo guardar: asigna la venta desde un perfil o cuenta del stock (Tablero o Bóveda).', type: 'error' });
+            return;
+        }
+        success = await handleGenericSave(dataToSave);
+
+        if (success) {
+            if (shouldAutoSend) autoSendAccessData(dataToSave, quantity);
+            setView('dashboard'); resetForm();
+        }
+    };
+
+    // 🤖 ENVÍO AUTOMÁTICO DE DATOS AL REGISTRAR UNA VENTA (en segundo plano, no bloquea el formulario)
+    const autoSendAccessData = async (saleData, quantity) => {
+        const catalogItem = catalog.find(c => c.name === saleData.service);
+        const isFull = catalogItem?.type === 'Cuenta' || /completa/i.test(saleData.service || '');
+        const profiles = (!isFull && quantity > 1)
+            ? bulkProfiles.slice(0, quantity).map((p, i) => ({ profile: p.profile || `Perfil ${i + 1}`, pin: p.pin || '' }))
+            : null;
+        const single = { profile: bulkProfiles[0]?.profile || saleData.profile || '', pin: bulkProfiles[0]?.pin || saleData.pin || '' };
+        const message = buildAccessMessage({ ...saleData, ...single, type: isFull ? 'Cuenta' : (saleData.type || 'Perfil') }, profiles);
+
+        try {
+            const result = await sendViaBot({ uid: user.uid, phone: saleData.phone, text: message, saleId: saleData.id, kind: 'data-auto' });
+            if (result.status === 'sent') {
+                setNotification({ show: true, message: `Venta guardada y datos enviados a ${saleData.client} ✅`, type: 'success' });
+            } else {
+                const reason = result.status === 'error' ? result.error : 'El bot no respondió.';
+                setNotification({ show: true, message: `Venta guardada, pero no se enviaron los datos: ${reason} Usa el 🔒 para reenviar.`, type: 'error' });
+            }
+        } catch (err) {
+            console.error('Error en envío automático:', err);
+            setNotification({ show: true, message: 'Venta guardada, pero no se enviaron los datos. Usa el 🔒 para reenviar.', type: 'error' });
+        }
     };
 
     // ⚡ CALLBACK: Optimizado para no renderizar Dashboard en cada letra
-    const handleDashboardRenew = useCallback((id) => {
-        const s = sales.find(i => i.id === id);
-        crmActions.quickRenew(id, s?.endDate);
-    }, [sales, crmActions]);
+    // El Tablero pasa la venta completa (o un id): se acepta cualquiera de los dos
+    const handleDashboardRenew = useCallback(async (saleOrId) => {
+        const sale = typeof saleOrId === 'string' ? sales.find(i => i.id === saleOrId) : saleOrId;
+        if (!sale) return;
+        const newEndDate = await crmActions.quickRenew(sale);
+        if (!newEndDate || !autoSendRenewal || !user) return;
+
+        // 🤖 Mensaje de renovación con la próxima fecha (solo clientes reales con celular)
+        const clientLower = (sale.client || '').trim().toLowerCase();
+        const isRealClient = clientLower && !['libre', 'espacio libre', 'disponible', 'admin'].includes(clientLower)
+            && !NON_BILLABLE_STATUSES.some(s => String(s).toLowerCase() === clientLower);
+        if (!isRealClient || (sale.phone || '').replace(/\D/g, '').length <= 5) return;
+
+        try {
+            const text = buildRenewalMessage(sale, newEndDate, branding?.name || 'HM Digital');
+            const result = await sendViaBot({ uid: user.uid, phone: sale.phone, text, saleId: sale.id, kind: 'renewal' });
+            if (result.status === 'sent') {
+                setNotification({ show: true, message: `Renovado y aviso enviado a ${sale.client} ✅`, type: 'success' });
+            } else {
+                const reason = result.status === 'error' ? result.error : 'El bot no respondió.';
+                setNotification({ show: true, message: `Renovado, pero no se envió el aviso: ${reason}`, type: 'error' });
+            }
+        } catch (err) {
+            console.error('Error enviando aviso de renovación:', err);
+            setNotification({ show: true, message: 'Renovado, pero no se envió el aviso al cliente.', type: 'error' });
+        }
+    }, [sales, crmActions, autoSendRenewal, user, branding]);
 
     const handleWhatsAppShare = (sale, actionType) => {
         if (sale.client === 'LIBRE') return;
@@ -242,7 +311,18 @@ const App = () => {
         setFormData({ ...formData, profile: val, pin: m?.pin || formData.pin });
     };
 
-    const triggerDeleteService = (id) => setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
+    const triggerDeleteService = (id) => {
+        // No permitir borrar un servicio/paquete que tenga ventas o stock asociados
+        const item = catalog.find(c => c.id === id);
+        const inUse = item ? sales.filter(s => s.service === item.name) : [];
+        if (inUse.length > 0) {
+            const sold = inUse.filter(s => s.client !== 'LIBRE').length;
+            const free = inUse.length - sold;
+            setNotification({ show: true, message: `No se puede eliminar "${item.name}": tiene ${sold} vendidos y ${free} libres en stock.`, type: 'error' });
+            return;
+        }
+        setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
+    };
     const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
     const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
     const triggerEditAccount = (d) => setEditAccountModal({ show: true, email: d.email, oldPass: d.pass, newPass: d.pass });
@@ -271,10 +351,10 @@ const App = () => {
             {editClientModal.show && <EditClientModal modal={editClientModal} setModal={setEditClientModal} onConfirm={handleSaveEditClient} darkMode={darkMode} />}
 
             <Suspense fallback={<div className="flex h-full items-center justify-center min-h-[60vh]"><Loader className="animate-spin text-indigo-500 w-10 h-10" /></div>}>
-                {view === 'dashboard' && <Dashboard sales={sales} filteredSales={filteredSales} catalog={sortedCatalog} filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter} totalItems={totalItems} totalFilteredMoney={moneyToShow} getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining} NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} handleQuickRenew={handleDashboardRenew} triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData} expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales} darkMode={darkMode} saveSale={handleSaveSale} onMigrate={crmActions.migrateService} getClientLoyalty={getClientLoyalty} />}
+                {view === 'dashboard' && <Dashboard sales={sales} filteredSales={filteredSales} catalog={sortedCatalog} filterClient={filterClient} filterService={filterService} filterStatus={filterStatus} dateFrom={dateFrom} dateTo={dateTo} setFilter={setFilter} totalItems={totalItems} totalFilteredMoney={moneyToShow} getStatusIcon={getStatusIcon} getStatusColor={getStatusColor} getDaysRemaining={getDaysRemaining} NON_BILLABLE_STATUSES={NON_BILLABLE_STATUSES} sendWhatsApp={handleWhatsAppShare} handleQuickRenew={handleDashboardRenew} triggerLiberate={triggerLiberate} setFormData={setFormData} setView={setView} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} setBulkProfiles={setBulkProfiles} loadingData={loadingData} expiringToday={expiringToday} expiringTomorrow={expiringTomorrow} overdueSales={overdueSales} darkMode={darkMode} saveSale={handleSaveSale} onMigrate={crmActions.migrateService} getClientLoyalty={getClientLoyalty} setNotification={setNotification} />}
                 {view === 'inventory' && <InventoryMaster sales={sales} catalog={sortedCatalog} darkMode={darkMode} setFormData={setFormData} setView={setView} user={user} setNotification={setNotification} />}
-                {view === 'config' && <Config sales={sales} catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm} handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog} handleEditCatalogService={handleEditCatalogService} triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients} triggerDeleteClient={clientManagement.triggerDeleteClient} triggerEditClient={triggerOpenEditClient} setNotification={setNotification} formData={formData} setFormData={setFormData} darkMode={darkMode} />}
-                {view === 'form' && <SaleForm formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles} allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={sales} getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange} handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange} handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog} darkMode={darkMode} />}
+                {view === 'config' && <Config sales={sales} catalog={sortedCatalog} catalogForm={catalogForm} setCatalogForm={setCatalogForm} packageForm={packageForm} setPackageForm={setPackageForm} handleAddServiceToCatalog={handleAddServiceToCatalog} handleAddPackageToCatalog={handleAddPackageToCatalog} handleEditCatalogService={handleEditCatalogService} triggerDeleteService={triggerDeleteService} clientsDirectory={clientsDirectory} allClients={clientManagement.allClients} triggerDeleteClient={clientManagement.triggerDeleteClient} triggerEditClient={triggerOpenEditClient} setNotification={setNotification} formData={formData} setFormData={setFormData} darkMode={darkMode} user={user} branding={branding} autoSendData={autoSendData} setAutoSendData={setAutoSendData} autoSendRenewal={autoSendRenewal} setAutoSendRenewal={setAutoSendRenewal} />}
+                {view === 'form' && <SaleForm formData={formData} setFormData={setFormData} bulkProfiles={bulkProfiles} setBulkProfiles={setBulkProfiles} allClients={clientManagement.allClients} packageCatalog={packageCatalog} maxAvailableSlots={sales} getClientPreviousProfiles={getClientPreviousProfiles} handleClientNameChange={handleClientNameChange} handleBulkProfileChange={handleBulkProfileChange} handleSingleProfileChange={handleSingleProfileChange} handleSaveSale={handleSaveSale} setView={setView} resetForm={resetForm} catalog={sortedCatalog} darkMode={darkMode} autoSendData={autoSendData} setAutoSendData={setAutoSendData} />}
             </Suspense>
         </MainLayout>
     );

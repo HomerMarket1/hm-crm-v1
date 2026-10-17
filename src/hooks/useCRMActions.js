@@ -203,9 +203,12 @@ export const useCRMActions = (user, setNotification) => {
                     const isNetflix = realBaseName.toLowerCase().includes('netflix');
                     let defaultCapacity = isNetflix ? 5 : 4;
                     
-                    const accountCatalogItem = catalog.find(c => c.name === `${realBaseName} Cuenta Completa`);
-                    if (accountCatalogItem && accountCatalogItem.defaultSlots) {
-                        defaultCapacity = Number(accountCatalogItem.defaultSlots);
+                    const accountCatalogItem = catalog.find(c => c.name === `${realBaseName} Cuenta Completa`)
+                        || catalog.find(c => c.type === 'Cuenta' && findBaseServiceName(c.name) === realBaseName);
+                    if (accountCatalogItem) {
+                        // profileCapacity = perfiles de la cuenta; defaultSlots > 1 es formato antiguo
+                        const legacy = Number(accountCatalogItem.defaultSlots) > 1 ? Number(accountCatalogItem.defaultSlots) : 0;
+                        defaultCapacity = Number(accountCatalogItem.profileCapacity) || legacy || defaultCapacity;
                     }
 
                     const accountCapacity = Math.max(siblings.length + 1, defaultCapacity);
@@ -268,13 +271,26 @@ export const useCRMActions = (user, setNotification) => {
 
             const sRef = doc(db, userPath, 'sales', sId);
             const tRef = doc(db, userPath, 'sales', tId);
-            const sSnap = await getDoc(sRef);
+            const [sSnap, tSnap] = await Promise.all([getDoc(sRef), getDoc(tRef)]);
             if (!sSnap.exists()) return;
             const sData = sSnap.data();
+            const tData = tSnap.exists() ? tSnap.data() : {};
 
+            // 📜 HISTORIAL DE MUDANZAS: se guarda en el mismo batch (si la mudanza falla, no queda registro)
+            batch.set(doc(collection(db, userPath, 'moveHistory')), {
+                client: sData.client || '', phone: sData.phone || '',
+                from: { saleId: sId, service: sData.service || '', email: sData.email || '', profile: sData.profile || '', pin: sData.pin || '' },
+                to: { saleId: tId, service: tData.service || '', email: tData.email || '', profile: tData.profile || '', pin: tData.pin || '' },
+                endDate: sData.endDate || '', cost: sData.cost || 0,
+                oldAccountStatus: oldStatus, // en qué quedó la cuenta de origen (LIBRE, Caída...)
+                by: user.email || user.uid,
+                createdAt: serverTimestamp()
+            });
+
+            // El destino conserva SU perfil y PIN (los registrados en la Bóveda); solo se traslada el cliente
             batch.update(tRef, {
                 client: sData.client, phone: sData.phone || '', endDate: sData.endDate || '', cost: sData.cost || 0,
-                profile: sData.profile || '', pin: sData.pin || '', updatedAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
                 clientSince: sData.clientSince || sData.createdAt,
                 billingDay: sData.billingDay || null,
                 isProblem: false
@@ -312,8 +328,8 @@ export const useCRMActions = (user, setNotification) => {
                 updatedAt: serverTimestamp() 
             });
             
-            notify(`Renovado hasta el ${finalDate}`, 'success'); 
-            return true;
+            notify(`Renovado hasta el ${finalDate}`, 'success');
+            return finalDate; // fecha nueva (truthy) para el mensaje de renovación
 
         } catch (e) { 
             console.error("Error renovando:", e); 
@@ -322,15 +338,19 @@ export const useCRMActions = (user, setNotification) => {
         }
     };
 
-    const addCatalogService = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { ...f, cost: Number(f.cost), defaultSlots: Number(f.defaultSlots), createdAt: serverTimestamp() }); notify('Servicio creado.'); return true; } catch(e){ return false; } };
-    const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch(e){ return false; } };
-    const updateCatalogService = async (id, d) => { try { await updateDoc(doc(db, userPath, 'catalog', id), d); notify('Actualizado.'); return true; } catch(e){ return false; } };
+    const addCatalogService = async (f) => { try {
+        const isAccount = f.type === 'Cuenta';
+        const { profileCapacity, ...rest } = f;
+        const data = { ...rest, cost: Number(f.cost), defaultSlots: isAccount ? 1 : Number(f.defaultSlots), createdAt: serverTimestamp() };
+        if (isAccount) data.profileCapacity = Number(profileCapacity) || 5;
+        await addDoc(collection(db, userPath, 'catalog'), data); notify('Servicio creado.'); return true; } catch(e){ console.error(e); notify('Error al crear el servicio.', 'error'); return false; } };
+    const addCatalogPackage = async (f) => { try { await addDoc(collection(db, userPath, 'catalog'), { name: `${f.name} Paquete ${f.slots}`, cost: Number(f.cost), type: 'Paquete', defaultSlots: Number(f.slots), createdAt: serverTimestamp() }); notify('Paquete creado.'); return true; } catch(e){ console.error(e); notify('Error al crear el paquete.', 'error'); return false; } };
+    const updateCatalogService = async (id, d) => { try { await updateDoc(doc(db, userPath, 'catalog', id), d); notify('Actualizado.'); return true; } catch(e){ console.error(e); notify('Error al actualizar.', 'error'); return false; } };
     const editAccountCredentials = async (e,o,n) => { try { if (n===o) return true; const q = query(collection(db, userPath, 'sales'), where('email', '==', e), where('pass', '==', o)); const snap = await getDocs(q); if (snap.empty) { notify('No encontrado.', 'error'); return false; } const b = writeBatch(db); snap.forEach(d => b.update(d.ref, { pass: n, updatedAt: serverTimestamp() })); await b.commit(); notify('Credenciales actualizadas.', 'success'); return true; } catch(e) { notify('Error.', 'error'); return false; } };
-    const processBatchSale = async (f,q,r,b,c) => { return true; };
 
     return { 
         processSale, generateStock, executeConfirmAction, 
         addCatalogService, addCatalogPackage, updateCatalogService, 
-        quickRenew, editAccountCredentials, migrateService, processBatchSale 
+        quickRenew, editAccountCredentials, migrateService
     };
 };

@@ -48,8 +48,10 @@ const SaleForm = ({
     setView,
     resetForm,
     catalog = [],
-    getClientPreviousProfiles = [], 
-    darkMode 
+    getClientPreviousProfiles = [],
+    darkMode,
+    autoSendData = true,
+    setAutoSendData = () => {}
 }) => {
 
     const [stockMode, setStockMode] = useState(false);
@@ -63,6 +65,9 @@ const SaleForm = ({
 
     const isNewSale = isClientFree(formData.client) || !formData.id;
     const isEditingStock = formData.id && isClientFree(formData.client);
+    // La venta parte de stock libre (antes de escribir el cliente). maxAvailableSlots recibe la lista de ventas.
+    const originalSale = Array.isArray(maxAvailableSlots) ? maxAvailableSlots.find(s => s.id === formData.id) : null;
+    const isSellingFromStock = !!formData.id && isClientFree(originalSale?.client);
 
     // Limpiar nombre al abrir si es Cuenta Completa
     useEffect(() => {
@@ -324,7 +329,7 @@ const SaleForm = ({
                                 <div className="space-y-2">
                                     <div className="relative group">
                                         <Smartphone size={16} className={ICON_CLASS}/>
-                                        <input type="tel" className={INPUT_CLASS} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value})} placeholder="WhatsApp (Opcional)"/>
+                                        <input type="tel" className={INPUT_CLASS} value={formData.phone} onChange={e=>setFormData({...formData, phone:e.target.value.replace(/\D/g, '')})} inputMode="numeric" placeholder="WhatsApp (Opcional)"/>
                                     </div>
                                     <div className="relative group">
                                         <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${theme.iconColor}`}>
@@ -395,8 +400,17 @@ const SaleForm = ({
                     </form>
                 </div>
 
+                {/* 🤖 ENVÍO AUTOMÁTICO DE DATOS (solo al vender stock libre) */}
+                {isSellingFromStock && !stockMode && (
+                    <label className={`px-4 pt-3 flex items-center gap-2 text-xs font-bold cursor-pointer select-none border-t ${darkMode ? 'bg-[#161B28] border-white/10 text-slate-300' : 'bg-white border-slate-100 text-slate-600'}`}>
+                        <input type="checkbox" className="accent-emerald-500 w-4 h-4" checked={autoSendData} onChange={e => setAutoSendData(e.target.checked)} />
+                        Enviar datos de acceso por WhatsApp al guardar
+                        {autoSendData && !(formData.phone || '').replace(/\D/g, '') && <span className="text-amber-500 font-bold">(falta el celular)</span>}
+                    </label>
+                )}
+
                 {/* FOOTER */}
-                <div className={`p-4 border-t flex gap-3 pb-8 md:pb-4 ${darkMode ? 'bg-[#161B28] border-white/10' : 'bg-white border-slate-100'}`}>
+                <div className={`p-4 flex gap-3 pb-8 md:pb-4 ${isSellingFromStock && !stockMode ? '' : 'border-t'} ${darkMode ? 'bg-[#161B28] border-white/10' : 'bg-white border-slate-100'}`}>
                     <button type="button" onClick={()=>{setView('dashboard'); resetForm();}} className={`flex-1 py-3 rounded-xl font-bold text-xs transition-colors ${darkMode ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Cancelar</button>
                     <button type="submit" form="sale-form" className={`flex-[2] py-3 rounded-xl font-black text-xs shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 text-white ${darkMode ? 'bg-black border border-white/20 hover:bg-white/5 shadow-black/50' : 'bg-slate-900 shadow-slate-900/20 hover:bg-slate-800'}`}>
                         <Save size={16} className="text-emerald-400"/> 
