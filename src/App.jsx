@@ -2,7 +2,7 @@ import React, { useState, useReducer, useEffect, Suspense, lazy, useCallback } f
 import { Loader } from 'lucide-react';
 
 // Reducers y Hooks
-import { initialUiState, uiReducer, uiActionTypes } from './reducers/uiReducer';
+import { initialUiState, uiReducer, uiActionTypes, VIEW_PATHS, viewFromPath } from './reducers/uiReducer';
 import { useSalesData } from './hooks/useSalesData';
 import { useDataSync } from './hooks/useDataSync';
 import { useCRMActions } from './hooks/useCRMActions';
@@ -105,7 +105,8 @@ const App = () => {
             setNotification({ show: true, message: '¡Bienvenido!', type: 'success' });
         } catch (error) { setLoginError('Credenciales incorrectas.'); }
     };
-    const handleLogout = () => signOut(auth);
+    // Al volver a entrar se empieza en el Tablero, no en la última sección
+    const handleLogout = () => { dispatch({ type: uiActionTypes.SET_VIEW, payload: 'dashboard' }); return signOut(auth); };
 
     const handleAddServiceToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogService(catalogForm)) setCatalogForm({ name: '', cost: '', type: 'Perfil', defaultSlots: 4, profileCapacity: 5 }); };
     const handleAddPackageToCatalog = async (e) => { e.preventDefault(); if (await crmActions.addCatalogPackage(packageForm)) setPackageForm({ name: '', cost: '', slots: 2 }); };
@@ -330,6 +331,21 @@ const App = () => {
 
     const setFilter = (k, v) => dispatch({ type: uiActionTypes.SET_FILTER, payload: { key: k, value: v } });
     const setView = (v) => dispatch({ type: uiActionTypes.SET_VIEW, payload: v });
+
+    // URL ↔ vista del menú: la URL refleja la vista (/boveda...) y Atrás/Adelante cambian de vista.
+    // Sin sesión la URL queda en "/" (se espera a authLoading para no perder la ruta al recargar)
+    useEffect(() => {
+        if (authLoading) return;
+        const path = user ? VIEW_PATHS[view] : '/';
+        if (!path || window.location.pathname === path) return;
+        if (user) window.history.pushState(null, '', path);
+        else window.history.replaceState(null, '', path);
+    }, [view, user, authLoading]);
+    useEffect(() => {
+        const onPopState = () => setView(viewFromPath());
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
 
     useEffect(() => {
         const c = parseInt(formData.profilesToBuy || 1);

@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, Box, Settings, LogOut, Menu, X, Moon, Sun, Database } from 'lucide-react';
 import Toast from '../components/Toast';
-import { auth } from '../firebase/config'; 
+import { auth } from '../firebase/config';
+import { VIEW_PATHS } from '../reducers/uiReducer';
 
 const MainLayout = ({ 
     view, setView, handleLogout, children, 
@@ -34,8 +35,14 @@ const MainLayout = ({
     const NavButton = ({ item, isMobile = false }) => {
         const isActive = view === item.id;
         return (
-            <button
-                onClick={() => { setView(item.id); if(isMobile) setMobileMenuOpen(false); }}
+            <a
+                href={VIEW_PATHS[item.id]}
+                onClick={(e) => {
+                    // Ctrl/Cmd/Shift + clic o rueda: el navegador abre la pestaña/ventana nueva
+                    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+                    e.preventDefault();
+                    setView(item.id); if(isMobile) setMobileMenuOpen(false);
+                }}
                 className={`group relative w-full flex items-center gap-3 p-2.5 transition-all duration-300 ${isActive ? theme.activeBtn : theme.hover} rounded-2xl mb-4 md:mb-6 overflow-hidden`}
             >
                 {isActive && <div className={`absolute left-0 top-2 bottom-2 w-1 ${item.bg} rounded-r-full`} />}
@@ -45,7 +52,7 @@ const MainLayout = ({
                 <div className="text-left truncate">
                     <span className={`block text-sm font-bold tracking-tight ${isActive ? (darkMode ? 'text-white' : 'text-slate-800') : 'text-slate-500 group-hover:text-slate-300'}`}>{item.label}</span>
                 </div>
-            </button>
+            </a>
         );
     };
 

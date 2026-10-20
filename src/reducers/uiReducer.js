@@ -1,8 +1,15 @@
 // src/reducers/uiReducer.js (VERSIÓN PULIDA)
 
+// Vistas del menú enlazables por URL (/, /boveda, /ajustes): permite Ctrl+clic / abrir en pestaña nueva
+export const VIEW_PATHS = { dashboard: '/', inventory: '/boveda', config: '/ajustes' };
+export const viewFromPath = (path = window.location.pathname) => {
+    const p = path.replace(/\/+$/, '') || '/';
+    return Object.keys(VIEW_PATHS).find(v => VIEW_PATHS[v] === p) || 'dashboard';
+};
+
 // Estado inicial: Contiene todos los useState de UI que estaban en App.jsx
 export const initialUiState = {
-    view: 'dashboard',
+    view: viewFromPath(),
     stockTab: 'add',
     filterClient: '',
     filterService: 'Todos',

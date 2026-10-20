@@ -26,7 +26,8 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
     const [serviceQuery, setServiceQuery] = useState('');
     const [serviceOpen, setServiceOpen] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState('Todos'); 
-    const [hideProblems, setHideProblems] = useState(false); 
+    const [hideProblems, setHideProblems] = useState(false);
+    const [sortOrder, setSortOrder] = useState('email'); // 'email' | 'freeDesc' | 'freeAsc'
     const [expandedAccounts, setExpandedAccounts] = useState({});
     const [editingPass, setEditingPass] = useState({ email: null, value: '', groupKey: null });
     const [editingProfile, setEditingProfile] = useState(null); // { id, profile, pin }
@@ -62,17 +63,18 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         if (lower.includes('prime') || lower.includes('amazon')) return 'Prime Video';
         if (lower.includes('hbomax')) return 'HBOmax';
         if (lower.includes('paramount')) return 'Paramount+';
-        if (lower.includes('vix')) return 'Vix';
-        if (lower.includes('plex')) return 'Plex';
+        // Claves cortas como palabra completa: "MaxPlayer" no es Max, "Vixen" no es Vix, etc.
+        if (/\bvix\b/.test(lower)) return 'Vix';
+        if (/\bplex\b/.test(lower)) return 'Plex';
         if (lower.includes('iptv')) return 'IPTV';
         if (lower.includes('flujo')) return 'FlujoTv';
         if (lower.includes('crunchyroll')) return 'Crunchyroll';
         if (lower.includes('spotify')) return 'Spotify';
         if (lower.includes('youtube')) return 'Youtube';
         if (lower.includes('apple')) return 'Apple TV';
-        if (lower.includes('flow')) return 'Flow';
+        if (/\bflow\b/.test(lower)) return 'Flow';
         if (lower.includes('universal')) return 'Universal+';
-        if (lower.includes('max')) return 'Max';
+        if (/\bmax\b/.test(lower)) return 'Max';
         
         // Fallback: Limpieza genérica
         return serviceName.replace(/\s(Paquete|Perfil|Perfiles|Cuenta|Completa|Renovación|Pantalla|Dispositivo).*$/gi, '').trim();
@@ -173,7 +175,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
         setShowNewAccountForm(true);
     };
 
-    useEffect(() => { setPage(1); }, [searchTerm, selectedService, selectedStatus, hideProblems, pageSize]);
+    useEffect(() => { setPage(1); }, [searchTerm, selectedService, selectedStatus, hideProblems, pageSize, sortOrder]);
 
     // ========================================================================
     // 🧠 AGRUPACIÓN INTELIGENTE (Llave: Email + Nombre Base)
@@ -221,7 +223,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
 
     // 🧠 FILTRADO FINAL
     const filteredAccounts = useMemo(() => {
-        return groupedAccounts.filter(acc => {
+        const result = groupedAccounts.filter(acc => {
             const matchesSearch = acc.email.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                  acc.service.toLowerCase().includes(searchTerm.toLowerCase());
             
@@ -234,7 +236,11 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             
             return matchesSearch && matchesService && matchesStatus && !isHiddenByEye;
         });
-    }, [groupedAccounts, searchTerm, selectedService, selectedStatus, hideProblems, safeCatalog, serviceBelongsTo]);
+        // Orden por perfiles libres (empates: por correo, que ya viene ordenado; sort es estable)
+        if (sortOrder === 'freeDesc') result.sort((a, b) => b.freeCount - a.freeCount);
+        else if (sortOrder === 'freeAsc') result.sort((a, b) => a.freeCount - b.freeCount);
+        return result;
+    }, [groupedAccounts, searchTerm, selectedService, selectedStatus, hideProblems, safeCatalog, serviceBelongsTo, sortOrder]);
 
     // 📄 PAGINACIÓN
     const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / pageSize));
@@ -588,7 +594,7 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
             </header>
 
             <div className={`grid grid-cols-1 md:grid-cols-12 gap-2 sticky top-0 z-30 py-2 border-b backdrop-blur-xl transition-colors ${darkMode ? 'bg-[#0B0F19]/90 border-white/5' : 'bg-[#F2F2F7]/90 border-slate-200/50'}`}>
-                <div className="relative md:col-span-6 group shadow-lg">
+                <div className="relative md:col-span-4 group shadow-lg">
                     <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${darkMode ? 'text-slate-500 group-focus-within:text-cyan-400' : 'text-slate-400'}`} size={18}/>
                     <input type="text" placeholder="Buscar cuenta..." className={`w-full pl-11 pr-4 py-3 rounded-2xl font-semibold text-[15px] outline-none transition-all shadow-sm ${theme.input}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
                 </div>
@@ -625,9 +631,15 @@ const InventoryMaster = ({ sales, catalog, darkMode, setFormData, setView, user,
                     )}
                 </div>
                 
-                <select className={`md:col-span-3 px-4 py-3 rounded-2xl border outline-none font-bold text-xs transition-all ${theme.input}`} value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                <select className={`md:col-span-2 px-4 py-3 rounded-2xl border outline-none font-bold text-xs transition-all ${theme.input}`} value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
                     <option value="Todos">Todos los Estados</option>
                     {PROBLEM_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
+
+                <select className={`md:col-span-3 px-4 py-3 rounded-2xl border outline-none font-bold text-xs transition-all ${theme.input}`} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} title="Ordenar cuentas">
+                    <option value="email">Orden: Correo (A-Z)</option>
+                    <option value="freeDesc">Más perfiles libres primero</option>
+                    <option value="freeAsc">Menos perfiles libres primero</option>
                 </select>
             </div>
 

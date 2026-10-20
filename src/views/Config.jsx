@@ -10,6 +10,7 @@ import BillingSchedule from '../components/BillingSchedule';
 import BusinessHours from '../components/BusinessHours';
 import BotRules from '../components/BotRules';
 import SegmentedTabs from '../components/SegmentedTabs';
+import BotStatus from '../components/BotStatus';
 import { exportBackupExcel, exportBackupJson } from '../utils/backupExport';
 
 // Secciones de la pestaña "Bot WhatsApp"
@@ -472,6 +473,7 @@ const Config = ({
                                         <div className={`px-4 sm:px-6 py-4 border-b ${theme.cardHeader}`}>
                                             <h3 className={`font-black text-xs uppercase tracking-wider flex items-center gap-2 ${theme.subtext}`}><Send size={14}/> Mensajes automáticos</h3>
                                         </div>
+                                        <BotStatus user={user} darkMode={darkMode} theme={theme} setNotification={setNotification} />
                                         <div className={`divide-y ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
                                             {[
                                                 { checked: autoSendData, onChange: setAutoSendData, title: 'Enviar datos de acceso al registrar una venta', desc: 'Al asignar un perfil o cuenta libre a un cliente, el bot le manda correo, perfil y PIN.' },

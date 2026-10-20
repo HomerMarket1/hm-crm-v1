@@ -51,11 +51,13 @@ export const useCRMActions = (user, setNotification) => {
                         finalServiceName = originalService ? originalService.name : findBaseServiceName(saleToFree.service);
                     }
 
+                    // Un perfil liberado conserva su nombre y PIN (son del slot); una cuenta completa no tiene perfil
+                    const slotData = isAccount ? { profile: targetProfile, pin: '' } : {};
                     batch.update(doc(db, userPath, 'sales', modalData.id), {
-                        client: 'LIBRE', phone: '', endDate: '', cost: 0, 
-                        service: finalServiceName, updatedAt: serverTimestamp(), 
-                        type: targetType, profile: targetProfile, pin: '',
-                        clientSince: null, billingDay: null, isProblem: false
+                        client: 'LIBRE', phone: '', endDate: '', cost: 0,
+                        service: finalServiceName, updatedAt: serverTimestamp(),
+                        type: targetType, ...slotData,
+                        clientSince: null, billingDay: null, isProblem: false, markedForDeletion: false
                     });
                     operationCount++;
                 }
@@ -261,7 +263,8 @@ export const useCRMActions = (user, setNotification) => {
         } catch (error) { console.error("Error:", error); notify('Error al guardar.', 'error'); return false; }
     };
 
-    const migrateService = async (source, target, oldStatus = 'LIBRE') => {
+    // keepProfile: el destino toma el perfil y PIN del origen (el cliente no tiene que cambiar nada)
+    const migrateService = async (source, target, oldStatus = 'LIBRE', keepProfile = false) => {
         try {
             const batch = writeBatch(db);
             const userPath = `users/${user.uid}`;
@@ -283,12 +286,14 @@ export const useCRMActions = (user, setNotification) => {
                 to: { saleId: tId, service: tData.service || '', email: tData.email || '', profile: tData.profile || '', pin: tData.pin || '' },
                 endDate: sData.endDate || '', cost: sData.cost || 0,
                 oldAccountStatus: oldStatus, // en qué quedó la cuenta de origen (LIBRE, Caída...)
-                by: user.email || user.uid,
+                keptProfile: keepProfile,
+                by:user.email || user.uid,
                 createdAt: serverTimestamp()
             });
 
-            // El destino conserva SU perfil y PIN (los registrados en la Bóveda); solo se traslada el cliente
+            // Por defecto el destino conserva SU perfil y PIN; con keepProfile hereda los del origen
             batch.update(tRef, {
+                ...(keepProfile ? { profile: sData.profile || '', pin: sData.pin || '' } : {}),
                 client: sData.client, phone: sData.phone || '', endDate: sData.endDate || '', cost: sData.cost || 0,
                 updatedAt: serverTimestamp(),
                 clientSince: sData.clientSince || sData.createdAt,
@@ -296,8 +301,9 @@ export const useCRMActions = (user, setNotification) => {
                 isProblem: false
             });
 
-            const resetData = oldStatus === 'LIBRE' 
-                ? { client: 'LIBRE', phone: '', endDate: '', cost: 0, profile: '', pin: '', lastCode: '', clientSince: null, billingDay: null, isProblem: false }
+            // El origen conserva su perfil y PIN: son del slot de la cuenta, no del cliente
+            const resetData = oldStatus === 'LIBRE'
+                ? { client: 'LIBRE', phone: '', endDate: '', cost: 0, lastCode: '', clientSince: null, billingDay: null, isProblem: false }
                 : { client: oldStatus, phone: '', endDate: '', cost: 0, clientSince: null, billingDay: null, isProblem: false };
 
             batch.update(sRef, { ...resetData, updatedAt: serverTimestamp() });

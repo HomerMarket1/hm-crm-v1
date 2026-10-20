@@ -213,7 +213,8 @@ const Dashboard = ({
 }) => {
     const [bulkModal, setBulkModal] = useState({ show: false, title: '', list: [] });
     const [migrationModal, setMigrationModal] = useState({ show: false, sale: null, matches: [] });
-    const [migrationSourceStatus, setMigrationSourceStatus] = useState('Caída'); 
+    const [migrationSourceStatus, setMigrationSourceStatus] = useState('Caída');
+    const [migrationKeepProfile, setMigrationKeepProfile] = useState(false);
     const [sentIds, setSentIds] = useState([]);
     const [sendingIds, setSendingIds] = useState([]); // ventas enviándose por el bot
     const [botFallback, setBotFallback] = useState(null); // { client, phone, message, reason }
@@ -268,7 +269,8 @@ const Dashboard = ({
                 && !brokenAccounts.has(accountKey(s))
                 && (s.email || '').trim().toLowerCase() !== sourceEmail; // no mudar a la misma cuenta
         });
-        setMigrationSourceStatus('Caída'); 
+        setMigrationSourceStatus('Caída');
+        setMigrationKeepProfile(false);
         setMigrationModal({ show: true, sale, matches });
     }, [sales]);
 
@@ -276,7 +278,7 @@ const Dashboard = ({
         const sourceSale = migrationModal.sale;
         if (!sourceSale || !targetSale) return;
         if (onMigrate) {
-            await onMigrate(sourceSale, targetSale, migrationSourceStatus);
+            await onMigrate(sourceSale, targetSale, migrationSourceStatus, migrationKeepProfile);
             setActiveTab('healthy');
             setFilter('filterClient', sourceSale.client); 
         }
@@ -411,10 +413,8 @@ const Dashboard = ({
             setFormData({ ...sale, profilesToBuy: isFull ? (sale.profilesToBuy || 5) : 1 }); setBulkProfiles([{ profile: sale.profile, pin: sale.pin }]); setView('form'); 
         },
         migrate: openMigration, renew: handleQuickRenew,
-        liberate: async (id) => {
-            try { const currentUser = auth.currentUser; if (currentUser) { await updateDoc(doc(db, `users/${currentUser.uid}/sales`, id), { markedForDeletion: false, isProblem: false }); } } catch (error) {}
-            triggerLiberate(id);
-        },
+        // El modal abre al instante; la limpieza de marcas se hace al confirmar (executeConfirmAction)
+        liberate: (id) => triggerLiberate(id),
         toggleMark: handleToggleMark,
         toggleProblem: handleToggleProblem
     }), [handleUnifiedWhatsApp, handleQuickRenew, triggerLiberate, setFormData, setView, setBulkProfiles, openMigration, handleToggleMark, handleToggleProblem, setNotification]);
@@ -643,6 +643,13 @@ const Dashboard = ({
                         </div>
                         <div className="p-6 space-y-4">
                             <div><label className="block text-xs font-bold uppercase text-slate-500 mb-2">¿Cómo queda la cuenta anterior?</label><div className="grid grid-cols-4 gap-2">{['Caída', 'Actualizar', 'Dominio', 'LIBRE'].map(status => (<button key={status} onClick={() => setMigrationSourceStatus(status)} className={`py-2 rounded-xl text-xs font-bold border transition-all ${migrationSourceStatus === status ? (status === 'LIBRE' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-amber-500 text-white border-amber-500') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B] text-slate-400 hover:bg-[#1E293B]' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100')}`}>{status}</button>))}</div></div>
+                            <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${migrationKeepProfile ? (darkMode ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-indigo-50 border-indigo-200') : (darkMode ? 'bg-[#0B0F19] border-[#1E293B]' : 'bg-slate-50 border-slate-200')}`}>
+                                <input type="checkbox" className="mt-0.5 accent-indigo-500" checked={migrationKeepProfile} onChange={(e) => setMigrationKeepProfile(e.target.checked)} />
+                                <span className="text-xs">
+                                    <span className={`block font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>Mantener perfil y PIN del cliente</span>
+                                    <span className="text-slate-400">La cuenta nueva tomará el perfil <b>{migrationModal.sale?.profile || '—'}</b> y PIN <b>{migrationModal.sale?.pin || '—'}</b>. La cuenta anterior conserva sus datos para revisarla después.</span>
+                                </span>
+                            </label>
                             <div className="h-px bg-white/5"></div>
                             <div><label className="block text-xs font-bold uppercase text-slate-500 mb-2">Elige el destino (Disponibles):</label><div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">{migrationModal.matches.length > 0 ? migrationModal.matches.map(match => (<div key={match.id} className={`w-full p-3 rounded-xl border flex flex-col gap-2 transition-all ${darkMode ? 'bg-[#0B0F19] border-[#1E293B] hover:border-indigo-500/30' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className={`px-2 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wide ${darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>{match.profile || 'General'}</span>{match.pin && (<span className={`text-[11px] font-mono font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>PIN: <span className={darkMode ? 'text-white' : 'text-slate-900'}>{match.pin}</span></span>)}</div><button onClick={() => executeMigration(match)} className={`flex items-center gap-1 pl-3 pr-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${darkMode ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-emerald-500 text-white hover:bg-emerald-600'} shadow-lg shadow-emerald-500/20`}>Elegir <ArrowRight size={12} /></button></div><div className={`flex items-center justify-between p-2 rounded-lg border ${darkMode ? 'bg-black/40 border-white/5' : 'bg-white border-slate-200'}`}><div className="min-w-0 flex-1 mr-2"><div className={`text-xs font-bold truncate select-all ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{match.email}</div><div className="text-[10px] font-mono text-slate-500 select-all">{match.pass}</div></div><button onClick={(e) => { e.stopPropagation(); handlers.copy(e, match.email, match.pass); }} className={`p-2 rounded-md transition-all active:scale-95 ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-indigo-600'}`} title="Copiar Credenciales"><Copy size={14}/></button></div></div>)) : (<div className="text-center py-8 opacity-50"><Box size={32} className="mx-auto mb-2 text-slate-500"/><p className="text-xs font-bold">No hay cuentas libres de este servicio.</p></div>)}</div></div>
                         </div>

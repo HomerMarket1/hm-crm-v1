@@ -2,8 +2,36 @@
 // 📤 Envío directo por el Bot de WhatsApp (Bot-Whatsapp / src/outbox.js).
 // El CRM deja el mensaje en users/{uid}/whatsappOutbox y el bot lo envía al instante.
 // Estados: pending -> sending -> sent | error. Si nadie lo toma a tiempo: cancelled.
-import { collection, doc, setDoc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
+
+const HEARTBEAT_STALE_MS = 3 * 60 * 1000; // el bot late cada minuto: sin señal en 3 min = apagado
+
+/**
+ * 🩺 Explica POR QUÉ el bot no tomó el mensaje, usando su señal de vida (users/{uid}/config/botHeartbeat).
+ * Devuelve un texto listo para mostrar.
+ */
+export const diagnoseBot = async (uid) => {
+    const shortUid = `${uid.slice(0, 6)}…${uid.slice(-4)}`;
+    const project = import.meta.env.VITE_FIREBASE_PROJECT_ID || '';
+    try {
+        const snap = await withTimeout(getDoc(doc(db, `users/${uid}/config/botHeartbeat`)), 4000);
+        if (!snap.exists()) {
+            return `El bot no está escuchando esta cuenta. En el .env del bot, MY_USER_ID debe ser ${uid} y su serviceAccount.json del proyecto "${project}". (Requiere el bot actualizado.)`;
+        }
+        const hb = snap.data();
+        const lastSeen = hb.lastSeen?.toMillis ? hb.lastSeen.toMillis() : 0;
+        const minutes = Math.round((Date.now() - lastSeen) / 60000);
+        if (!lastSeen || Date.now() - lastSeen > HEARTBEAT_STALE_MS) {
+            return `El bot está apagado o sin conexión a Firebase (última señal hace ${minutes} min${hb.host ? ` desde ${hb.host}` : ''}).`;
+        }
+        if (!hb.whatsappConnected) return 'El bot está encendido, pero WhatsApp está desconectado (reconectando o hay que escanear el QR).';
+        if (hb.outboxListening === false) return 'El bot está encendido, pero perdió la escucha de envíos. Se reconecta solo; si sigue, reinícialo.';
+        return `El bot está encendido (cuenta ${shortUid}) pero no respondió a tiempo. Puede ser la conexión; prueba de nuevo.`;
+    } catch {
+        return 'El bot de WhatsApp no respondió y no se pudo verificar su estado (conexión lenta con Firebase).';
+    }
+};
 
 const PICKUP_TIMEOUT_MS = 3000;    // si el bot no lo toma en 3 s -> se ofrece el envío manual
 const DELIVERY_TIMEOUT_MS = 45000; // tiempo máximo esperando el resultado una vez tomado
@@ -70,10 +98,11 @@ export const sendViaBot = ({ uid, phone, text, saleId = null, kind = 'data' }) =
         // Guardado pero el bot no lo tomó: lo cancelamos para que no llegue tarde ni duplicado
         try {
             const cancelled = await cancelIfPending(outboxRef);
-            if (cancelled) finish({ status: 'error', error: 'El bot de WhatsApp no está conectado.' });
+            // Cancelado: el bot nunca lo vio -> se explica la causa con su señal de vida
+            if (cancelled) finish({ status: 'error', error: await diagnoseBot(uid) });
             // Si no se canceló, el bot ya lo tomó: seguimos esperando el resultado
         } catch {
-            finish({ status: 'error', error: 'El bot de WhatsApp no respondió.' });
+            finish({ status: 'error', error: await diagnoseBot(uid) });
         }
     }, PICKUP_TIMEOUT_MS);
 
