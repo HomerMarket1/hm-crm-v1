@@ -2,7 +2,7 @@
 import React from 'react';
 import { AlertTriangle, Trash2, RotateCcw, X, ShieldAlert } from 'lucide-react';
 
-const ConfirmModal = ({ modal, onClose, onConfirm, darkMode }) => {
+const ConfirmModal = ({ modal, onClose, onConfirm, onChange, darkMode }) => {
     if (!modal.show) return null;
 
     // Colores dinámicos del Modal
@@ -40,6 +40,17 @@ const ConfirmModal = ({ modal, onClose, onConfirm, darkMode }) => {
                 <p className={`text-sm font-medium mb-8 leading-relaxed px-4 ${theme.subtext}`}>
                     {modal.msg}
                 </p>
+
+                {/* Liberar: conservar o borrar perfil y PIN */}
+                {modal.type === 'liberate' && onChange && (
+                    <label className={`flex items-start gap-3 p-3 mb-6 -mt-4 rounded-xl border text-left cursor-pointer ${darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                        <input type="checkbox" className="mt-0.5 accent-orange-500" checked={modal.keepData !== false} onChange={(e) => onChange({ keepData: e.target.checked })} />
+                        <span className="text-xs">
+                            <span className={`block font-bold ${theme.text}`}>Mantener perfil y PIN</span>
+                            <span className={theme.subtext}>{modal.keepData !== false ? 'Se conservan para revisarlos después.' : 'Se borrarán el perfil y el PIN.'}</span>
+                        </span>
+                    </label>
+                )}
 
                 {/* Botones */}
                 <div className="flex flex-col gap-3">

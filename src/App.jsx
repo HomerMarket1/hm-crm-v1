@@ -324,7 +324,7 @@ const App = () => {
         }
         setConfirmModal({ show: true, id, type: 'delete_service', title: '¿Eliminar Servicio?', msg: 'Esta categoría desaparecerá.' });
     };
-    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.' });
+    const triggerLiberate = (id) => setConfirmModal({ show: true, id, type: 'liberate', title: '¿Liberar Perfil?', msg: 'Los datos del cliente se borrarán.', keepData: true });
     const triggerDeleteAccount = (d) => setConfirmModal({ show: true, type: 'delete_account', title: '¿Eliminar Cuenta?', msg: `Se eliminarán los perfiles de ${d.email}.`, data: d.ids });
     const triggerEditAccount = (d) => setEditAccountModal({ show: true, email: d.email, oldPass: d.pass, newPass: d.pass });
     const triggerOpenEditClient = (client) => setEditClientModal({ show: true, client });
@@ -362,7 +362,7 @@ const App = () => {
         <MainLayout view={view} setView={setView} handleLogout={handleLogout} notification={notification} setNotification={setNotification} darkMode={darkMode} setDarkMode={setDarkMode} user={user} branding={branding}>
             <datalist id="suggested-profiles">{getClientPreviousProfiles.map((p, i) => <option key={i} value={p.profile}>PIN: {p.pin}</option>)}</datalist>
             <datalist id="clients-suggestions">{clientManagement.allClients.map((c, i) => <option key={i} value={c.name} />)}</datalist>
-            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({ show: false })} onConfirm={handleConfirmActionWrapper} darkMode={darkMode} />
+            <ConfirmModal modal={confirmModal} onClose={() => setConfirmModal({ show: false })} onConfirm={handleConfirmActionWrapper} onChange={(patch) => setConfirmModal(prev => ({ ...prev, ...patch }))} darkMode={darkMode} />
             {editAccountModal.show && <EditAccountModal modal={editAccountModal} setModal={setEditAccountModal} onConfirm={handleEditAccountCredentials} />}
             {editClientModal.show && <EditClientModal modal={editClientModal} setModal={setEditClientModal} onConfirm={handleSaveEditClient} darkMode={darkMode} />}
 

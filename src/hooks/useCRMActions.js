@@ -51,8 +51,9 @@ export const useCRMActions = (user, setNotification) => {
                         finalServiceName = originalService ? originalService.name : findBaseServiceName(saleToFree.service);
                     }
 
-                    // Un perfil liberado conserva su nombre y PIN (son del slot); una cuenta completa no tiene perfil
-                    const slotData = isAccount ? { profile: targetProfile, pin: '' } : {};
+                    // keepData (por defecto): conserva perfil y PIN para revisarlos después; si no, se borran
+                    const keepData = modalData.keepData !== false;
+                    const slotData = keepData ? {} : { profile: isAccount ? targetProfile : '', pin: '' };
                     batch.update(doc(db, userPath, 'sales', modalData.id), {
                         client: 'LIBRE', phone: '', endDate: '', cost: 0,
                         service: finalServiceName, updatedAt: serverTimestamp(),
