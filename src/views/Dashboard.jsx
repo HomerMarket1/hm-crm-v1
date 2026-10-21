@@ -333,10 +333,11 @@ const Dashboard = ({
                 const name = cleanServiceName(curr.service);
                 const isFull = curr.type === 'Cuenta' || curr.service?.toLowerCase().includes('completa');
                 const key = `${name}-${isFull ? 'C' : 'P'}`;
-                if(!acc[key]) acc[key] = { name, isFull, count: 0 };
+                if(!acc[key]) acc[key] = { name, isFull, count: 0, profiles: [] };
                 acc[key].count++;
+                if (!isFull && curr.profile) acc[key].profiles.push(curr.profile);
                 return acc;
-            }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Cuentas':'Cuenta') : (g.count>1?'Perfiles':'Perfil')} ${g.name}`).join(' + ');
+            }, {})).map(([_, g]) => `${g.count} ${g.isFull ? (g.count>1?'Cuentas':'Cuenta') : (g.count>1?'Perfiles':'Perfil')} ${g.name}${g.profiles.length ? ` (${g.profiles.join(', ')})` : ''}`).join(' + ');
             
             const totalToPay = related.reduce((sum, s) => sum + (Number(s.cost) || 0), 0);
             const totalText = totalToPay > 0 ? ` Total a pagar: $${totalToPay}.` : '';
